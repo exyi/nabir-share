@@ -48,7 +48,12 @@ csv_schema = [
     # ('gemmi_shortest', pl.Float64)
 ]
 
-def scan_pair_csvs(files: list[str], header=False):
+def scan_pair_csvs(files: list[str], header=None):
+    if header is None:
+        with open(files[0], "rt") as f:
+            header_maybe = f.readline()
+            header = header_maybe.startswith("pdbid,")
+
     if header:
         dtypes = dict(csv_schema)
     else:

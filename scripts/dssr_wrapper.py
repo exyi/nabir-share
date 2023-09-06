@@ -131,7 +131,7 @@ def add_dssr_info(pdbid, df: pl.DataFrame, dssr_binary, column_prefix = 'dssr_')
         default = None
         if nt1.alt or nt2.alt:
             default = lookup_pair(nt1.replace(alt=''), nt2.replace(alt=''))
-        return lookup.get((nt1, nt2), lookup.get((nt2, nt1), None))
+        return lookup.get((nt1, nt2), lookup.get((nt2, nt1), default))
 
     columns_names = [ "pairing_type", "shear", "stretch", "stagger", "buckle", "propeller", "opening", "shift", "slide", "rise", "tilt", "roll", "twist" ]
     columns = [ [None] * len(df) for _ in columns_names ]

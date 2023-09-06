@@ -1,10 +1,9 @@
 
 import os, gzip, io
-import Bio.PDB.Structure
 from typing import Any, Callable, Optional, TextIO, TypeVar, Union
 
 
-pdb_cache_dirs: list[str] = os.environ.get("PDB_CACHE_DIR", "").split(";")
+pdb_cache_dirs: list[str] = [ x for x in os.environ.get("PDB_CACHE_DIR", "").split(";") if x.strip() != "" ]
 tmp_dir = "/tmp/pdb_files"
 
 def _get_pdbid(file):
@@ -84,8 +83,19 @@ def open_pdb_file(file: Optional[str], pdb_id: Optional[str] = None) -> TextIO:
     else:
         return file
 
+def load_pdb_gemmi(file: Optional[str | TextIO], pdb_id: Optional[str] = None) -> 'Bio.PDB.Structure.Structure':
+    import gemmi
+    if isinstance(file, str) or file is None:
+        with open_pdb_file(file, pdb_id) as f:
+            return load_pdb_gemmi(f, pdb_id)
+    else:
+        raise NotImplementedError()
+        # parser = Bio.PDB.MMCIFParser(QUIET=True)
+        # structure = parser.get_structure(pdb_id, file)
+        # return structure
 
-def load_pdb(file: Optional[str | TextIO], pdb_id: Optional[str] = None) -> Bio.PDB.Structure.Structure:
+def load_pdb(file: Optional[str | TextIO], pdb_id: Optional[str] = None):
+    import Bio.PDB.Structure
     if isinstance(file, str) or file is None:
         with open_pdb_file(file, pdb_id) as f:
             return load_pdb(f, pdb_id)
