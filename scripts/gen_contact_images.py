@@ -46,7 +46,7 @@ def orient_pair(pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2):
 def make_pair_image(output_file, pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2):
     orient_pair(pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2)
     cmd.png(output_file, width=640, height=640, ray=1)
-    print(f"Saved {output_file}")
+    print(f"Saved basepair image {output_file}")
 
 def process_group(pdbid, group: pl.DataFrame, output_dir: str):
     pdbid = str(pdbid)

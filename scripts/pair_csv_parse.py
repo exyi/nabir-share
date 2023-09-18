@@ -49,6 +49,8 @@ csv_schema = [
 ]
 
 def scan_pair_csvs(files: list[str], header=None):
+    if files[0].endswith(".parquet"):
+        return pl.concat([ pl.scan_parquet(f) for f in files ])
     if header is None:
         with open(files[0], "rt") as f:
             header_maybe = f.readline()
