@@ -386,6 +386,8 @@ def to_csv_row(df: pl.DataFrame, i: int = 0, max_len = None) -> str:
 def get_stats_for_csv(df_: pl.DataFrame, structure: Bio.PDB.Structure.Structure, pair_type: str):
     df = df_.with_row_count()
     for (i, pdbid, model, chain1, res1, ins1, alt1, chain2, res2, ins2, alt2) in zip(df["row_nr"], df["pdbid"], df["model"], df["chain1"], df["nr1"], df["ins1"], df["alt1"], df["chain2"], df["nr2"], df["ins2"], df["alt2"]):
+        if (chain1, res1, ins1, alt1) == (chain2, res2, ins2, alt2):
+            continue
         try:
             assert structure.id.lower() == pdbid.lower(), f"pdbid mismatch: {structure.id} != {pdbid}"
             ins1 = ins1.strip()
@@ -404,7 +406,8 @@ def get_stats_for_csv(df_: pl.DataFrame, structure: Bio.PDB.Structure.Structure,
                 print(f"Could not find residue2 {chain2}.{str(res2)+ins2} in {pdbid}")
                 continue
             hbonds = get_hbond_stats(pair_type, r1, r2)
-            stats = None # calc_pair_stats(r1, r2)
+            # stats = None
+            stats = calc_pair_stats(r1, r2)
             if hbonds is not None:
                 yield i, hbonds, stats
         except AssertionError as e:
@@ -417,6 +420,30 @@ def get_stats_for_csv(df_: pl.DataFrame, structure: Bio.PDB.Structure.Structure,
             print(traceback.format_exc())
             print("Continuing...")
             continue
+
+def remove_duplicate_pairs(df: pl.DataFrame):
+    def pair_id(chain1, res1, ins1, alt1, chain2, res2, ins2, alt2):
+        pair = [ (chain1, res1, ins1, alt1), (chain2, res2, ins2, alt2) ]
+        pair.sort()
+        return "|".join(tuple(str(x) for x in (pair[0] + pair[1])))
+    pair_ids = [ pair_id(chain1, res1, ins1, alt1, chain2, res2, ins2, alt2) for chain1, res1, ins1, alt1, chain2, res2, ins2, alt2 in zip(df["chain1"], df["nr1"], df["ins1"], df["alt1"], df["chain2"], df["nr2"], df["ins2"], df["alt2"]) ]
+    df = df.with_columns(
+        pl.Series(pair_ids, dtype=pl.Utf8).alias("_tmp_pair_id")
+    ).with_row_count("_tmp_row_nr")
+    score = pl.lit(0, dtype=pl.Float64)
+    for col in df.columns:
+        if col.startswith("hb_") and col.endswith("_length"):
+            score += pl.col(col).fill_null(100)
+        if col.startswith("dssr_"):
+            score += pl.col(col).is_null().cast(pl.Float64) * 3
+        if col == "bogopropeller":
+            score += pl.col(col).is_null().cast(pl.Float64) * 10
+
+    df = df.sort([score, "chain1", "nr1", "ins1", "alt1", "chain2", "nr2", "ins2", "alt2"])
+    df = df.unique(["pdbid", "model", "_tmp_pair_id"], keep="first", maintain_order=True)
+    df = df.sort("_tmp_row_nr")
+    df = df.drop(["_tmp_pair_id", "_tmp_row_nr"])
+    return df
 
 def export_stats_csv(pdbid, df: pl.DataFrame, add_metadata_columns: bool, pair_type: str) -> Tuple[str, pl.DataFrame, np.ndarray]:
     bond_count = 3
@@ -505,6 +532,8 @@ def main(pool, args):
             result_chunks.append(chunk)
 
     df = pl.concat(result_chunks)
+    if args.dedupe:
+        df = remove_duplicate_pairs(df)
     df = df.sort('pdbid', 'model', 'nr1', 'nr2')
     df.write_csv(args.output)
     df.write_parquet(args.output + ".parquet")
@@ -529,6 +558,7 @@ if __name__ == "__main__":
     parser.add_argument("--metadata", type=bool, default=True, help="Add deposition_date, resolution and structure_method columns")
     parser.add_argument("--dssr-binary", type=str, help="If specified, DSSR --analyze will be invoked for each structure and its results stored as 'dssr_' prefixed columns")
     parser.add_argument("--filter", default=False, action="store_true", help="Filter out rows for which the values could not be calculated")
+    parser.add_argument("--dedupe", default=False, action="store_true", help="Remove duplicate pairs, keep the one with shorter bonds or lower chain1,nr1")
     parser.add_argument("--pair-type", default="cWW")
     args = parser.parse_args()
 

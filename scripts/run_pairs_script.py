@@ -9,6 +9,7 @@ def run(outfile, input_files, pdbcache, threads, pair_type):
         "--pdbcache", *pdbcache,
         "--threads", str(threads),
         "--pair-type", pair_type,
+        "--dedupe",
         "--output", outfile + ".csv",
     ]
     print("Running pairs: " + outfile)
