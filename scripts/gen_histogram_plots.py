@@ -97,6 +97,16 @@ def format_length_label(atoms: tuple[str, str], swap=False):
 
     return f"{a[1:]} · · · {b[1:]}"
 
+def is_symmetric_pair_type(pair_type: tuple[str, str]):
+    if pair_type[1] != pair_type[1][::-1] or pair_type[0][1] != pair_type[0][2]:
+        return False
+
+    hbonds = pairs.hbonding_atoms[pair_type]
+    return all(
+        pairs.hbond_swap_nucleotides(hb) in hbonds
+        for hb in hbonds
+    )
+
 def get_label(col: str, pair_type: tuple[str, str]):
     hbonds = pairs.hbonding_atoms[pair_type]
     swap = is_swapped(pair_type[1])
@@ -199,6 +209,8 @@ def make_histogram_group(dataframes: list[pl.DataFrame], axes: list[plt.Axes], t
     else:
         legend = [ get_label(col, pair_type) or "" for col in h.columns ]
 
+    is_symmetric = is_symmetric_pair_type(pair_type)
+
     for df, ax, title in zip(dataframes, axes, titles):
         ax.set(xlabel=h.axis_label, title=title)
         ax.set_xlim(xmin, xmax)
@@ -214,6 +226,22 @@ def make_histogram_group(dataframes: list[pl.DataFrame], axes: list[plt.Axes], t
             for c, l in zip(h.columns, legend)
             if c in nn_columns
         ])
+        if is_symmetric:
+            print(f"{pair_type} is symetric")
+            # merge symetric bonds
+            symetric_bonds = list(set(
+                tuple(sorted((i, pairs.hbonding_atoms[pair_type].index(pairs.hbond_swap_nucleotides(hb)))))
+                for i, hb in enumerate(pairs.hbonding_atoms[pair_type])
+            ))
+            print("Merging symetric bonds: ", symetric_bonds)
+            assert (0, 0) not in symetric_bonds and (1, 1) not in symetric_bonds and (2, 2) not in symetric_bonds
+            renamed_columns_ = renamed_columns.select(
+                pl.col(legend[j]).alias(legend[i])
+                for i, j in symetric_bonds
+            )
+            renamed_columns = renamed_columns.select(pl.col(legend[i]) for i, _ in symetric_bonds)
+            renamed_columns = pl.concat([ renamed_columns, renamed_columns_ ])
+
         sns.histplot(data=renamed_columns.to_pandas(), binwidth=bin_width, kde=(hist_kde and len(dfs) >= 5), legend=True, ax=ax)
         ymax = ax.get_ylim()[1]
         ax.set_yticks(np.arange(0, ymax, step=get_histogram_ticksize(ymax)))
@@ -226,20 +254,30 @@ def make_histogram_group(dataframes: list[pl.DataFrame], axes: list[plt.Axes], t
                 peak_fmt = f"{x[peak]:.0f}°" if "angle" in title.lower() else f"{x[peak]:.2f}"
                 ax.annotate(peak_fmt, (x[peak], y[peak]), xytext=(0, 5), textcoords="offset points", ha='center', va='bottom', color=line.get_color(), path_effects=[matplotlib.patheffects.withStroke(linewidth=3, foreground="white")], fontsize=8)
 
+                curve_steps = np.append(x[1:] - x[:-1], [0])
+                curve_area_total = np.sum(y * curve_steps)
+                curve_area_cumsum = np.cumsum(y * curve_steps)
+                quantiles = [ np.searchsorted(curve_area_cumsum, q * curve_area_total) for q in [ 0.05, 0.95 ] ]
+
+                for q in quantiles:
+                    ax.plot([ x[q] ], [ y[q] ], marker="|", markersize=10, color=line.get_color())
+
+
+
 def make_subplots(sp = subplots):
     fig, sp = plt.subplots(*sp)
     return fig, list(sp.reshape(-1))
 
 def make_bond_pages(df: pl.DataFrame, outdir: str, pair_type: tuple[str, str], hs: list[HistogramDef], images = None, highlights: Optional[list[pl.DataFrame]] = None):
 
+    dataframes = [ df.filter(resolution_filter) for _, resolution_filter in resolutions ]
     pages: list[tuple[Figure, list[Axes]]] = [ make_subplots(subplots) for _ in resolutions ]
-    titles = [ f"{format_pair_type(pair_type, is_dna=('DNA' in resolution_lbl))} {resolution_lbl}" for resolution_lbl, _ in resolutions ]
+    titles = [ f"{format_pair_type(pair_type, is_dna=('DNA' in resolution_lbl))} {resolution_lbl} ({len(df)})" for (resolution_lbl, _), df in zip(resolutions, dataframes) ]
     print(titles)
     for p, title in zip(pages, titles):
         fig, _ = p
         # fig.tight_layout(pad=3.0)
         fig.suptitle(title)
-    dataframes = [ df.filter(resolution_filter) for _, resolution_filter in resolutions ]
 
     for i, h in enumerate(hs):
         make_histogram_group(dataframes, [ p[1][i+1] for p in pages ], [h.title] * len(dataframes), pair_type, h)
@@ -279,11 +317,19 @@ def make_bond_pages(df: pl.DataFrame, outdir: str, pair_type: tuple[str, str], h
                     if highlight[0, col] is not None:
                         ax.plot([ float(highlight[0, col]) ], [ 0 ], marker="o", color=f"C{col_i}")
 
-    for p, title in zip(pages, titles):
-        fig, axes = p
-        # fig.tight_layout(pad=3.0)
-        fig.suptitle(title)
-        yield save(title, outdir)
+    for p, title, df in zip(pages, titles, dataframes):
+        if len(df) == 0:
+            # make "NO DATA" page
+            fig, ax = plt.subplots(1)
+            fig.suptitle(title)
+            ax.axis("off")
+            ax.text(0.5, 0.5,'NO DATA',fontsize=30,horizontalalignment='center',verticalalignment='center',transform = ax.transAxes)
+            yield save(title, outdir)
+        else:
+            fig, axes = p
+            # fig.tight_layout(pad=3.0)
+            fig.suptitle(title)
+            yield save(title, outdir)
 
 def make_resolution_comparison_page(df: pl.DataFrame, outdir: str, pair_type: tuple[str, str], h: HistogramDef, images = []):
     title = f"{format_pair_type(pair_type)} {h.title}"

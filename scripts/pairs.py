@@ -224,6 +224,12 @@ def hbond_stats(atom0: Bio.PDB.Atom.Atom, atom1: Bio.PDB.Atom.Atom, atom2: Bio.P
         acceptor_angle=get_angle(atom3, atom2, atom1)
     )
 
+def hbond_swap_nucleotides(hbond: tuple[str, str, str, str]) -> tuple[str, str, str, str]:
+    return tuple(
+        atom.replace("A", "ⒷⒷⒷⒷⒷⒷ").replace("B", "A").replace("ⒷⒷⒷⒷⒷⒷ", "B")
+        for atom in hbond
+    ) # type: ignore
+
 hbonding_atoms: dict[tuple[str, str], list[tuple[str, str, str, str]]] = {
     ('cWW', 'C-G'): [
         ('AC4', 'AN4', 'BO6', 'BC6'),
