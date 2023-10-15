@@ -40,48 +40,53 @@ def transform_to_camera_space(coords):
     camera_center = np.array(view[9:12])
     model_center = np.array(view[12:15])
 
-    camera_coords = camera_center + np.dot(matrix, coords - model_center)
+    camera_coords = camera_center + np.dot(matrix.T, coords - model_center)
     return camera_coords
 
 def rotate_to_y_axis(bond1, bond2):
     coord1 = transform_to_camera_space(cmd.get_coords(bond1)[0])
     coord2 = transform_to_camera_space(cmd.get_coords(bond2)[0])
     # rotate around z-axis such that coord1 is right above coord2
-    angle = np.arctan2(coord1[0] - coord2[0], coord1[1] - coord2[1])
+    angle = np.arctan2(coord2[0] - coord1[0], coord2[1] - coord1[1])
     angle = angle / math.pi * 180
     # print("the bond coordinate is ", coord1, coord2)
-    # print("the angle is ", angle)
-    cmd.turn("z", -angle)
+    # print(f"1: {np.arctan2(coord1[1], coord1[0]) / math.pi * 180}, 2: {np.arctan2(coord2[1], coord2[0]) / math.pi * 180}")
+    print("rotating by ", angle)
+    cmd.turn("z", angle)
     # cmd.color("red", f"({bond1}) or ({bond2})")
+    return abs(angle) > 0.1
 
 def orient_nucleotide_as_main():
-    for i in range(10):
+    if cmd.get_coords("%rightnt and (name N9)") is None:
+        natom = "N1"
+    else:
+        natom = "N9"
+    for i in range(1):
         # it does not converge instantly, no idea why
-        rotate_to_y_axis("%rightnt and (name C1')", "%rightnt and (name N1 or name N9)")
+        rotate_to_y_axis("%rightnt and (name C1')", f"%rightnt and (name {natom})")
 
     # main nucleotide should be on the left
     cc1 = transform_to_camera_space(cmd.get_coords("%rightnt and (name C1')")[0])
-    if cc1[1] > 0:
-        # cmd.turn("y", 180)
-        cc2 = transform_to_camera_space(cmd.get_coords('%rightnt and (name C1\')')[0])
-        print(f"rotated {cc1} to {cc2}")
+    if cc1[0] > 0:
+        cmd.turn("y", 180)
+        cc2 = transform_to_camera_space(cmd.get_coords("%rightnt and (name C1')")[0])
+        print(f"flipped {cc1} to {cc2}")
+        rotate_to_y_axis("%rightnt and (name C1')", f"%rightnt and (name {natom})")
 
 def orient_pair(pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2, label_atoms: list[str],
     standard_orientation,
-    grey_context=True):
+    grey_context=False):
     cmd.hide("everything", f"%{pdbid}")
     pair_selection =f"%{pdbid} and ({residue_selection(chain1, nt1, ins1, alt1)} or {residue_selection(chain2, nt2, ins2, alt2)})"
     print(pair_selection)
     cmd.select("pair", pair_selection)
     cmd.select("rightnt", f"%pair and ({residue_selection(chain1, nt1, ins1, alt1)})")
-    
     # cmd.select("rightnt", f"%pair and ({residue_selection(chain2, nt2, ins2, alt2)})")
     cmd.show("sticks", "%pair")
+    cmd.delete("pair_contacts")
     cmd.distance("pair_contacts", "%pair", "%pair", mode=2)
     cmd.hide("labels", "pair_contacts")
-    cmd.orient("%pair")
     cmd.util.cba("grey", f"%pair")
-    cmd.zoom("%pair", 0)
     if "all" in label_atoms:
         cmd.label("%pair", "name")
     elif len(label_atoms) > 0:
@@ -96,7 +101,12 @@ def orient_pair(pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2, label_a
             for a in label_atoms
         ]) + ")", "name")
     if standard_orientation:
+        cmd.orient("%rightnt")
         orient_nucleotide_as_main()
+    else:
+        cmd.orient("%pair")
+    cmd.zoom("%pair", 0)
+    # cmd.center("%rightnt")
     cmd.set("label_color", "black")
     cmd.set("label_bg_color", "white", "%pair")
     cmd.set("label_outline_color", "white")
@@ -113,6 +123,7 @@ class BPArgs:
     label_atoms: list[str]
     standard_orientation: bool
     movie: int
+    incremental: bool
 
 def make_pair_image(output_file, pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2, bpargs: BPArgs):
     orient_pair(pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2, bpargs.label_atoms, bpargs.standard_orientation)
@@ -120,11 +131,11 @@ def make_pair_image(output_file, pdbid, chain1, nt1, ins1, alt1, chain2, nt2, in
     print(f"Saved basepair image {output_file}")
 
 def make_pair_rot_movie(output_file, pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2, bpargs: BPArgs):
-    orient_pair(pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2, bpargs.label_atoms, bpargs.standard_orientation)
-
     length = bpargs.movie
     if length == 0:
         return
+
+    orient_pair(pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2, bpargs.label_atoms, bpargs.standard_orientation)
     try:
         cmd.mset("1", length)
         cmd.mview("store", 1)
@@ -143,7 +154,8 @@ def make_pair_rot_movie(output_file, pdbid, chain1, nt1, ins1, alt1, chain2, nt2
             os.makedirs(output_file + ".pngdir", exist_ok=True)
             try:
                 cmd.mpng(output_file + ".pngdir/", width=1280, height=720)
-                os.remove(output_file)
+                if os.path.exists(output_file):
+                    os.remove(output_file)
                 ffmpeg_result = subprocess.run([
                     "ffmpeg",
                     "-framerate", "30",
@@ -169,7 +181,12 @@ def make_pair_rot_movie(output_file, pdbid, chain1, nt1, ins1, alt1, chain2, nt2
 
 def process_group(pdbid, group: pl.DataFrame, output_dir: str, bpargs: BPArgs):
     pdbid = str(pdbid)
-    load(None, pdbid)
+    loaded = False
+    def load_if_needed() -> None:
+        nonlocal loaded
+        if not loaded:
+            load(None, pdbid)
+            loaded = True
     pdbdir = os.path.join(output_dir, pdbid)
     os.makedirs(pdbdir, exist_ok=True)
     for chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2 in zip(group["chain1"], group["nr1"], group["ins1"], group["alt1"], group["chain2"], group["nr2"], group["ins2"], group["alt2"]):
@@ -178,14 +195,22 @@ def process_group(pdbid, group: pl.DataFrame, output_dir: str, bpargs: BPArgs):
         alt1 = None if alt1 == '?' else alt1
         alt2 = None if alt2 == '?' else alt2
         output_file = os.path.join(pdbdir, f"{chain1}_{nt1}{ins1 or ''}{alt1 or ''}-{chain2}_{nt2}{ins2 or ''}{alt2 or ''}")
+        if bpargs.incremental and os.path.exists(output_file + ".png"):
+            if bpargs.movie == 0 or os.path.exists(output_file + ".mp4"):
+                print(f"Skipping {output_file} because it already exists")
+                continue
+
+        load_if_needed()
         make_pair_image(output_file + ".png", pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2, bpargs)
         make_pair_rot_movie(output_file + ".mp4", pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2, bpargs)
+
+    cmd.reinitialize()
 
 def make_images(df: pl.DataFrame, output_dir: str, bpargs: BPArgs):
     for pdbid, group in sorted(df.groupby("pdbid")):
         process_group(pdbid, group, output_dir, bpargs)
-
-    cmd.quit()
+    # if cmd.is_gui_thread():
+        # cmd.quit()
 
 def make_images_mp(df: pl.DataFrame, output_dir: str, threads: int, bpargs: BPArgs):
     import multiprocessing
@@ -209,11 +234,12 @@ def main(argv):
     parser.add_argument("--standard-orientation", type=bool, default=True, help="When set to true, orient the base pair such that the first nucleotide is always left and the N1/N9 - C1' is along the y-axis (N is above C)")
     parser.add_argument("--label-atoms", type=str, nargs="*", default=[], help="Atom names to label")
     parser.add_argument("--movie", type=int, default=0, help="If not zero, produce a rotating animation of the base pair")
+    parser.add_argument("--incremental", type=bool, default=False, help="Generate the image/video only if it does not exist yet")
     args = parser.parse_args(argv)
 
     import pair_csv_parse
     df = pair_csv_parse.scan_pair_csvs(args.input).collect()
-    bpargs = BPArgs(args.label_atoms, args.standard_orientation, args.movie)
+    bpargs = BPArgs(args.label_atoms, args.standard_orientation, args.movie, args.incremental)
     if args.threads == 1:
         make_images(df, args.output_dir, bpargs)
     else:
