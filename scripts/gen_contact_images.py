@@ -114,9 +114,11 @@ def orient_pair(pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2, label_a
     # cmd.set("label_position", (0, 0, 0))
     cmd.set("label_font_id", 7)
     if grey_context:
-        cmd.show("lines", f"%{pdbid}")
+        cmd.show("sticks", f"%{pdbid} and not %pair")
+        cmd.set_bond("stick_radius", 0.07, f"%{pdbid} and not %pair")
+        cmd.set_bond("stick_transparency", 0.4, f"%{pdbid} and not %pair")
         cmd.clip("slab", 12, "%pair")
-        cmd.color("grey", f"%{pdbid} and not %pair")
+        cmd.color("0xeeeeee", f"%{pdbid} and not %pair")
 
 @dataclass
 class BPArgs:
@@ -145,6 +147,8 @@ def make_pair_rot_movie(output_file, pdbid, chain1, nt1, ins1, alt1, chain2, nt2
         cmd.turn("x", 120)
         cmd.mview("store", length - length // 3, power=1)
         cmd.bg_color("white")
+        cmd.set("ray_shadow", 0)
+        cmd.set("antialias", 1)
 
         use_ffmpeg_directly = True
         if output_file.endswith(".dir"):
