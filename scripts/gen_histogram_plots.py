@@ -262,6 +262,19 @@ def make_histogram_group(dataframes: list[pl.DataFrame], axes: list[plt.Axes], t
                 for q in quantiles:
                     ax.plot([ x[q] ], [ y[q] ], marker="|", markersize=10, color=line.get_color())
 
+        
+        # for i, colname in enumerate(renamed_columns.columns):
+
+        #     # add normal distribution for comparison
+        #     col = renamed_columns[colname]
+        #     if len(col) > 10:
+        #         col = col.filter((col > col.quantile(0.05)) & (col < col.quantile(0.95)))
+        #     mean = float(col.mean())
+        #     std = float(col.std())
+        #     x = np.linspace(xmin, xmax, 100)
+        #     y = scipy.stats.norm.pdf(x, mean, std) * len(renamed_columns) * bin_width
+        #     ax.plot(x, y, color=f"C{i}", linestyle="--", linewidth=1)
+
 
 
 def make_subplots(sp = subplots):
@@ -467,6 +480,7 @@ def create_pair_image(row: pl.DataFrame, output_dir: str, pair_type: tuple[str,s
         "--label-atoms", *label_atoms,
         f"--output-dir={os.path.join(output_dir, 'img')}",
     ]
+    print(*command)
     p = subprocess.run(command, capture_output=True)
     if p.returncode != 0:
         print(p.stdout.decode('utf-8'))
@@ -494,7 +508,7 @@ def main(argv):
 
     results = []
 
-    statistics = []
+    all_statistics = []
 
     for file in args.input_file:
         pair_type = infer_pair_type(args.pairing_type or os.path.basename(file))
@@ -504,6 +518,7 @@ def main(argv):
         print(df[["hb_0_length", "hb_1_length", "hb_2_length"]].describe())
 
         nicest_bps: Optional[list[int]] = None
+        statistics = []
         for resolution_cutoff in [1.8, 2.2, 3.0]:
             dff = df.filter(is_some_quality).filter(pl.col("resolution") <= resolution_cutoff).filter(pl.col("hb_0_length").is_not_null() | pl.col("hb_1_length").is_not_null() | pl.col("hb_2_length").is_not_null())
             if len(dff) == 0:
@@ -530,10 +545,19 @@ def main(argv):
                                        highlights=[ dff[bp] if bp >= 0 else None for bp in nicest_bps ] if nicest_bps is not None else []
             )
         ]
+        all_statistics.extend(statistics)
         results.append({
+            "input_file": file,
+            "pair_type": pair_type,
             "count": len(df),
             "score": len(df.filter(is_high_quality)) + len(df.filter(is_med_quality)) / 100,
             "files": output_files,
+            "statistics": statistics,
+            "labels": [
+                get_label(f"hb_{i}_length", pair_type) for i in range(3)
+            ],
+            "atoms": pairs.hbonding_atoms[pair_type],
+
         })
 
 
@@ -544,9 +568,13 @@ def main(argv):
 
     subprocess.run(["gs", "-dBATCH", "-dNOPAUSE", "-q", "-sDEVICE=pdfwrite", "-dPDFSETTINGS=/prepress", f"-sOutputFile={os.path.join(args.output_dir, 'hbonds-merged.pdf')}", *output_files])
     print("Wrote", os.path.join(args.output_dir, 'hbonds-merged.pdf'))
-    statistics_df = pl.DataFrame(statistics)
+    statistics_df = pl.DataFrame(all_statistics)
     statistics_df.write_csv(os.path.join(args.output_dir, "statistics.csv"))
     print("Wrote", os.path.join(args.output_dir, "statistics.csv"))
+
+    with open(os.path.join(args.output_dir, "output.json"), "w") as f:
+        import json
+        json.dump(results, f, indent=4)
 
 if __name__ == "__main__":
     main(sys.argv[1:])
