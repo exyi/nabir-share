@@ -1,3 +1,4 @@
+from typing import Optional
 import pymol
 from pymol import cmd
 import polars as pl
@@ -137,7 +138,7 @@ def make_pair_rot_movie(output_file, pdbid, chain1, nt1, ins1, alt1, chain2, nt2
     if length == 0:
         return
 
-    orient_pair(pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2, bpargs.label_atoms, bpargs.standard_orientation)
+    orient_pair(pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2, [], bpargs.standard_orientation, grey_context=True)
     try:
         cmd.mset("1", length)
         cmd.mview("store", 1)
@@ -157,7 +158,8 @@ def make_pair_rot_movie(output_file, pdbid, chain1, nt1, ins1, alt1, chain2, nt2
         elif use_ffmpeg_directly:
             os.makedirs(output_file + ".pngdir", exist_ok=True)
             try:
-                cmd.mpng(output_file + ".pngdir/", width=1280, height=720)
+                # cmd.mpng(output_file + ".pngdir/", mode=2, width=1920, height=1080)
+                cmd.mpng(output_file + ".pngdir/", mode=2, width=1280, height=720)
                 if os.path.exists(output_file):
                     os.remove(output_file)
                 ffmpeg_result = subprocess.run([
@@ -216,10 +218,15 @@ def make_images(df: pl.DataFrame, output_dir: str, bpargs: BPArgs):
     # if cmd.is_gui_thread():
         # cmd.quit()
 
-def make_images_mp(df: pl.DataFrame, output_dir: str, threads: int, bpargs: BPArgs):
+def process_init(niceness):
+    if niceness:
+        x = os.nice(0)
+        os.nice(niceness - x)
+
+def make_images_mp(df: pl.DataFrame, output_dir: str, threads: int, niceness: Optional[int], bpargs: BPArgs):
     import multiprocessing
     multiprocessing.set_start_method("spawn")
-    with multiprocessing.Pool(threads) as pool:
+    with multiprocessing.Pool(threads, initializer=process_init, initargs=(niceness,)) as pool:
         processes = [
             pool.apply_async(process_group, (pdbid, group, output_dir, bpargs))
 
@@ -235,6 +242,7 @@ def main(argv):
     parser.add_argument("input", help="Input CSV file", nargs="+")
     parser.add_argument("--output-dir", "-o", required=True, help="Output directory")
     parser.add_argument("--threads", "-t", type=int, default=1, help="Number of threads to use")
+    parser.add_argument("--niceness", type=int, default=None, help="Run the process with the specified niceness (don't change by default)")
     parser.add_argument("--standard-orientation", type=bool, default=True, help="When set to true, orient the base pair such that the first nucleotide is always left and the N1/N9 - C1' is along the y-axis (N is above C)")
     parser.add_argument("--label-atoms", type=str, nargs="*", default=[], help="Atom names to label")
     parser.add_argument("--movie", type=int, default=0, help="If not zero, produce a rotating animation of the base pair")
@@ -245,9 +253,10 @@ def main(argv):
     df = pair_csv_parse.scan_pair_csvs(args.input).collect()
     bpargs = BPArgs(args.label_atoms, args.standard_orientation, args.movie, args.incremental)
     if args.threads == 1:
+        process_init(args.niceness)
         make_images(df, args.output_dir, bpargs)
     else:
-        make_images_mp(df, args.output_dir, args.threads, bpargs)
+        make_images_mp(df, args.output_dir, args.threads, args.niceness, bpargs)
 
 if __name__ == "__main__" or __name__ == "pymol":
     main(sys.argv[1:])
