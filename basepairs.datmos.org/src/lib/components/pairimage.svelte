@@ -1,11 +1,62 @@
 <script lang="ts">
 	import type { PairingInfo } from "$lib/pairing";
+	import { getContext } from "svelte";
+  import Modal, * as modal from 'svelte-simple-modal'
+	import DetailModal from "./DetailModal.svelte";
+  import type { Context } from 'svelte-simple-modal';
+
 
   export let url: string | undefined
   export let videoUrl: string | undefined
   export let pair: PairingInfo | undefined
+  export let videoPreload: boolean = false
+  export let videoShow: boolean = false
 
-  let imgResolution
+
+  let pngFallback = false,
+    webpFallback = false,
+    videoLoaded = false,
+  const resolutions = [ [450, 800 ], [720, 1280], [1080, 1980], [1440, 2560 ] ],
+    webpResolution = [ [450, 800 ], [1440, 2560 ] ]
+
+  function generateSrcset(url: string, webpFallback: boolean) {
+    const stripExt = url.replace(/\.\w+$/, '')
+    const avifs = (webpFallback ? webpResolution : resolutions).map(r => `${stripExt}-${r[0]}.avif ${r[1]}w`).join(', ')
+    return `${avifs}`
+  }
+
+
+  $: {
+    url
+    pngFallback = false
+    webpFallback = false
+    videoLoaded = false
+  }
+
+  function onerror(e: Event) {
+    if (!webpFallback) {
+      webpFallback = true
+      return
+    }
+    if (!pngFallback) {
+      pngFallback = true
+      return
+    }
+    console.warn("Failed to load image", e)
+  }
+
+
+
+  const {open} = getContext<Context>('simple-modal');
+	function showModal(): any {
+    const imageUrl = pngFallback ? url : webpFallback ? url.replace(/\.\w+$/, '-1440.webp') : url.replace(/\.\w+$/, '-1440.avif')
+    open(DetailModal, { pair, imageUrl, videoUrl }, {
+      styleWindow: {
+        width: "80vw",
+      }
+    })
+    return false
+	}
 </script>
 <style>
   .pairimage {
@@ -19,7 +70,7 @@
   }
   @media (max-width: 800px) {
     .img-root {
-      width: 50vw;
+      width: 49vw;
     }
   }
   @media (max-width: 1200px) and (min-width: 800px) {
@@ -29,29 +80,22 @@
   }
   @media (max-width: 2000px) and (min-width: 1200px) {
     .img-root {
-      width: 25vw;
+      width: 24vw;
     }
   }
   @media (min-width: 2000px) {
     .img-root {
-      width: 20vw;
+      width: 19.5vw;
     }
   }
   .img-root .video {
     display: none;
   }
-  .img-root:hover .img {
-    /* opacity: 0; */
+  .img-root.allow-video:hover .img, .img-root.video-show .img {
     display: none;
   }
-  .img-root:hover .video {
+  .img-root.allow-video:hover .video, .img-root.video-show .video {
     display: block;
-    /* width: 0;
-    height: 0;
-    position: absolute;
-    top: 0;
-    left: 0;
-    overflow: visible; */
   }
 </style>
 
@@ -62,12 +106,21 @@
     · · ·
     {pair?.id.nt2.chain}-{pair?.id.nt2.resname??''}{pair?.id.nt2.resnum}{pair?.id.nt2.altloc??''}{pair?.id.nt2.inscode??''}
 </div>
-<div class="img-root">
+<div class="img-root" class:allow-video={videoUrl != null} class:video-show={videoShow} on:mouseover={() => { videoLoaded = true }} on:focus={() => { videoLoaded = true }}
+    on:click={() => showModal()}>
   <div class="video">
-    <video src={videoUrl} autoplay loop muted></video>
+    {#if videoLoaded || videoPreload || videoShow}
+      <video src={videoUrl} autoplay loop muted preload="none"></video>
+    {/if}
   </div>
   <div class="img">
-    <img src={url} alt="x" loading="lazy" />
+    {#if url == null}
+      <span>no image</span>
+    {:else if pngFallback}
+      <img src={url} alt="x" loading="lazy" />
+    {:else}
+      <img src={url} srcset={generateSrcset(url, webpFallback)} alt="xxx" loading="lazy" on:error={onerror} />
+    {/if}
   </div>
 </div>
 

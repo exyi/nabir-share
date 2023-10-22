@@ -8,6 +8,8 @@
     export let videoAttachement: string
 
     function getUrl(pair: PairId, attachement:string) {
+        if (!pair?.nt1.pdbid || !pair?.nt2.pdbid || pair.nt1.chain == null || pair.nt2.chain == null || pair.nt1.resnum == null || pair.nt2.resnum == null)
+            return undefined
         const imgName = `${pair.nt1.chain}_${pair.nt1.resnum}${pair.nt1.inscode??''}${pair.nt1.altloc??''}-${pair.nt2.chain}_${pair.nt2.resnum}${pair.nt2.inscode??''}${pair.nt2.altloc??''}`
         return `${rootImages}/${pair.nt1.pdbid}/${imgName}${attachement}`
     }

@@ -6,6 +6,9 @@ import preprocess from 'svelte-preprocess';
 const config = {
 	plugins: [sveltekit()],
 	preprocess: preprocess(),
+	resolve: {
+		dedupe: ['svelte', 'svelte/transition', 'svelte/internal']
+	},
 	kit: {
 		adapter: adapter({
 			pages: 'docs',

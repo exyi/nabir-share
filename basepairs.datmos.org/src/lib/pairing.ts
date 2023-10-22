@@ -25,6 +25,7 @@ export type PairingInfo = {
     id: PairId
     hbonds?: HydrogenBondInfo[]
     coplanarity?: number
+    originalRow?: any
 }
 
 
