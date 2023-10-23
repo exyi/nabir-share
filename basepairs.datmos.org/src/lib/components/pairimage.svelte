@@ -51,6 +51,7 @@
 	function showModal(): any {
     const imageUrl = pngFallback ? url : webpFallback ? url.replace(/\.\w+$/, '-1440.webp') : url.replace(/\.\w+$/, '-1440.avif')
     open(DetailModal, { pair, imageUrl, videoUrl }, {
+      classContent: "smodal-content",
       styleWindow: {
         width: "80vw",
       }

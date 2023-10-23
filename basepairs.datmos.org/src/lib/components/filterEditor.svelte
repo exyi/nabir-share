@@ -157,6 +157,7 @@
                 <select bind:value={filter.orderBy}>
                   <option value="">pdbid</option>
                   <option value="pdbid desc, model desc, chain1 desc, nr1 desc">pdbid descending</option>
+                  <option value="resolution, pdbid, model, chain1, nr1">resolution</option>
                 </select>
               </div>
             </div>

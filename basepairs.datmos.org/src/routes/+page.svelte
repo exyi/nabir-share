@@ -8,7 +8,7 @@
 	import FilterEditor from '$lib/components/filterEditor.svelte';
 	import { filterToSqlCondition, makeSqlQuery, type NucleotideFilterModel } from '$lib/dbLayer.js';
 	import { fix_position } from 'svelte/internal';
-	import { parsePairingType, type NucleotideId, type PairId, type PairingInfo } from '$lib/pairing.js';
+	import { parsePairingType, type NucleotideId, type PairId, type PairingInfo, type HydrogenBondInfo } from '$lib/pairing.js';
 	import { Modal } from 'svelte-simple-modal';
   const fileBase = "https://pairs.exyi.cz/tables/"
   const parquetFiles = {
@@ -59,6 +59,11 @@
   // Set up the db connection as an empty promise.
   const conn_prom = load_db();
 
+  $: {
+    selectedPairing
+    conn_prom.then(conn => conn.query(`CREATE OR REPLACE VIEW 'selectedpair' AS SELECT * FROM parquet_scan('${selectedPairing}')`))
+  }
+
   let resultsPromise: Promise<Table<any> | undefined> = new Promise(() => {})
   let results = []
 
@@ -70,6 +75,10 @@
   const requiredColumns = [ "pdbid", "chain1", "nr1", "chain2", "nr2", ]
   const recommendedColumns = [ "model", "ins1", "alt1", "res1", "res2", "ins2", "alt2", "res2" ]
 
+  function getMetadata() {
+    return metadata.find(m => m.pair_type.concat([]).reverse().join('-') == selectedPairing)
+  }
+
   function* convertQueryResults(rs, pairingType, limit=undefined): Generator<PairingInfo> {
     function convName(name) {
       if (name == null) return undefined
@@ -77,6 +86,8 @@
       if (name == '' || name == '?' || name == '\0') return undefined
       return name
     }
+
+    const meta = getMetadata()
 
     let c = 0
     for (const r of rs) {
@@ -87,7 +98,22 @@
       const nt2: NucleotideId = { pdbid, model, chain: convName(r.chain2), resnum: Number(r.nr2), resname: convName(r.res2), altloc: convName(r.alt2), inscode: convName(r.ins2) }
 
       const id: PairId = { nt1, nt2, pairingType }
-      yield { id }
+      let hbonds: HydrogenBondInfo[] | undefined
+      if ("hb_0_length" in r) {
+        hbonds = []
+        for (let i = 0; i <= 4; i++) {
+          const length = r[`hb_${i}_length`]
+          if (length == null) break
+          hbonds.push({
+            length: Number(length),
+            donorAngle: Number(r[`hb_${i}_donor_angle`]),
+            acceptorAngle: Number(r[`hb_${i}_acceptor_angle`]),
+            label: meta?.labels[i],
+          })
+        }
+      }
+      const coplanarity = r.bogopropeller ?? r.coplanarity
+      yield { id, hbonds, coplanarity, originalRow: r }
       c++
     }
   }
