@@ -432,25 +432,34 @@ def calculate_stats(df: pl.DataFrame, pair_type):
     means = [ np.mean(c) if len(c) > 0 else None for c in cdata ]
     stds = [ np.std(c) if len(c) > 1 else None for c in cdata ]
     kde_mode_stds = [ None if kde_mode is None else np.sqrt(np.mean((c - kde_mode) ** 2)) for kde_mode, c in zip(kde_modes, cdata) ]
-    datapoint_mode_deviations = np.sum([
-        ((df[c] - kde_mode) ** 2 / kde_mode_std ** 2).fill_null(10).to_numpy()
-        for kde_mode, kde_mode_std, c in zip(kde_modes, kde_mode_stds, columns)
-        if kde_mode is not None and kde_mode_std
-    ] + [ [0] * len(df) ], axis=0)
-    datapoint_log_likelihood = np.sum([ kde.logpdf(df[c].fill_null(0).to_numpy()) if kde is not None else np.zeros(len(df)) for kde, c in zip(kdes, columns) ], axis=0)
+    def calc_datapoint_mode_deviations(df):
+        return np.sum([
+            ((df[c] - kde_mode) ** 2 / kde_mode_std ** 2).fill_null(10).to_numpy()
+            for kde_mode, kde_mode_std, c in zip(kde_modes, kde_mode_stds, columns)
+            if kde_mode is not None and kde_mode_std
+        ] + [ [0] * len(df) ], axis=0)
+    def calc_datapoint_log_likelihood(df):
+        return np.sum([ kde.logpdf(df[c].fill_null(0).to_numpy()) if kde is not None else np.zeros(len(df)) for kde, c in zip(kdes, columns) ], axis=0)
     # print("datapoint_mode_deviations:", datapoint_mode_deviations)
     # print("datapoint_log_likelihood:", datapoint_log_likelihood)
     # nicest_basepair = int(np.argmax(datapoint_log_likelihood))
-    score = -datapoint_mode_deviations
-    score = score - np.min(score) + 1
+    score = -calc_datapoint_mode_deviations(df)
+    min_score = np.min(score)
+    score = score - min_score + 1
     nicest_basepair = int(np.argmax(score))
     nicest_basepairs = [
         int(np.argmax(np.concatenate([ [0.1], score * df.select(r.alias("x"))["x"].fill_null(False).to_numpy()]))) - 1
         for _, r in resolutions
     ]
     print(f"{nicest_basepairs=}")
-    print(f"{nicest_basepair=} LL={datapoint_log_likelihood[nicest_basepair]} Σσ={datapoint_mode_deviations[nicest_basepair]} {next(df[nicest_basepair, columns].iter_rows())}")
-    return {
+    print(f"{nicest_basepair=} LL={calc_datapoint_log_likelihood(df[nicest_basepair, :])} Σσ={score[nicest_basepair]} {next(df[nicest_basepair, columns].iter_rows())}")
+
+    new_df_columns = {
+        "mode_deviations": calc_datapoint_mode_deviations,
+        "log_likelihood": calc_datapoint_log_likelihood,
+    }
+
+    return new_df_columns, {
         "count": len(df),
         "nicest_bp": str(next(df[nicest_basepair, ["pdbid", "model", "chain1", "res1", "nr1", "ins1", "alt1", "chain2", "res2", "nr2", "ins2", "alt2"]].iter_rows())),
         "nicest_bp_index": nicest_basepair,
@@ -466,7 +475,7 @@ def calculate_stats(df: pl.DataFrame, pair_type):
         }, columns)
     }
 
-def create_pair_image(row: pl.DataFrame, output_dir: str, pair_type: tuple[str,str]) -> str:
+def create_pair_image(row: pl.DataFrame, output_dir: str, pair_type: tuple[str,str]) -> Optional[str]:
     if len(row) == 0:
         return None
     os.makedirs(os.path.join(output_dir, "img"), exist_ok=True)
@@ -496,6 +505,16 @@ def create_pair_image(row: pl.DataFrame, output_dir: str, pair_type: tuple[str,s
     print(p.stderr.decode('utf-8'))
     raise ValueError(f"Could not find PyMOL generated image file")
 
+def reexport_df(df, columns):
+    df = df.with_columns(
+        is_some_quality.alias("jirka_approves"),
+        *[
+            pl.Series(columns[col](df)).alias(col)
+            for col in columns
+        ]
+    )
+    return df
+
 def main(argv):
     import argparse
     parser = argparse.ArgumentParser(description="Generate histogram plots")
@@ -524,11 +543,12 @@ def main(argv):
             dff = df.filter(is_some_quality).filter(pl.col("resolution") <= resolution_cutoff).filter(pl.col("hb_0_length").is_not_null() | pl.col("hb_1_length").is_not_null() | pl.col("hb_2_length").is_not_null())
             if len(dff) == 0:
                 continue
+            stat_columns, stats = calculate_stats(dff, pair_type)
             statistics.append({
                 "pair": pair_type[1],
                 "pair_type": pair_type[0],
                 "resolution_cutoff": resolution_cutoff,
-                **calculate_stats(dff, pair_type),
+                **stats,
             })
             if "nicest_bp_indices" in statistics[-1]:
                 nicest_bps = statistics[-1]["nicest_bp_indices"]
@@ -547,6 +567,7 @@ def main(argv):
             )
         ]
         all_statistics.extend(statistics)
+        reexport_df(df, stat_columns).write_parquet(os.path.join(args.output_dir, f"{pair_type[1]}-{pair_type[0]}.parquet"))
         results.append({
             "input_file": file,
             "pair_type": pair_type,
