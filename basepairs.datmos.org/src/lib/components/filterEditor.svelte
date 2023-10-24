@@ -151,13 +151,13 @@
           </div>
 
           <div class="field">
-            <label class="label">Order by</label>
+            <label class="label" for="ntfilter-order-by">Order by</label>
             <div class="control">
               <div class="select is-small">
-                <select bind:value={filter.orderBy}>
+                <select bind:value={filter.orderBy} id="ntfilter-order-by">
                   <option value="">pdbid</option>
-                  <option value="pdbid desc, model desc, chain1 desc, nr1 desc">pdbid descending</option>
-                  <option value="resolution, pdbid, model, chain1, nr1">resolution</option>
+                  <option value="pdbid DESC, model DESC, chain1 DESC, nr1 DESC">pdbid descending</option>
+                  <option value="resolution NULLS LAST, pdbid, model, chain1, nr1">resolution</option>
                 </select>
               </div>
             </div>

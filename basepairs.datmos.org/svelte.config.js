@@ -14,7 +14,7 @@ const config = {
 			assets: 'docs'
 		}),
 		paths: {
-			base: process.env.NODE_ENV === 'development' ? '' : '/sveltekit-typescript'
+			base: process.env.NODE_ENV === 'development' ? '' : ''
 		},
 		appDir: 'internal' // For github pages: https://www.npmjs.com/package/@sveltejs/adapter-static/v/next
 	}

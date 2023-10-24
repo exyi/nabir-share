@@ -208,6 +208,7 @@ def make_histogram_group(dataframes: list[pl.DataFrame], axes: list[plt.Axes], t
         legend = h.legend
     else:
         legend = [ get_label(col, pair_type) or "" for col in h.columns ]
+        legend = [ l for l in legend if l ]
 
     is_symmetric = is_symmetric_pair_type(pair_type)
 

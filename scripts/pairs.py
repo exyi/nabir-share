@@ -260,7 +260,7 @@ hbonding_atoms: dict[tuple[str, str], list[tuple[str, str, str, str]]] = {
         ("BC4", "BN3", "AN7", "AC8"),
         ("AC6", "AN6", "BO2", "BC2"),
     ],
-    ('cWW', 'U-U'): [ # TODO try the better fit out of 2 combinations?
+    ('cWW', 'U-U'): [
         ("BC4", "BN3", "AO4", "AC4"),
         ("AC4", "AN3", "BO2", "BC2"),
         ("BC2'", "BO2'", "AO2", "AC2"), # pres vodu
@@ -278,7 +278,7 @@ hbonding_atoms: dict[tuple[str, str], list[tuple[str, str, str, str]]] = {
     ('cWW', 'A-G'): [
         ('AC6', 'AN6', 'BO6', 'BC6'),
         ('BC6', 'BN1', 'AN1', 'AC6'),
-        ('BC2', 'BN2', 'AC2', 'AN3'),
+        # ('BC2', 'BN2', 'AC2', 'AN3'),
     ],
     ('tWW', 'A-A'): [
         ("AC6", "AN6", "BN1", "BC6"),
@@ -301,7 +301,7 @@ hbonding_atoms: dict[tuple[str, str], list[tuple[str, str, str, str]]] = {
         ("BC2", "BN2", "AN3", "AC4"),
         ("AC2", "AN2", "BN3", "BC4"),
         ("AC2", "AN2", "BO2'", "BC2'"),
-        # ("BC2", "BN2", "AO2'", "AC2'"), # TODO: fix fourth bond
+        # ("BC2", "BN2", "AO2'", "AC2'"),
     ],
     ('cWH', 'G-G'): [
         ("AC2", "AN2", "BN7", "BC8"),
@@ -309,7 +309,7 @@ hbonding_atoms: dict[tuple[str, str], list[tuple[str, str, str, str]]] = {
     ],
     ('cWW', 'C-U'): [
         ("AC4", "AN4", "BO4", "BC4"),
-        ("BC4", "BN3", "AN3", "AC4"), # pres vodu
+        ("BC4", "BN3", "AN3", "AC4"),
     ],
     # ('cWH', 'C-U'): [
     #     ("AC4", "AN4", "BO4", "BC4"),
@@ -492,6 +492,7 @@ def export_stats_csv(pdbid, df: pl.DataFrame, add_metadata_columns: bool, pair_t
         h = structure.header if structure is not None else dict()
         result_df = result_df.with_columns(
             pl.lit(h.get('deposition_date', None), dtype=pl.Utf8).alias("deposition_date"),
+            pl.lit(h.get('name', None), dtype=pl.Utf8).alias("structure_name"),
             pl.lit(h.get('structure_method', None), dtype=pl.Utf8).alias("structure_method"),
             pl.lit(h.get('resolution', None), dtype=pl.Float32).alias("resolution")
         )

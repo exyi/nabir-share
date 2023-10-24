@@ -15,7 +15,7 @@ const config = {
 			assets: 'docs'
 		}),
 		paths: {
-			base: '/sveltekit-typescript'
+			base: ''
 		},
 		prerender: {
 			default: true

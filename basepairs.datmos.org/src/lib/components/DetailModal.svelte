@@ -53,7 +53,7 @@
         <h4>PyMol script<span style="font-size: 1rem; font-weight: 400"> &nbsp;&nbsp;- copy and paste into PyMol command line</span></h4>
         <pre>{generatePymolScript(pair.id).join("\n")}</pre>
     </div>
-    <div>
+    <div style="display: flex; flex-direction: row">
     {#if pair.hbonds}
         <table class="table is-narrow is-striped" style="width: fit-content">
             <tr>
@@ -82,8 +82,33 @@
             </tr>
         </table>
     {/if}
+    <table class="table is-narrow is-striped" style="width: fit-content">
+        <tr>
+            <th>Structure ID</th>
+            <td>{pair.id.nt1.pdbid}</td>
+        </tr>
+        <tr>
+            <th>Structure Name</th>
+            <td>{pair.originalRow?.structure_name ?? ''}</td>
+        </tr>
+        <tr>
+            <th>Structure Method</th>
+            <td>{pair.originalRow?.structure_method ?? ''}</td>
+        </tr>
+        <tr>
+            <th>Resolution </th>
+            <td>{pair.originalRow?.resolution ?? '?'} Å</td>
+        </tr>
+        <tr>
+            <th>Deposition date</th>
+            <td>{pair.originalRow?.deposition_date ? new Date(pair.originalRow.deposition_date).toLocaleDateString('en', {month: 'long', day: 'numeric',  year: 'numeric'}) : ''}</td>
+        </tr>
+    </table>
     </div>
     <div>
+        {#each Object.entries(pair?.originalRow ?? {}) as [k, v]}
+            <div><b>{k}</b>: {v}</div>
+        {/each}
         <!-- <pre>{JSON.stringify(pair, null, 2)}</pre> -->
     </div>
 </div>
