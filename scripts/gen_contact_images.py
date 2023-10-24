@@ -1,3 +1,4 @@
+import tempfile
 from typing import Optional
 import pymol
 from pymol import cmd
@@ -67,16 +68,65 @@ def orient_nucleotide_as_main():
         rotate_to_y_axis("%rightnt and (name C1')", f"%rightnt and (name {natom})")
 
     # main nucleotide should be on the left
-    cc1 = transform_to_camera_space(cmd.get_coords("%rightnt and (name C1')")[0])
-    if cc1[0] > 0:
+    rightC1_A = transform_to_camera_space(cmd.get_coords("%rightnt and (name C1')")[0])
+    leftC1_A = transform_to_camera_space(cmd.get_coords("%pair and (not %rightnt) and (name C1')")[0])
+    if rightC1_A[0] > leftC1_A[0]:
         cmd.turn("y", 180)
-        cc2 = transform_to_camera_space(cmd.get_coords("%rightnt and (name C1')")[0])
-        print(f"flipped {cc1} to {cc2}")
+        rightC1_B = transform_to_camera_space(cmd.get_coords("%rightnt and (name C1')")[0])
+        print(f"flipped {rightC1_A} to {rightC1_B}")
         rotate_to_y_axis("%rightnt and (name C1')", f"%rightnt and (name {natom})")
+
+def find_and_select_water(nt1, nt2):
+    # coords1 = np.array(cmd.get_coords(nt1))
+    # coords2 = np.array(cmd.get_coords(nt2))
+    # coords_water = np.array(cmd.get_coords("resn HOH and name O"))
+    # dist1 = np.min(np.linalg.norm(coords_water.reshape(1, -1, 3) - coords1.reshape(-1, 1, 3), axis=2), axis=0)
+    # assert dist1.shape == (coords_water.shape[0],)
+    # dist2 = np.min(np.linalg.norm(coords_water.reshape(1, -1, 3) - coords2.reshape(-1, 1, 3), axis=2), axis=0)
+    # assert dist2.shape == (coords_water.shape[0],)
+
+    threshold = 3.6
+
+    cmd.select("nwaters", f"(resn HOH within {threshold} of ({nt1})) and (resn HOH within {threshold} of ({nt2}))")
+
+def get_margins(image):
+    cmd.png(image, width=80, height=45, ray=1)#, quiet=1)
+    import imageio.v3 as iio
+    img = iio.imread(image)
+    img = np.any(img[:, :, 0:3] > 0, axis=2)
+    imgx = np.any(img, axis=0)
+    imgy = np.any(img, axis=1)
+    if not np.any(imgx):
+        return None
+
+    return np.array([
+        np.argmax(imgx),
+        np.argmax(imgy),
+        np.argmax(imgx[::-1]),
+        np.argmax(imgy[::-1])
+    ])
+
+def zoom_to_borders(center):
+    with tempfile.NamedTemporaryFile(suffix=".png") as f:
+        observations = []
+        def experiment(zoom):
+            cmd.zoom(center, zoom)
+            m = get_margins(f.name)
+            observations.append((zoom, np.min(m) if m is not None else 0, m))
+            return m
+
+        m = experiment(0)
+        if m is None:
+            print("WARNING: empty image!")
+            return
+        while True:
+            best = min((o for o in observations if o[1] > 0), key=lambda x: x[1])
+
 
 def orient_pair(pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2, label_atoms: list[str],
     standard_orientation,
-    grey_context=False):
+    grey_context=False,
+    find_water=True):
     cmd.hide("everything", f"%{pdbid}")
     pair_selection =f"%{pdbid} and ({residue_selection(chain1, nt1, ins1, alt1)} or {residue_selection(chain2, nt2, ins2, alt2)})"
     print(pair_selection)
@@ -85,9 +135,16 @@ def orient_pair(pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2, label_a
     # cmd.select("rightnt", f"%pair and ({residue_selection(chain2, nt2, ins2, alt2)})")
     cmd.show("sticks", "%pair")
     cmd.delete("pair_contacts")
+    cmd.delete("pair_w_contacts")
     cmd.distance("pair_contacts", "%pair", "%pair", mode=2)
     cmd.hide("labels", "pair_contacts")
+    if find_water:
+        find_and_select_water("%rightnt", "%pair and not %rightnt")
+        cmd.distance("pair_w_contacts", "%pair", "nwaters", mode=2)
+        cmd.hide("labels", "pair_w_contacts")
+        cmd.show("nb_spheres", "nwaters")
     cmd.util.cba("grey", f"%pair")
+    normal_atoms_selection = "not (name C2' or name C3' or name C4' or name C5' or name O2' or name O3' or name O4' or name O5' or name P or name OP1 or name OP2)"
     if "all" in label_atoms:
         cmd.label("%pair", "name")
     elif len(label_atoms) > 0:
@@ -102,10 +159,10 @@ def orient_pair(pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2, label_a
             for a in label_atoms
         ]) + ")", "name")
     if standard_orientation:
-        cmd.orient("%rightnt")
+        cmd.orient(f"%rightnt and {normal_atoms_selection}")
         orient_nucleotide_as_main()
     else:
-        cmd.orient("%pair")
+        cmd.orient(f"%pair and {normal_atoms_selection}")
     cmd.zoom("%pair", 0)
     # cmd.center("%rightnt")
     cmd.set("label_color", "black")
@@ -129,6 +186,7 @@ class BPArgs:
     incremental: bool
 
 def make_pair_image(output_file, pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2, bpargs: BPArgs):
+    print(bpargs)
     orient_pair(pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2, bpargs.label_atoms, bpargs.standard_orientation)
     cmd.png(output_file, width=2560, height=1440, ray=1)
     print(f"Saved basepair image {output_file}")
@@ -235,7 +293,6 @@ def make_images_mp(df: pl.DataFrame, output_dir: str, threads: int, niceness: Op
         for p in processes:
             p.get()
 
-
 def main(argv):
     import argparse
     parser = argparse.ArgumentParser(description="Generate contact images")
@@ -243,7 +300,7 @@ def main(argv):
     parser.add_argument("--output-dir", "-o", required=True, help="Output directory")
     parser.add_argument("--threads", "-t", type=int, default=1, help="Number of threads to use")
     parser.add_argument("--niceness", type=int, default=None, help="Run the process with the specified niceness (don't change by default)")
-    parser.add_argument("--standard-orientation", type=bool, default=True, help="When set to true, orient the base pair such that the first nucleotide is always left and the N1/N9 - C1' is along the y-axis (N is above C)")
+    parser.add_argument("--standard-orientation", type=eval, default=False, help="When set to true, orient the base pair such that the first nucleotide is always left and the N1/N9 - C1' is along the y-axis (N is above C)")
     parser.add_argument("--label-atoms", type=str, nargs="*", default=[], help="Atom names to label")
     parser.add_argument("--movie", type=int, default=0, help="If not zero, produce a rotating animation of the base pair")
     parser.add_argument("--incremental", type=bool, default=False, help="Generate the image/video only if it does not exist yet")
