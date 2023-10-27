@@ -12,6 +12,7 @@ import scipy.stats
 import matplotlib.pyplot as plt
 import residue_filter
 from dataclasses import dataclass
+import dataclasses
 
 
 bins_per_width = 80
@@ -39,7 +40,7 @@ resolutions = [
     # ("1.8 Å - 3.5 Å", is_med_quality),
 ]
 
-@dataclass
+@dataclass(frozen=True)
 class HistogramDef:
     title: str
     axis_label: str
@@ -50,6 +51,17 @@ class HistogramDef:
     max: Optional[float] = None
     pseudomin: Optional[float] = None
     pseudomax: Optional[float] = None
+
+    def copy(self, **kwargs):
+        return dataclasses.replace(self, **kwargs)
+    def select_columns(self, ix: Union[int, list[int]]):
+        if isinstance(ix, int):
+            ix = [ix]
+        columns = [ self.columns[i] for i in ix ]
+        legend = [ self.legend[i] for i in ix ] if self.legend is not None else None
+        # title = f"{self.title} #{','.join(str(i+1) for i in ix)}"
+        return self.copy(columns=columns, legend=legend)
+
 
 histogram_defs = [
     HistogramDef(
@@ -173,7 +185,8 @@ def get_bounds(dataframes: list[pl.DataFrame], pair_type: tuple[str, str], h: Hi
         ]
         datapoint_columns = [ c for c in datapoint_columns if len(c) > 0]
         if len(datapoint_columns) == 0:
-            raise ValueError(f"No datapoints for hisotgram {h.title} {pair_type}")
+            # raise ValueError(f"No datapoints for histogram {h.title} {pair_type}")
+            return 0, 1
         all_datapoints = np.concatenate(datapoint_columns)
         mean = float(np.mean(all_datapoints))
         std = float(np.std(all_datapoints))
@@ -221,7 +234,6 @@ def make_histogram_group(dataframes: list[pl.DataFrame], axes: list[plt.Axes], t
             continue
 
         dfs = df[nn_columns]
-        print(bin_width, xmin, xmax, len(dfs), title)
         renamed_columns = dfs.select(*[
             pl.col(c).alias(l)
             for c, l in zip(h.columns, legend)
@@ -234,16 +246,26 @@ def make_histogram_group(dataframes: list[pl.DataFrame], axes: list[plt.Axes], t
                 tuple(sorted((i, pairs.hbonding_atoms[pair_type].index(pairs.hbond_swap_nucleotides(hb)))))
                 for i, hb in enumerate(pairs.hbonding_atoms[pair_type])
             ))
-            print("Merging symetric bonds: ", symetric_bonds)
             assert (0, 0) not in symetric_bonds and (1, 1) not in symetric_bonds and (2, 2) not in symetric_bonds
             renamed_columns_ = renamed_columns.select(
                 pl.col(legend[j]).alias(legend[i])
                 for i, j in symetric_bonds
+                if i < len(legend) and j < len(legend)
             )
-            renamed_columns = renamed_columns.select(pl.col(legend[i]) for i, _ in symetric_bonds)
-            renamed_columns = pl.concat([ renamed_columns, renamed_columns_ ])
+            if len(renamed_columns_.columns) > 0:
+                print("Merging symetric bonds: ", symetric_bonds)
+                renamed_columns = renamed_columns.select(pl.col(legend[i]) for i, _ in symetric_bonds)
+                renamed_columns = pl.concat([ renamed_columns, renamed_columns_ ])
 
-        sns.histplot(data=renamed_columns.to_pandas(), binwidth=bin_width, kde=(hist_kde and len(dfs) >= 5), legend=True, ax=ax)
+        if len(renamed_columns.columns) == 0 or len(renamed_columns) == 0:
+            print(f"WARNING: no columns left after merging ({title})")
+            continue
+        if len(renamed_columns) == 1:
+            print(renamed_columns)
+
+        binses = np.arange(xmin, xmax, bin_width)
+        print(bin_width, xmin, xmax, len(renamed_columns), len(renamed_columns.columns), len(binses), title)
+        sns.histplot(data=renamed_columns.to_pandas(), binwidth=bin_width if len(renamed_columns) > 1 else None, kde=(hist_kde and len(dfs) >= 5), legend=True, ax=ax)
         ymax = ax.get_ylim()[1]
         ax.set_yticks(np.arange(0, ymax, step=get_histogram_ticksize(ymax)))
         if hist_kde:
@@ -251,9 +273,13 @@ def make_histogram_group(dataframes: list[pl.DataFrame], axes: list[plt.Axes], t
                 x = line.get_xdata()
                 y = line.get_ydata()
                 peak = np.argmax(y)
+                # circle marker for the peak
                 ax.plot([ x[peak] ], [ y[peak] ], marker="o", color=line.get_color())
+                # text label for the peak
                 peak_fmt = f"{x[peak]:.0f}°" if "angle" in title.lower() else f"{x[peak]:.2f}"
-                ax.annotate(peak_fmt, (x[peak], y[peak]), xytext=(0, 5), textcoords="offset points", ha='center', va='bottom', color=line.get_color(), path_effects=[matplotlib.patheffects.withStroke(linewidth=3, foreground="white")], fontsize=8)
+                ax.annotate(peak_fmt, (x[peak], y[peak]), xytext=(0, 5), textcoords="offset points", ha='center', va='bottom', color=line.get_color(), fontsize=8, path_effects=[
+                    matplotlib.patheffects.withStroke(linewidth=3, foreground="white") # text outline
+                ])
 
                 curve_steps = np.append(x[1:] - x[:-1], [0])
                 curve_area_total = np.sum(y * curve_steps)
@@ -282,16 +308,16 @@ def make_subplots(sp = subplots):
     fig, sp = plt.subplots(*sp)
     return fig, list(sp.reshape(-1))
 
-def make_bond_pages(df: pl.DataFrame, outdir: str, pair_type: tuple[str, str], hs: list[HistogramDef], images = None, highlights: Optional[list[pl.DataFrame]] = None):
+def make_bond_pages(df: pl.DataFrame, outdir: str, pair_type: tuple[str, str], hs: list[HistogramDef], images = None, highlights: Optional[list[Optional[pl.DataFrame]]] = None, title_suffix = ""):
 
     dataframes = [ df.filter(resolution_filter) for _, resolution_filter in resolutions ]
     pages: list[tuple[Figure, list[Axes]]] = [ make_subplots(subplots) for _ in resolutions ]
-    titles = [ f"{format_pair_type(pair_type, is_dna=('DNA' in resolution_lbl))} {resolution_lbl} ({len(df)})" for (resolution_lbl, _), df in zip(resolutions, dataframes) ]
+    titles = [ f"{format_pair_type(pair_type, is_dna=('DNA' in resolution_lbl))} {resolution_lbl}{title_suffix}" for (resolution_lbl, _), df in zip(resolutions, dataframes) ]
     print(titles)
-    for p, title in zip(pages, titles):
+    for p, title, df in zip(pages, titles, dataframes):
         fig, _ = p
         # fig.tight_layout(pad=3.0)
-        fig.suptitle(title)
+        fig.suptitle(title + f" ({len(df)})")
 
     for i, h in enumerate(hs):
         make_histogram_group(dataframes, [ p[1][i+1] for p in pages ], [h.title] * len(dataframes), pair_type, h)
@@ -560,12 +586,17 @@ def main(argv):
         #     for h in histogram_defs
         #     for f in make_resolution_comparison_page(df, args.output_dir, pair_type, h, images= [ create_pair_image(df[nicest_bp], args.output_dir, pair_type) ] if nicest_bp is not None else [])
         # ]
+        dna_rna_images = [ create_pair_image(dff[bp], args.output_dir, pair_type) if bp >= 0 else None for bp in nicest_bps ] * len(resolutions) if nicest_bps is not None else []
+        dna_rna_highlights = [ dff[bp] if bp >= 0 else None for bp in nicest_bps ] if nicest_bps is not None else []
         output_files = [
-            f for f in make_bond_pages(df, args.output_dir, pair_type, histogram_defs,
-                                       images= [ create_pair_image(dff[bp], args.output_dir, pair_type) if bp >= 0 else None for bp in nicest_bps ] * len(resolutions) if nicest_bps is not None else [],
-                                       highlights=[ dff[bp] if bp >= 0 else None for bp in nicest_bps ] if nicest_bps is not None else []
+            f for f in make_bond_pages(df, args.output_dir, pair_type, histogram_defs, images=dna_rna_images, highlights=dna_rna_highlights
             )
         ]
+        # output_files = [
+        #     f
+        #     for column in [0, 1, 2]
+        #     for f in make_bond_pages(df, args.output_dir, pair_type, [ h.select_columns(column) for h in histogram_defs], images=dna_rna_images, highlights=dna_rna_highlights, title_suffix=f" #{column}")
+        # ]
         all_statistics.extend(statistics)
         reexport_df(df, stat_columns).write_parquet(os.path.join(args.output_dir, f"{pair_type[1]}-{pair_type[0]}.parquet"))
         results.append({
@@ -579,7 +610,6 @@ def main(argv):
                 get_label(f"hb_{i}_length", pair_type) for i in range(3)
             ],
             "atoms": pairs.hbonding_atoms[pair_type],
-
         })
 
 

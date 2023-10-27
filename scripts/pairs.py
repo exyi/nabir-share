@@ -230,6 +230,59 @@ def hbond_swap_nucleotides(hbond: tuple[str, str, str, str]) -> tuple[str, str, 
         for atom in hbond
     ) # type: ignore
 
+# all pair type ordered according to The Paper
+pair_types = [
+    "cWW", "tWW",
+    "cWH", "tWH",
+    "cWS", "tWS",
+    "cHH", "tHH",
+    "cHS", "tHS",
+    "cSS", "tSS"
+]
+
+sugar_atom_connectivity = [
+    ("P", "OP2"), ("P", "OP1"), ("P", "O5'"),
+    ("O5'", "C5'"), ("C5'", "C4'"),
+    ("C4'", "O4'"), ("C4'", "C3'"),
+    ("C3'", "O3'"), ("C3'", "C2'"),
+    ("C2'", "O2'"), ("C2'", "C1'"),
+    ("C1'", "O4'")
+]
+purine_atom_connectivity = [
+    *sugar_atom_connectivity,
+    ("C1'", "N9"), ("N9", "C8"), ("C8", "N7"),
+    ("N9", "C4"), ("N7", "C5"),
+    ("C4", "C5"), ("C5", "C6"), ("C6", "N1"), ("N1", "C2"), ("C2", "N3"), ("N3", "C4")
+]
+pyrimidine_atom_connectivity = [
+    *sugar_atom_connectivity,
+    ("C1'", "N1"), ("N1", "C2"), ("C2", "N3"),
+    ("N3", "C4"), ("C4", "C5"), ("C5", "C6"),
+    ("N1", "C6"),
+]
+atom_connectivity = {
+    "A": [
+        *purine_atom_connectivity,
+        ("C6", "N6")
+    ],
+    "G": [
+        *purine_atom_connectivity,
+        ("C6", "O6"), ("C2", "N2")
+    ],
+    "C": [
+        *pyrimidine_atom_connectivity,
+        ("C2", "O2"),
+        ("C4", "N4"),
+        ("C5", "C7") # 5-methyl cytosine
+    ],
+    "T": [
+        *pyrimidine_atom_connectivity,
+        ("C2", "O2"),
+        ("C4", "O4"),
+        ("C5", "C7")
+    ]
+}
+
 hbonding_atoms: dict[tuple[str, str], list[tuple[str, str, str, str]]] = {
     ('cWW', 'C-G'): [
         ('AC4', 'AN4', 'BO6', 'BC6'),
