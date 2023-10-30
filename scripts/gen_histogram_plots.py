@@ -1,19 +1,19 @@
 import itertools
 import subprocess
-from typing import Optional, Union
+from typing import Any, Optional, Union
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 import matplotlib.patheffects
 import polars as pl, numpy as np, numpy.typing as npt
 import os, sys, math, re
 import pairs
+import pair_defs
 import seaborn as sns
 import scipy.stats
 import matplotlib.pyplot as plt
 import residue_filter
 from dataclasses import dataclass
 import dataclasses
-
 
 bins_per_width = 80
 hist_kde = True
@@ -91,7 +91,7 @@ def format_angle_label(atoms: tuple[str, str, str], swap=False):
     first = "B" if swap else "A"
     residue0 = atoms[0][0]
     if residue0 != first:
-        atoms = tuple(reversed(atoms))
+        atoms = (atoms[2], atoms[1], atoms[0])
 
     return "".join([
         atoms[0][1:],
@@ -113,14 +113,14 @@ def is_symmetric_pair_type(pair_type: tuple[str, str]):
     if pair_type[1] != pair_type[1][::-1] or pair_type[0][1] != pair_type[0][2]:
         return False
 
-    hbonds = pairs.hbonding_atoms[pair_type]
+    hbonds = pair_defs.get_hbonds(pair_type)
     return all(
-        pairs.hbond_swap_nucleotides(hb) in hbonds
+        pair_defs.hbond_swap_nucleotides(hb) in hbonds
         for hb in hbonds
     )
 
 def get_label(col: str, pair_type: tuple[str, str]):
-    hbonds = pairs.hbonding_atoms[pair_type]
+    hbonds = pair_defs.get_hbonds(pair_type)
     swap = is_swapped(pair_type[1])
     
     if col == "hb_0_donor_angle":
@@ -242,9 +242,10 @@ def make_histogram_group(dataframes: list[pl.DataFrame], axes: list[plt.Axes], t
         if is_symmetric:
             print(f"{pair_type} is symetric")
             # merge symetric bonds
+            all_hbons = pair_defs.get_hbonds(pair_type)
             symetric_bonds = list(set(
-                tuple(sorted((i, pairs.hbonding_atoms[pair_type].index(pairs.hbond_swap_nucleotides(hb)))))
-                for i, hb in enumerate(pairs.hbonding_atoms[pair_type])
+                tuple(sorted((i, all_hbons.index(pair_defs.hbond_swap_nucleotides(hb)))))
+                for i, hb in enumerate(all_hbons)
             ))
             assert (0, 0) not in symetric_bonds and (1, 1) not in symetric_bonds and (2, 2) not in symetric_bonds
             renamed_columns_ = renamed_columns.select(
@@ -270,6 +271,7 @@ def make_histogram_group(dataframes: list[pl.DataFrame], axes: list[plt.Axes], t
         ax.set_yticks(np.arange(0, ymax, step=get_histogram_ticksize(ymax)))
         if hist_kde:
             for line in ax.lines:
+                line: Any
                 x = line.get_xdata()
                 y = line.get_ydata()
                 peak = np.argmax(y)
@@ -507,7 +509,7 @@ def create_pair_image(row: pl.DataFrame, output_dir: str, pair_type: tuple[str,s
     os.makedirs(os.path.join(output_dir, "img"), exist_ok=True)
     row.write_parquet(os.path.join(output_dir, "img", f"nicest.parquet"))
     pdbid = row["pdbid"]
-    label_atoms = list(itertools.chain(*[ (x, y) for (_, x, y, _) in pairs.hbonding_atoms[pair_type] ]))
+    label_atoms = list(itertools.chain(*[ (x, y) for (_, x, y, _) in pair_defs.get_hbonds(pair_type) ]))
     command = [
         "pymol", "-cq",
         os.path.join(os.path.dirname(__file__), "gen_contact_images.py"),
@@ -609,7 +611,7 @@ def main(argv):
             "labels": [
                 get_label(f"hb_{i}_length", pair_type) for i in range(3)
             ],
-            "atoms": pairs.hbonding_atoms[pair_type],
+            "atoms": pair_defs.get_hbonds(pair_type),
         })
 
 

@@ -10,6 +10,8 @@ from requests import HTTPError
 import multiprocessing
 from pair_csv_parse import scan_pair_csvs
 import pdb_utils
+import pair_defs as pair_defs
+pdef = pair_defs
 
 _sentinel = object()
 
@@ -224,152 +226,6 @@ def hbond_stats(atom0: Bio.PDB.Atom.Atom, atom1: Bio.PDB.Atom.Atom, atom2: Bio.P
         acceptor_angle=get_angle(atom3, atom2, atom1)
     )
 
-def hbond_swap_nucleotides(hbond: tuple[str, str, str, str]) -> tuple[str, str, str, str]:
-    return tuple(
-        atom.replace("A", "ⒷⒷⒷⒷⒷⒷ").replace("B", "A").replace("ⒷⒷⒷⒷⒷⒷ", "B")
-        for atom in hbond
-    ) # type: ignore
-
-# all pair type ordered according to The Paper
-pair_types = [
-    "cWW", "tWW",
-    "cWH", "tWH",
-    "cWS", "tWS",
-    "cHH", "tHH",
-    "cHS", "tHS",
-    "cSS", "tSS"
-]
-
-sugar_atom_connectivity = [
-    ("P", "OP2"), ("P", "OP1"), ("P", "O5'"),
-    ("O5'", "C5'"), ("C5'", "C4'"),
-    ("C4'", "O4'"), ("C4'", "C3'"),
-    ("C3'", "O3'"), ("C3'", "C2'"),
-    ("C2'", "O2'"), ("C2'", "C1'"),
-    ("C1'", "O4'")
-]
-purine_atom_connectivity = [
-    *sugar_atom_connectivity,
-    ("C1'", "N9"), ("N9", "C8"), ("C8", "N7"),
-    ("N9", "C4"), ("N7", "C5"),
-    ("C4", "C5"), ("C5", "C6"), ("C6", "N1"), ("N1", "C2"), ("C2", "N3"), ("N3", "C4")
-]
-pyrimidine_atom_connectivity = [
-    *sugar_atom_connectivity,
-    ("C1'", "N1"), ("N1", "C2"), ("C2", "N3"),
-    ("N3", "C4"), ("C4", "C5"), ("C5", "C6"),
-    ("N1", "C6"),
-]
-atom_connectivity = {
-    "A": [
-        *purine_atom_connectivity,
-        ("C6", "N6")
-    ],
-    "G": [
-        *purine_atom_connectivity,
-        ("C6", "O6"), ("C2", "N2")
-    ],
-    "C": [
-        *pyrimidine_atom_connectivity,
-        ("C2", "O2"),
-        ("C4", "N4"),
-        ("C5", "C7") # 5-methyl cytosine
-    ],
-    "T": [
-        *pyrimidine_atom_connectivity,
-        ("C2", "O2"),
-        ("C4", "O4"),
-        ("C5", "C7")
-    ]
-}
-
-hbonding_atoms: dict[tuple[str, str], list[tuple[str, str, str, str]]] = {
-    ('cWW', 'C-G'): [
-        ('AC4', 'AN4', 'BO6', 'BC6'),
-        ('BC6', 'BN1', 'AN3', 'AC2'),
-        ('BC2', 'BN2', 'AO2', 'AC2'),
-    ],
-    ('cWW', 'A-U'): [
-        ('AC6', 'AN6', 'BO4', 'BC4'),
-        ('BC2', 'BN3', 'AN1', 'AC2')
-    ],
-    ('cWW', 'G-U'): [
-        ('BC4', 'BN3', 'AO6', 'AC6'),
-        ('AC2', 'AN1', 'BO2', "BC2"),
-        ('AC2', 'AN2', "BO2'", "BC2'"), # ??? pres vodu
-    ],
-    ('tHS', 'A-G'): [
-        ('BC2', 'BN2', 'AN7', 'AC8'),
-        ('AC6', 'AN6', 'BN3', 'BC4'),
-        ('AC6', 'AN6', "BO2'", "BC2'"),
-    ],
-    # ('cSS', 'A-C'): [ ], # kokotina
-    ('tSS', 'A-G'): [
-        ("BC2", "BN2", "AN3", "AC2"),
-        ("AN3", "AC2", "BN3", "BC4"),
-        ("BC2'", "BO2'", "AN1", "AC6")
-    ],
-    ('tHW', 'A-U'): [
-        ("BC4", "BN3", "AN7", "AC8"),
-        ("AC6", "AN6", "BO2", "BC2"),
-    ],
-    ('cWW', 'U-U'): [
-        ("BC4", "BN3", "AO4", "AC4"),
-        ("AC4", "AN3", "BO2", "BC2"),
-        ("BC2'", "BO2'", "AO2", "AC2"), # pres vodu
-    ],
-    ('tHH', 'A-A'): [
-        ("AC6", "AN6", "BN7", "BC8"),
-        ("BC6", "BN6", "AN7", "AC8"),
-        ("BC6", "BN6", "AOP2", "AP"),
-    ],
-    ('cSS', 'A-G'): [
-        ("BC2", "BN2", "AN3", "AC4"),
-        ("AC2'", "AO2'", "BN3", "BC4"),
-        ("BC2'", "BO2'", "AO2'", "AC2'"),
-    ],
-    ('cWW', 'A-G'): [
-        ('AC6', 'AN6', 'BO6', 'BC6'),
-        ('BC6', 'BN1', 'AN1', 'AC6'),
-        # ('BC2', 'BN2', 'AC2', 'AN3'),
-    ],
-    ('tWW', 'A-A'): [
-        ("AC6", "AN6", "BN1", "BC6"),
-        ("BC6", "BN6", "AN1", "AC6")
-    ],
-    # ('tSS', 'A-C'): [ ], # kokotina
-    ('tWS', 'A-G'): [
-        ("BC2", "BN2", "AN1", "AC6"),
-        ("AC6", "AN6", "BN3", "BC4"),
-        ("AC6", "AN6", "BO2'", "BC2'"),
-    ],
-    # ('cSS', 'A-U'): [ ], # kokotina
-    # ('cSH', 'G-U'): [ ], # kokotina
-    ('cSS', 'A-A'): [
-        ("BN3", "BC2", "AN3", "AC4"),
-        ("AC2'", "AO2'", "BN3", "BC4"),
-        ("BC2'", "BO2'", "AO2'", "AC2'"),
-    ],
-    ('tSS', 'G-G'): [
-        ("BC2", "BN2", "AN3", "AC4"),
-        ("AC2", "AN2", "BN3", "BC4"),
-        ("AC2", "AN2", "BO2'", "BC2'"),
-        # ("BC2", "BN2", "AO2'", "AC2'"),
-    ],
-    ('cWH', 'G-G'): [
-        ("AC2", "AN2", "BN7", "BC8"),
-        ("AC6", "AN1", "BO6", "BC6")
-    ],
-    ('cWW', 'C-U'): [
-        ("AC4", "AN4", "BO4", "BC4"),
-        ("BC4", "BN3", "AN3", "AC4"),
-    ],
-    # ('cWH', 'C-U'): [
-    #     ("AC4", "AN4", "BO4", "BC4"),
-    #     ("BC2", "BN3", "AN3", "AC4"),
-    # ],
-}
-
 resname_map = {
     'DT': 'U',
     'DC': 'C',
@@ -383,7 +239,8 @@ def get_hbond_stats(pair_type: str, r1: AltResidue, r2: AltResidue) -> Optional[
     if r1.resname > r2.resname:
         r1, r2 = r2, r1
     pair_name = resname_map.get(r1.resname, r1.resname) + '-' + resname_map.get(r2.resname, r2.resname)
-    if (pair_type, pair_name) not in hbonding_atoms:
+    hbonds = pdef.get_hbonds((pair_type, pair_name), throw=False)
+    if len(hbonds) == 0:
         return None
     def get_atom(n):
         if n[0] == 'A':
@@ -395,7 +252,7 @@ def get_hbond_stats(pair_type: str, r1: AltResidue, r2: AltResidue) -> Optional[
 
     bonds_atoms = [
         tuple(get_atom(a) for a in atoms)
-        for atoms in hbonding_atoms[(pair_type, pair_name)]
+        for atoms in hbonds
     ]
 
     return [
@@ -558,6 +415,8 @@ def df_hstack(columns: list[pl.DataFrame]) -> pl.DataFrame:
 
 def main(pool, args):
     df = scan_pair_csvs(args.csvs).sort('pdbid', 'model', 'nr1', 'nr2').collect()
+    if "type" not in df.columns:
+        df = df.select(pl.lit(args.pair_type).alias("type"), pl.col("*"))
 
     groups = list(df.groupby(pl.col("pdbid")))
 
@@ -619,7 +478,7 @@ if __name__ == "__main__":
     parser.add_argument("--dssr-binary", type=str, help="If specified, DSSR --analyze will be invoked for each structure and its results stored as 'dssr_' prefixed columns")
     parser.add_argument("--filter", default=False, action="store_true", help="Filter out rows for which the values could not be calculated")
     parser.add_argument("--dedupe", default=False, action="store_true", help="Remove duplicate pairs, keep the one with shorter bonds or lower chain1,nr1")
-    parser.add_argument("--pair-type", default="cWW")
+    parser.add_argument("--pair-type", required=True)
     args = parser.parse_args()
 
     for x in args.pdbcache:

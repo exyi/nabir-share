@@ -126,7 +126,7 @@ def zoom_to_borders(center):
 def orient_pair(pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2, label_atoms: list[str],
     standard_orientation,
     grey_context=False,
-    find_water=True):
+    find_water=False):
     cmd.hide("everything", f"%{pdbid}")
     pair_selection =f"%{pdbid} and ({residue_selection(chain1, nt1, ins1, alt1)} or {residue_selection(chain2, nt2, ins2, alt2)})"
     print(pair_selection)
@@ -196,7 +196,7 @@ def make_pair_rot_movie(output_file, pdbid, chain1, nt1, ins1, alt1, chain2, nt2
     if length == 0:
         return
 
-    orient_pair(pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2, [], bpargs.standard_orientation, grey_context=True)
+    orient_pair(pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2, [], bpargs.standard_orientation, grey_context=True, find_water=True)
     try:
         cmd.mset("1", length)
         cmd.mview("store", 1)
