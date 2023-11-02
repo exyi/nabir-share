@@ -15,7 +15,7 @@ import residue_filter
 from dataclasses import dataclass
 import dataclasses
 
-bins_per_width = 80
+bins_per_width = 50
 hist_kde = True
 
 is_high_quality = pl.col("RNA-0-1.8") | pl.col("DNA-0-1.8")
@@ -121,36 +121,31 @@ def is_symmetric_pair_type(pair_type: tuple[str, str]):
 
 def get_label(col: str, pair_type: tuple[str, str]):
     hbonds = pair_defs.get_hbonds(pair_type)
-    swap = is_swapped(pair_type[1])
+    swap = is_swapped(pair_type)
     
-    if col == "hb_0_donor_angle":
-        return format_angle_label(hbonds[0][:3], swap=swap)
-    elif col == "hb_1_donor_angle":
-        return format_angle_label(hbonds[1][:3], swap=swap)
-    elif col == "hb_2_donor_angle" and len(hbonds) > 2:
-        return format_angle_label(hbonds[2][:3], swap=swap)
-    elif col == "hb_0_acceptor_angle":
-        return format_angle_label(hbonds[0][1:], swap=swap)
-    elif col == "hb_1_acceptor_angle":
-        return format_angle_label(hbonds[1][1:], swap=swap)
-    elif col == "hb_2_acceptor_angle" and len(hbonds) > 2:
-        return format_angle_label(hbonds[2][1:], swap=swap)
-    elif col == "hb_0_length":
-        return format_length_label(hbonds[0][1:3], swap=swap)
-    elif col == "hb_1_length":
-        return format_length_label(hbonds[1][1:3], swap=swap)
-    elif col == "hb_2_length" and len(hbonds) > 2:
-        return format_length_label(hbonds[2][1:3], swap=swap)
-    
-def is_swapped(pair_bases):
-    return pair_bases == "C-G"
+    if (m := re.match("^hb_(\\d+)_donor_angle", col)):
+        ix = int(m.group(1))
+        if len(hbonds) <= ix: return None
+        return format_angle_label(hbonds[ix][:3], swap=swap)
+    elif (m := re.match("^hb_(\\d+)_acceptor_angle", col)):
+        ix = int(m.group(1))
+        if len(hbonds) <= ix: return None
+        return format_angle_label(hbonds[ix][1:], swap=swap)
+    elif (m := re.match("^hb_(\\d+)_length", col)):
+        ix = int(m.group(1))
+        if len(hbonds) <= ix: return None
+        return format_length_label(hbonds[ix][1:3], swap=swap)
+
+def is_swapped(pair_type: tuple[str, str]):
+    symtype = pair_type[0] in ["cWW", "tWW", "cHH", "tHH", "cSS", "tSS"]
+    return pair_type[1] == "C-G" and symtype or pair_type[0] not in pair_defs.pair_types
 def format_pair_type(pair_type, is_dna = False, is_rna=False):
     pair_kind, pair_bases = pair_type
     if is_dna == True:
         pair_bases = pair_bases.replace("U", "T")
     elif is_rna == True:
         pair_bases = pair_bases.replace("T", "U")
-    if is_swapped(pair_bases):
+    if is_swapped(pair_type):
         assert len(pair_kind) == 3
         return format_pair_type((f"{pair_kind[0]}{pair_kind[2]}{pair_kind[1]}", "-".join(reversed(pair_bases.split("-")))))
     elif len(pair_bases) == 3 and pair_bases[1] == '-':
@@ -181,7 +176,7 @@ def get_bounds(dataframes: list[pl.DataFrame], pair_type: tuple[str, str], h: Hi
         datapoint_columns = [
             df[col].drop_nulls().to_numpy()
             for df in dataframes
-            for col in h.columns
+            for col in h.columns if col in df.columns
         ]
         datapoint_columns = [ c for c in datapoint_columns if len(c) > 0]
         if len(datapoint_columns) == 0:
@@ -228,7 +223,7 @@ def make_histogram_group(dataframes: list[pl.DataFrame], axes: list[plt.Axes], t
     for df, ax, title in zip(dataframes, axes, titles):
         ax.set(xlabel=h.axis_label, title=title)
         ax.set_xlim(xmin, xmax)
-        nn_columns = [ c for c in h.columns if len(df[c].drop_nulls()) > 0 ]
+        nn_columns = [ c for c in h.columns if c in df.columns and len(df[c].drop_nulls()) > 0 ]
 
         if len(df) < 1 or len(nn_columns) == 0:
             continue
@@ -253,7 +248,7 @@ def make_histogram_group(dataframes: list[pl.DataFrame], axes: list[plt.Axes], t
                 for i, j in symetric_bonds
                 if i < len(legend) and j < len(legend)
             )
-            if len(renamed_columns_.columns) > 0:
+            if len(renamed_columns_.columns) == len(renamed_columns.columns):
                 print("Merging symetric bonds: ", symetric_bonds)
                 renamed_columns = renamed_columns.select(pl.col(legend[i]) for i, _ in symetric_bonds)
                 renamed_columns = pl.concat([ renamed_columns, renamed_columns_ ])
@@ -264,9 +259,13 @@ def make_histogram_group(dataframes: list[pl.DataFrame], axes: list[plt.Axes], t
         if len(renamed_columns) == 1:
             print(renamed_columns)
 
-        binses = np.arange(xmin, xmax, bin_width)
-        print(bin_width, xmin, xmax, len(renamed_columns), len(renamed_columns.columns), len(binses), title)
-        sns.histplot(data=renamed_columns.to_pandas(), binwidth=bin_width if len(renamed_columns) > 1 else None, kde=(hist_kde and len(dfs) >= 5), legend=True, ax=ax)
+        print(bin_width, xmin, xmax, len(renamed_columns), len(renamed_columns.columns), renamed_columns.null_count().to_dicts()[0], title)
+        # binses = np.arange(xmin, xmax, bin_width)
+        sns.histplot(data=renamed_columns.to_pandas(),
+                    #  binwidth=bin_width if len(renamed_columns) > 2 else None,
+                     kde=(hist_kde and len(dfs) >= 5),
+                     legend=True,
+                     ax=ax)
         ymax = ax.get_ylim()[1]
         ax.set_yticks(np.arange(0, ymax, step=get_histogram_ticksize(ymax)))
         if hist_kde:
@@ -356,7 +355,7 @@ def make_bond_pages(df: pl.DataFrame, outdir: str, pair_type: tuple[str, str], h
 
             for ax, h in zip(p[1][1:], histogram_defs):
                 for col_i, col in enumerate(h.columns):
-                    if highlight[0, col] is not None:
+                    if col in highlight.columns and highlight[0, col] is not None:
                         ax.plot([ float(highlight[0, col]) ], [ 0 ], marker="o", color=f"C{col_i}")
 
     for p, title, df in zip(pages, titles, dataframes):
@@ -366,12 +365,11 @@ def make_bond_pages(df: pl.DataFrame, outdir: str, pair_type: tuple[str, str], h
             fig.suptitle(title)
             ax.axis("off")
             ax.text(0.5, 0.5,'NO DATA',fontsize=30,horizontalalignment='center',verticalalignment='center',transform = ax.transAxes)
-            yield save(title, outdir)
+            yield save(fig, title, outdir)
         else:
             fig, axes = p
             # fig.tight_layout(pad=3.0)
-            fig.suptitle(title)
-            yield save(title, outdir)
+            yield save(fig, title, outdir)
 
 def make_resolution_comparison_page(df: pl.DataFrame, outdir: str, pair_type: tuple[str, str], h: HistogramDef, images = []):
     title = f"{format_pair_type(pair_type)} {h.title}"
@@ -396,18 +394,18 @@ def make_resolution_comparison_page(df: pl.DataFrame, outdir: str, pair_type: tu
     if subplots:
         assert main_fig is not None
         main_fig.suptitle(title)
-        yield save(title, outdir)
+        yield save(main_fig, title, outdir)
     else:
         for ax_i, (resolution_lbl, resolution_filter) in enumerate(resolutions):
-            yield save(axes[ax_i].get_title(), outdir)
+            yield save(axes[ax_i].figure, axes[ax_i].get_title(), outdir) #type:ignore
 
 
-def save(title, outdir):
+def save(fig: Figure, title, outdir):
     os.makedirs(outdir, exist_ok=True)
     pdf=os.path.join(outdir, title + ".pdf")
-    plt.savefig(pdf, dpi=300)
-    plt.savefig(os.path.join(outdir, title + ".png"))
-    plt.close()
+    fig.savefig(pdf, dpi=300)
+    fig.savefig(os.path.join(outdir, title + ".png"))
+    plt.close(fig)
     print(f"Wrote {pdf}")
     return pdf
 
@@ -415,12 +413,8 @@ def load_pair_table(file: str):
     df = pl.read_parquet(file) if file.endswith(".parquet") else pl.read_csv(file)
 
     df = df.with_columns(
-        pl.col("hb_0_donor_angle") / np.pi * 180,
-        pl.col("hb_1_donor_angle") / np.pi * 180,
-        pl.col("hb_2_donor_angle") / np.pi * 180,
-        pl.col("hb_0_acceptor_angle") / np.pi * 180,
-        pl.col("hb_1_acceptor_angle") / np.pi * 180,
-        pl.col("hb_2_acceptor_angle") / np.pi * 180,
+        pl.col("^hb_\\d+_donor_angle$") / np.pi * 180,
+        pl.col("^hb_\\d+_acceptor_angle$") / np.pi * 180,
     )
     return df
 
@@ -442,17 +436,8 @@ def tranpose_dict(d, columns):
 def calculate_stats(df: pl.DataFrame, pair_type):
     if len(df) == 0:
         raise ValueError("No data")
-    columns = [
-        "hb_0_length",
-        "hb_0_donor_angle",
-        "hb_0_acceptor_angle",
-        "hb_1_length",
-        "hb_1_donor_angle",
-        "hb_1_acceptor_angle",
-        "hb_2_length",
-        "hb_2_donor_angle",
-        "hb_2_acceptor_angle",
-    ]
+    columns = df.select(pl.col("^hb_\\d+_(length|donor_angle|acceptor_angle)$")).columns
+    print(f"{columns=}")
     cdata = [ df[c].drop_nulls().to_numpy() for c in columns ]
     kdes = [ scipy.stats.gaussian_kde(c) if len(c) > 5 else None for c in cdata ]
     kde_modes = [ None if kde is None else c[np.argmax(kde.pdf(c))] for kde, c in zip(kdes, cdata) ]
@@ -487,14 +472,14 @@ def calculate_stats(df: pl.DataFrame, pair_type):
         "log_likelihood": calc_datapoint_log_likelihood,
     }
 
-    return new_df_columns, {
+    result_stats = {
         "count": len(df),
         "nicest_bp": str(next(df[nicest_basepair, ["pdbid", "model", "chain1", "res1", "nr1", "ins1", "alt1", "chain2", "res2", "nr2", "ins2", "alt2"]].iter_rows())),
         "nicest_bp_index": nicest_basepair,
         "nicest_bp_indices": nicest_basepairs,
-        "hb_0_label": get_label("hb_0_length", pair_type),
-        "hb_1_label": get_label("hb_1_length", pair_type),
-        "hb_2_label": get_label("hb_2_length", pair_type),
+        **{
+            f"hb_{i}_label": get_label(f"hb_{i}_length", pair_type) for i in range(len(pair_defs.get_hbonds(pair_type)))
+        },
         **tranpose_dict({
             "mode": kde_modes,
             "median": medians,
@@ -502,6 +487,8 @@ def calculate_stats(df: pl.DataFrame, pair_type):
             "std": stds,
         }, columns)
     }
+
+    return new_df_columns, result_stats
 
 def create_pair_image(row: pl.DataFrame, output_dir: str, pair_type: tuple[str,str]) -> Optional[str]:
     if len(row) == 0:
@@ -563,12 +550,15 @@ def main(argv):
         df = load_pair_table(file)
         df = residue_filter.add_res_filter_columns(df, residue_lists)
         print(file)
-        print(df[["hb_0_length", "hb_1_length", "hb_2_length"]].describe())
+        print(df.select(pl.col("^hb_\\d+_length$")).describe())
 
+        dff, stat_columns = None, None
         nicest_bps: Optional[list[int]] = None
         statistics = []
         for resolution_cutoff in [1.8, 2.2, 3.0]:
-            dff = df.filter(is_some_quality).filter(pl.col("resolution") <= resolution_cutoff).filter(pl.col("hb_0_length").is_not_null() | pl.col("hb_1_length").is_not_null() | pl.col("hb_2_length").is_not_null())
+            dff = df.filter(is_some_quality)\
+                    .filter(pl.col("resolution") <= resolution_cutoff)\
+                    .filter(pl.any_horizontal(pl.col("^hb_\\d+_length$").is_not_null()))
             if len(dff) == 0:
                 continue
             stat_columns, stats = calculate_stats(dff, pair_type)
@@ -581,8 +571,11 @@ def main(argv):
             if "nicest_bp_indices" in statistics[-1]:
                 nicest_bps = statistics[-1]["nicest_bp_indices"]
                 del statistics[-1]["nicest_bp_indices"]
+        if dff is None or stat_columns is None:
+            print(f"WARNING: No data in {file}")
+            continue
 
-        print(nicest_bps, len(dff))
+        print(nicest_bps, len(dff) if dff is not None else 0)
         # output_files = [
         #     f
         #     for h in histogram_defs
@@ -614,10 +607,9 @@ def main(argv):
             "atoms": pair_defs.get_hbonds(pair_type),
         })
 
-
-
-
-    results.sort(key=lambda r: r["score"], reverse=True)
+    # results.sort(key=lambda r: r["score"], reverse=True)
+    # results.sort(key=lambda r: r["pair_type"])
+    results.sort(key=lambda r: (pair_defs.pair_types.index(r["pair_type"][0]), r["pair_type"][1][::-1]))
     output_files = [ f for r in results for f in r["files"] ]
 
     subprocess.run(["gs", "-dBATCH", "-dNOPAUSE", "-q", "-sDEVICE=pdfwrite", "-dPDFSETTINGS=/prepress", f"-sOutputFile={os.path.join(args.output_dir, 'hbonds-merged.pdf')}", *output_files])
