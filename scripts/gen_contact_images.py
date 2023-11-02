@@ -1,3 +1,4 @@
+import itertools
 import tempfile
 from typing import Optional
 import pymol
@@ -10,6 +11,7 @@ import math
 from dataclasses import dataclass
 import shutil
 import subprocess
+import pair_defs
 
 def residue_selection(chain, nt, ins, alt):
     chain = str(chain)
@@ -122,9 +124,36 @@ def zoom_to_borders(center):
         while True:
             best = min((o for o in observations if o[1] > 0), key=lambda x: x[1])
 
+def highlight_bonds(res1, res2, hbonds: Optional[list[tuple[str, str, str, str]]], label_atoms):
+    if hbonds is None:
+        cmd.distance("pair_contacts", res1, res2, mode=2)
+        return
+    
+    def atom_sele(atom: str):
+        if atom.startswith("A"):
+            return f"({res1}) and name \"{atom[1:]}\""
+        elif atom.startswith("B"):
+            return f"({res2}) and name \"{atom[1:]}\""
+        else:
+            return f"name \"{atom}\""
 
-def orient_pair(pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2, label_atoms: list[str],
+    labels = []
+    for i, (atom0, atom1, atom2, atom3) in enumerate(hbonds):
+        cmd.distance(f"pair_hbond_{i}", atom_sele(atom1), atom_sele(atom2), mode=0)
+        cmd.hide("labels", f"pair_hbond_{i}")
+        if label_atoms:
+            labels.extend([atom1, atom2])
+
+    if len(labels) > 0:
+        cmd.label("(" + " or ".join([
+            "(" + atom_sele(a) + ")"
+            for a in labels
+        ]) + ")", "name")
+
+def orient_pair(pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2,
     standard_orientation,
+    hbonds: Optional[list[tuple[str, str, str, str]]] = None,
+    label_atoms=True,
     grey_context=False,
     find_water=False):
     cmd.hide("everything", f"%{pdbid}")
@@ -136,8 +165,10 @@ def orient_pair(pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2, label_a
     cmd.show("sticks", "%pair")
     cmd.delete("pair_contacts")
     cmd.delete("pair_w_contacts")
-    cmd.distance("pair_contacts", "%pair", "%pair", mode=2)
-    cmd.hide("labels", "pair_contacts")
+    for i in range(5):
+        cmd.delete(f"pair_hbond_{i}")
+    # cmd.distance("pair_contacts", "%pair", "%pair", mode=2)
+    # cmd.hide("labels", "pair_contacts")
     if find_water:
         find_and_select_water("%rightnt", "%pair and not %rightnt")
         cmd.distance("pair_w_contacts", "%pair", "nwaters", mode=2)
@@ -145,19 +176,9 @@ def orient_pair(pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2, label_a
         cmd.show("nb_spheres", "nwaters")
     cmd.util.cba("grey", f"%pair")
     normal_atoms_selection = "not (name C2' or name C3' or name C4' or name C5' or name O2' or name O3' or name O4' or name O5' or name P or name OP1 or name OP2)"
-    if "all" in label_atoms:
-        cmd.label("%pair", "name")
-    elif len(label_atoms) > 0:
-        cmd.label("%pair and (" + " or ".join([
-            (
-                f"({residue_selection(chain1, nt1, ins1, alt1)} and name \"{a[1:]}\")"
-                if a.startswith("A") else
-                f"({residue_selection(chain2, nt2, ins2, alt2)} and name \"{a[1:]}\")"
-                if a.startswith("B") else
-                f"name \"{a}\""
-            )
-            for a in label_atoms
-        ]) + ")", "name")
+    highlight_bonds("%rightnt", "%pair and not %rightnt", hbonds, label_atoms)
+    # if "all" in label_atoms:
+    #     cmd.label("%pair", "name")
     if standard_orientation:
         cmd.orient(f"%rightnt and {normal_atoms_selection}")
         orient_nucleotide_as_main()
@@ -180,23 +201,23 @@ def orient_pair(pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2, label_a
 
 @dataclass
 class BPArgs:
-    label_atoms: list[str]
+    # label_atoms: list[str]
     standard_orientation: bool
     movie: int
     incremental: bool
 
-def make_pair_image(output_file, pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2, bpargs: BPArgs):
+def make_pair_image(output_file, pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2, bpargs: BPArgs, hbonds: Optional[list[tuple[str, str, str, str]]]):
     print(bpargs)
-    orient_pair(pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2, bpargs.label_atoms, bpargs.standard_orientation)
+    orient_pair(pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2, standard_orientation=bpargs.standard_orientation, hbonds=hbonds)
     cmd.png(output_file, width=2560, height=1440, ray=1)
     print(f"Saved basepair image {output_file}")
 
-def make_pair_rot_movie(output_file, pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2, bpargs: BPArgs):
+def make_pair_rot_movie(output_file, pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2, bpargs: BPArgs, hbonds: Optional[list[tuple[str, str, str, str]]]):
     length = bpargs.movie
     if length == 0:
         return
 
-    orient_pair(pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2, [], bpargs.standard_orientation, grey_context=True, find_water=True)
+    orient_pair(pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2, standard_orientation=bpargs.standard_orientation, hbonds=hbonds, label_atoms=False, grey_context=True, find_water=True)
     try:
         cmd.mset("1", length)
         cmd.mview("store", 1)
@@ -253,11 +274,18 @@ def process_group(pdbid, group: pl.DataFrame, output_dir: str, bpargs: BPArgs):
             loaded = True
     pdbdir = os.path.join(output_dir, pdbid)
     os.makedirs(pdbdir, exist_ok=True)
-    for chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2 in zip(group["chain1"], group["nr1"], group["ins1"], group["alt1"], group["chain2"], group["nr2"], group["ins2"], group["alt2"]):
+    type_column = group["type"] if "type" in group.columns else itertools.repeat(None)
+    for pair_type, res1, chain1, nt1, ins1, alt1, res2, chain2, nt2, ins2, alt2 in zip(type_column, group["res1"], group["chain1"], group["nr1"], group["ins1"], group["alt1"], group["res2"], group["chain2"], group["nr2"], group["ins2"], group["alt2"]):
         ins1 = None if ins1 == ' ' else ins1
         ins2 = None if ins2 == ' ' else ins2
         alt1 = None if alt1 == '?' else alt1
         alt2 = None if alt2 == '?' else alt2
+        if pair_type:
+            pt = pair_defs.PairType(pair_type, (pair_defs.map_resname(res1), pair_defs.map_resname(res2)))
+            hbonds = pair_defs.get_hbonds(pt)
+        else:
+            hbonds = None
+
         output_file = os.path.join(pdbdir, f"{chain1}_{nt1}{ins1 or ''}{alt1 or ''}-{chain2}_{nt2}{ins2 or ''}{alt2 or ''}")
         if bpargs.incremental and os.path.exists(output_file + ".png"):
             if bpargs.movie == 0 or os.path.exists(output_file + ".mp4"):
@@ -265,8 +293,8 @@ def process_group(pdbid, group: pl.DataFrame, output_dir: str, bpargs: BPArgs):
                 continue
 
         load_if_needed()
-        make_pair_image(output_file + ".png", pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2, bpargs)
-        make_pair_rot_movie(output_file + ".mp4", pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2, bpargs)
+        make_pair_image(output_file + ".png", pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2, bpargs, hbonds)
+        make_pair_rot_movie(output_file + ".mp4", pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2, bpargs, hbonds)
 
     cmd.reinitialize()
 
@@ -308,7 +336,7 @@ def main(argv):
 
     import pair_csv_parse
     df = pair_csv_parse.scan_pair_csvs(args.input).collect()
-    bpargs = BPArgs(args.label_atoms, args.standard_orientation, args.movie, args.incremental)
+    bpargs = BPArgs(args.standard_orientation, args.movie, args.incremental)
     if args.threads == 1:
         process_init(args.niceness)
         make_images(df, args.output_dir, bpargs)

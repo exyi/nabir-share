@@ -502,7 +502,6 @@ def create_pair_image(row: pl.DataFrame, output_dir: str, pair_type: tuple[str,s
         os.path.join(os.path.dirname(__file__), "gen_contact_images.py"),
         "--",
         os.path.join(output_dir, "img", f"nicest.parquet"),
-        "--label-atoms", *label_atoms,
         f"--output-dir={os.path.join(output_dir, 'img')}",
     ]
     print(*command)
