@@ -68,6 +68,7 @@ histogram_defs = [
         "H-bond length",
         "Distance (Å)",
         ["hb_0_length", "hb_1_length", "hb_2_length"],
+        # bin_width=0.05,
         pseudomin=2,
         pseudomax=6
     ),
@@ -75,6 +76,7 @@ histogram_defs = [
         "H-bond donor angle",
         "Angle (°)",
         ["hb_0_donor_angle", "hb_1_donor_angle", "hb_2_donor_angle"],
+        # bin_width=2,
         pseudomin=0,
         pseudomax=360
     ),
@@ -181,7 +183,7 @@ def get_bounds(dataframes: list[pl.DataFrame], pair_type: tuple[str, str], h: Hi
         datapoint_columns = [ c for c in datapoint_columns if len(c) > 0]
         if len(datapoint_columns) == 0:
             # raise ValueError(f"No datapoints for histogram {h.title} {pair_type}")
-            return 0, 1
+            return h.pseudomin or 0, h.pseudomax or 1
         all_datapoints = np.concatenate(datapoint_columns)
         mean = float(np.mean(all_datapoints))
         std = float(np.std(all_datapoints))
@@ -189,6 +191,8 @@ def get_bounds(dataframes: list[pl.DataFrame], pair_type: tuple[str, str], h: Hi
         pseudomax = min(mean + 3 * std, h.pseudomax or math.inf)
         xmin = min(pseudomin, float(np.min([ np.quantile(c, 0.02) for c in datapoint_columns ])))
         xmax = max(pseudomax, float(np.max([ np.quantile(c, 0.98) for c in datapoint_columns ])))
+        if xmin >= xmax - 0.0001:
+            return min(xmin, h.pseudomin or 0), max(xmax, h.pseudomax or 1)
         return xmin, xmax
 
 def get_histogram_ticksize(max, max_ticks = 8):
@@ -260,9 +264,11 @@ def make_histogram_group(dataframes: list[pl.DataFrame], axes: list[plt.Axes], t
             print(renamed_columns)
 
         print(bin_width, xmin, xmax, len(renamed_columns), len(renamed_columns.columns), renamed_columns.null_count().to_dicts()[0], title)
-        # binses = np.arange(xmin, xmax, bin_width)
+        binses = np.arange(xmin, xmax, bin_width)
         sns.histplot(data=renamed_columns.to_pandas(),
                     #  binwidth=bin_width if len(renamed_columns) > 2 else None,
+                    #  binwidth=bin_width,
+                     bins=binses,
                      kde=(hist_kde and len(dfs) >= 5),
                      legend=True,
                      ax=ax)
@@ -519,7 +525,7 @@ def create_pair_image(row: pl.DataFrame, output_dir: str, pair_type: tuple[str,s
     print(p.stderr.decode('utf-8'))
     raise ValueError(f"Could not find PyMOL generated image file")
 
-def reexport_df(df, columns):
+def reexport_df(df: pl.DataFrame, columns):
     df = df.with_columns(
         is_some_quality.alias("jirka_approves"),
         *[
@@ -527,6 +533,7 @@ def reexport_df(df, columns):
             for col in columns
         ]
     )
+    df = df.drop([col for col in df.columns if re.match(r"[DR]NA-(0-1[.]8|1[.]8-3[.]5)(-r\d+)?", col)])
     return df
 
 def main(argv):
