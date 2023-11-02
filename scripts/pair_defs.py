@@ -2,7 +2,7 @@ import itertools
 import os, math, re, csv, dataclasses
 from typing import Union
 
-@dataclasses.dataclass
+@dataclasses.dataclass(frozen=True)
 class PairType:
     type: str
     bases: tuple[str, str]
@@ -15,10 +15,10 @@ class PairType:
         # assert self.type[2] in "WSH"
         # assert self.bases[0] in "ACGU"
         # assert self.bases[1] in "ACGU"
-        if len(self.type) != 3 or len(self.bases) != 2 or self.type[0] not in "ct" or self.type[1] not in "WSH" or self.type[2] not in "WSH" or self.bases[0] not in "ACGU" or self.bases[1] not in "ACGU":
+        if len(self.type) != 3 or len(self.bases) != 2 or self.type[0] not in "ct" or self.type[1] not in "WSH" or self.type[2] not in "WSH" or (len(self.bases[0]) == 1 and self.bases[0] not in "ACGU") or (len(self.bases[1]) == 1 and self.bases[1] not in "ACGU"):
             raise ValueError(f"Invalid pair type: PairType({repr(self.type)}, {self.bases})")
     def __str__(self) -> str:
-        return f"{self.type}-{self.bases}"
+        return f"{self.type}-{'-'.join(self.bases)}"
     def __repr__(self) -> str:
         return f"PairType({repr(self.type)}, {self.bases})"
     def to_tuple(self) -> tuple[str, str]:
@@ -41,7 +41,7 @@ def read_pair_definitions(file = os.path.join(os.path.dirname(__file__), "H_bond
     def translate_pair_type(line):
         m = re.match(r"(cis |trans )([WSH])/([WSH])", line[0].strip(), re.IGNORECASE)
         if not m:
-            print("WARNING: Invalid pair type: " + line[0])
+            # print("WARNING: Invalid pair type: " + line[0])
             return None
         ct = { "c": "c", "t": "t", "cis":"c", "trans": "t" }[m.group(1)[0].strip().lower()]
         return f"{ct}{m.group(2).upper()}{m.group(3).upper()}"

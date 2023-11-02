@@ -26,6 +26,10 @@ class AltResidue:
 
     def transform_atom(self, a: Bio.PDB.Atom.DisorderedAtom) -> Any:
         if a.is_disordered():
+            # if self.alt == '':
+            #     return a.disordered_get('A')
+            if not a.disordered_has_id(self.alt):
+                raise KeyError(f"Atom {self.res.full_id}:{a.id} is disordered, but alt='{self.alt}' must be one of {a.disordered_get_id_list()}")
             return a.disordered_get(self.alt)
         else:
             return a
@@ -130,8 +134,8 @@ def get_residue_posinfo(res: AltResidue) -> ResiduePosition:
     # * fit a plane through the atoms
     # fitted_plane, sum_error, _, _ = np.linalg.lstsq(np.concatenate([atoms[:, :2], np.ones((len(planar_atoms), 1))], axis=1), atoms[:, 2], rcond=None)
     fitted_plane, sum_error, _, _ = np.linalg.lstsq(atoms[:, :2], -atoms[:, 2], rcond=None)
-    if sum_error > 1 * len(planar_atoms): # TODO: reasonable threshold?
-        raise ResideTransformError(f"Residue really doesn't seem planar: {res.res.full_id}, plane RMSE = {np.sqrt(sum_error / len(planar_atoms))}")
+    if sum_error > 0.5 * len(planar_atoms): # TODO: reasonable threshold?
+        raise ResideTransformError(f"Residue really doesn't seem planar: {res.res.full_id}, plane RMSE = {np.sqrt(sum_error / len(planar_atoms))}, planar atoms = {list(atom_names)}")
 
     # rotate to align the fitted_plane to x, y
     plane_basis = orthonormal_basis(np.array([
@@ -219,7 +223,7 @@ def hbond_stats(atom0: Bio.PDB.Atom.Atom, atom1: Bio.PDB.Atom.Atom, atom2: Bio.P
     assert np.linalg.norm(atom0.coord - atom1.coord) <= 1.6, f"atoms 0,1 not bonded: {atom0.full_id} {atom1.full_id} ({np.linalg.norm(atom0.coord - atom1.coord)} > 1.6, {atom0.coord} {atom1.coord})"
     assert np.linalg.norm(atom2.coord - atom3.coord) <= 1.6, f"atoms 2,3 not bonded: {atom2.full_id} {atom3.full_id} ({np.linalg.norm(atom0.coord - atom1.coord)} > 1.6, {atom0.coord} {atom1.coord})"
     assert np.linalg.norm(atom1.coord - atom2.coord) > 1.3, f"atoms too close for h-bond: {atom1.full_id} {atom2.full_id} ({np.linalg.norm(atom1.coord - atom2.coord)} < 2, {atom1.coord} {atom2.coord})"
-    assert np.linalg.norm(atom1.coord - atom2.coord) < 6, f"atoms too far for h-bond: ({np.linalg.norm(atom1.coord - atom2.coord)} > 6, {atom1.coord} {atom2.coord})"
+    assert np.linalg.norm(atom1.coord - atom2.coord) < 10, f"atoms too far for h-bond: ({np.linalg.norm(atom1.coord - atom2.coord)} > 6, {atom1.coord} {atom2.coord})"
     return HBondStats(
         length=get_distance(atom1, atom2),
         donor_angle=get_angle(atom0, atom1, atom2),
@@ -242,7 +246,7 @@ def get_hbond_stats(pair_type: str, r1: AltResidue, r2: AltResidue) -> Optional[
     hbonds = pdef.get_hbonds((pair_type, pair_name), throw=False)
     if len(hbonds) == 0:
         return None
-    print(pair_type, pair_name, hbonds)
+    # print(pair_type, pair_name, hbonds)
     def get_atom(n):
         if n[0] == 'A':
             return r1.get_atom(n[1:], None)
@@ -300,9 +304,10 @@ def to_csv_row(df: pl.DataFrame, i: int = 0, max_len = None) -> str:
     return ','.join(str(x) for x in row)
 
 
-def get_stats_for_csv(df_: pl.DataFrame, structure: Bio.PDB.Structure.Structure, pair_type: str):
+def get_stats_for_csv(df_: pl.DataFrame, structure: Bio.PDB.Structure.Structure, pair_type: Optional[str]):
     df = df_.with_row_count()
-    for (i, pdbid, model, chain1, res1, ins1, alt1, chain2, res2, ins2, alt2) in zip(df["row_nr"], df["pdbid"], df["model"], df["chain1"], df["nr1"], df["ins1"], df["alt1"], df["chain2"], df["nr2"], df["ins2"], df["alt2"]):
+    pair_type_col = df["type"] if pair_type is None else itertools.repeat(pair_type)
+    for (type, i, pdbid, model, chain1, res1, ins1, alt1, chain2, res2, ins2, alt2) in zip(pair_type_col, df["row_nr"], df["pdbid"], df["model"], df["chain1"], df["nr1"], df["ins1"], df["alt1"], df["chain2"], df["nr2"], df["ins2"], df["alt2"]):
         if (chain1, res1, ins1, alt1) == (chain2, res2, ins2, alt2):
             continue
         try:
@@ -322,9 +327,9 @@ def get_stats_for_csv(df_: pl.DataFrame, structure: Bio.PDB.Structure.Structure,
             except KeyError:
                 print(f"Could not find residue2 {chain2}.{str(res2)+ins2} in {pdbid}")
                 continue
-            hbonds = get_hbond_stats(pair_type, r1, r2)
-            # stats = None
-            stats = calc_pair_stats(r1, r2)
+            hbonds = get_hbond_stats(type, r1, r2)
+            stats = None
+            # stats = calc_pair_stats(r1, r2)
             if hbonds is not None:
                 yield i, hbonds, stats
         except AssertionError as e:
@@ -357,16 +362,21 @@ def remove_duplicate_pairs(df: pl.DataFrame):
             score += pl.col(col).is_null().cast(pl.Float64) * 10
 
     df = df.sort([score, "chain1", "nr1", "ins1", "alt1", "chain2", "nr2", "ins2", "alt2"])
-    df = df.unique(["pdbid", "model", "_tmp_pair_id"], keep="first", maintain_order=True)
+    df = df.unique(["type", "pdbid", "model", "_tmp_pair_id"], keep="first", maintain_order=True)
     df = df.sort("_tmp_row_nr")
     df = df.drop(["_tmp_pair_id", "_tmp_row_nr"])
     return df
 
-def export_stats_csv(pdbid, df: pl.DataFrame, add_metadata_columns: bool, pair_type: str) -> Tuple[str, pl.DataFrame, np.ndarray]:
-    bond_count = max(3, len(pair_defs.get_hbonds((pair_type, resname_map.get(df[0, "res1"], df[0, "res1"]) + "-" + resname_map.get(df[0, "res2"], df[0, "res2"])), throw=False)))
+def get_max_bond_count(df: pl.DataFrame):
+    pair_types = list(set(pair_defs.PairType(type, (resname_map.get(res1, res1), resname_map.get(res2, res2))) for type, res1, res2 in df[["type", "res1", "res2"]].unique().iter_rows()))
+    bond_count = max(len(pair_defs.get_hbonds(p, throw=False)) for p in pair_types)
+    print("Analyzing pair types:", *pair_types, "with bond count =", bond_count)
+    return max(3, bond_count)
+
+def export_stats_csv(pdbid, df: pl.DataFrame, add_metadata_columns: bool, pair_type: Optional[str], max_bond_count: int) -> Tuple[str, pl.DataFrame, np.ndarray]:
     bond_params = [ x.name for x in dataclasses.fields(HBondStats) ]
     valid = np.zeros(len(df), dtype=np.bool_)
-    columns: list[list[Optional[float]]] = [ [ None ] * len(df) for _ in range(bond_count * len(bond_params)) ]
+    columns: list[list[Optional[float]]] = [ [ None ] * len(df) for _ in range(max_bond_count * len(bond_params)) ]
     bogopropeller: list[Optional[float]] = [ None ] * len(df)
 
     structure = None
@@ -395,7 +405,7 @@ def export_stats_csv(pdbid, df: pl.DataFrame, add_metadata_columns: bool, pair_t
                 bogopropeller[i] = stats.bogopropeller
 
     result_cols = {
-        f"hb_{i}_{p}": pl.Series(c, dtype=pl.Float64) for i in range(bond_count) for p, c in zip(bond_params, columns[i * len(bond_params):])
+        f"hb_{i}_{p}": pl.Series(c, dtype=pl.Float64) for i in range(max_bond_count) for p, c in zip(bond_params, columns[i * len(bond_params):])
     }
     result_cols["bogopropeller"] = pl.Series(bogopropeller, dtype=pl.Float64)
     result_df = pl.DataFrame(result_cols)
@@ -414,17 +424,35 @@ def export_stats_csv(pdbid, df: pl.DataFrame, add_metadata_columns: bool, pair_t
 def df_hstack(columns: list[pl.DataFrame]) -> pl.DataFrame:
     return functools.reduce(pl.DataFrame.hstack, columns)
 
-def main(pool, args):
-    df = scan_pair_csvs(args.csvs).sort('pdbid', 'model', 'nr1', 'nr2').collect()
+def load_inputs(args) -> pl.DataFrame:
+    inputs: list[str] = args.inputs
+    if len(inputs) == 0:
+        raise ValueError("No input files specified")
+    
+    if inputs[0].endswith(".parquet") or inputs[0].endswith('.csv'):
+        print(f'Loading basepairing CSV files')
+        df = scan_pair_csvs(args.inputs).sort('pdbid', 'model', 'nr1', 'nr2').collect()
+    elif inputs[0].endswith("_basepair.txt"):
+        print(f"Loading {len(inputs)} basepair files")
+        import fr3d_parser
+        df = fr3d_parser.read_fr3d_files_df(args.inputs, filter=pl.col("symmetry_operation") == '').sort('pdbid', 'model', 'nr1', 'nr2')
+    else:
+        raise ValueError("Unknown input file type")
     if "type" not in df.columns:
+        if not args.pair_type:
+            raise ValueError("Input does not contain type column and --pair-type was not specified")
         df = df.select(pl.lit(args.pair_type).alias("type"), pl.col("*"))
+    return df
 
+def main(pool, args):
+    df = load_inputs(args)
+    max_bond_count = get_max_bond_count(df)
     groups = list(df.groupby(pl.col("pdbid")))
 
     processes = []
 
     processes.append([
-        pool.apply_async(export_stats_csv, args=[pdbid, group, args.metadata, args.pair_type])
+        pool.apply_async(export_stats_csv, args=[pdbid, group, args.metadata, args.pair_type, max_bond_count])
         for pdbid, group in groups
         # for chunk in group.iter_slices(n_rows=100)
     ])
@@ -471,7 +499,7 @@ if __name__ == "__main__":
             * pairing_type, shear, stretch, stagger, buckle, propeller, opening, shift, slide, rise, tilt, roll, twist
         """,
         formatter_class=argparse.RawTextHelpFormatter)
-    parser.add_argument("csvs", nargs="+")
+    parser.add_argument("inputs", nargs="+")
     parser.add_argument("--pdbcache", nargs="+", help="Directories to search for PDB files in order to avoid downloading. Last directory will be written to, if the structure is not found and has to be downloaded.")
     parser.add_argument("--output", "-o", required=True, help="Output CSV file name")
     parser.add_argument("--threads", type=int, default=1, help="Maximum parallelism - number of worker processes to spawn")
@@ -479,7 +507,7 @@ if __name__ == "__main__":
     parser.add_argument("--dssr-binary", type=str, help="If specified, DSSR --analyze will be invoked for each structure and its results stored as 'dssr_' prefixed columns")
     parser.add_argument("--filter", default=False, action="store_true", help="Filter out rows for which the values could not be calculated")
     parser.add_argument("--dedupe", default=False, action="store_true", help="Remove duplicate pairs, keep the one with shorter bonds or lower chain1,nr1")
-    parser.add_argument("--pair-type", required=True)
+    parser.add_argument("--pair-type", type=str, required=False)
     args = parser.parse_args()
 
     for x in args.pdbcache:
