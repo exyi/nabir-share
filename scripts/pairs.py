@@ -236,12 +236,13 @@ resname_map = {
 }
 
 def get_hbond_stats(pair_type: str, r1: AltResidue, r2: AltResidue) -> Optional[List[Optional[HBondStats]]]:
-    if r1.resname > r2.resname:
-        r1, r2 = r2, r1
+    # if r1.resname > r2.resname:
+    #     r1, r2 = r2, r1
     pair_name = resname_map.get(r1.resname, r1.resname) + '-' + resname_map.get(r2.resname, r2.resname)
     hbonds = pdef.get_hbonds((pair_type, pair_name), throw=False)
     if len(hbonds) == 0:
         return None
+    print(pair_type, pair_name, hbonds)
     def get_atom(n):
         if n[0] == 'A':
             return r1.get_atom(n[1:], None)
@@ -362,7 +363,7 @@ def remove_duplicate_pairs(df: pl.DataFrame):
     return df
 
 def export_stats_csv(pdbid, df: pl.DataFrame, add_metadata_columns: bool, pair_type: str) -> Tuple[str, pl.DataFrame, np.ndarray]:
-    bond_count = 3
+    bond_count = max(3, len(pair_defs.get_hbonds((pair_type, resname_map.get(df[0, "res1"], df[0, "res1"]) + "-" + resname_map.get(df[0, "res2"], df[0, "res2"])), throw=False)))
     bond_params = [ x.name for x in dataclasses.fields(HBondStats) ]
     valid = np.zeros(len(df), dtype=np.bool_)
     columns: list[list[Optional[float]]] = [ [ None ] * len(df) for _ in range(bond_count * len(bond_params)) ]

@@ -25,11 +25,11 @@ class PairType:
         return (self.type, self.bases[0] + "-" + self.bases[1])
     @staticmethod
     def from_tuple(t: tuple[str, str]) -> "PairType":
-        return PairType(t[0], tuple(t[1].split("-")))
+        return PairType(t[0], tuple(t[1].split("-"))) # type: ignore
     
     @staticmethod
     def parse(s: str) -> "PairType":
-        TODO
+        raise NotImplementedError("PairType.parse is not implemented")
 
 def read_pair_definitions(file = os.path.join(os.path.dirname(__file__), "H_bonding_Atoms_from_Isostericity_Table.csv")) -> dict[tuple[str, str], list[tuple[str, str, str, str]]]:
     with open(file, "r") as f:
@@ -264,4 +264,15 @@ def get_hbonds(pair_type: Union[tuple[str, str], PairType], throw=True) -> list[
         raise KeyError(f"Pair type {pair_type} not found in hbonding_atoms")
     else:
         return []
+
+_resname_map = {
+    'DT': 'U',
+    'DC': 'C',
+    'DA': 'A',
+    'DG': 'G',
+    'DU': 'U',
+    'T': 'U',
+}
+def map_resname(resname: str) -> str:
+    return _resname_map.get(resname.upper(), resname)
 

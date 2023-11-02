@@ -44,11 +44,12 @@ if __name__ == "__main__":
 
     ps = args.pairs
     if ps == ["all"]:
-        import pairs
-        ps = [ f"{b}-{t}" for t, b in pairs.hbonding_atoms.keys() ]
+        import pair_defs
+        ps = [ f"{b}-{t}" for t, b in pair_defs.hbonding_atoms.keys() ]
     our_threads = max(1, min(len(ps) // 2, args.threads // 2, 4))
     sub_threads = round(args.threads / our_threads)
     semaphore = threading.Semaphore(our_threads)
+    os.makedirs(args.output_dir, exist_ok=True)
 
     def thread_main(pair: str):
         semaphore.acquire()
