@@ -1,4 +1,5 @@
 import dataclasses
+from typing import Optional
 import polars as pl
 import numpy as np
 import os, re, math
@@ -10,8 +11,8 @@ class NucleotideID:
     chain: str
     base: str
     id: int
-    ins: str
-    alt: str
+    ins: Optional[str]
+    alt: Optional[str]
 def read_id_list(file) -> pl.DataFrame:
     results = []
     with open(file) as f:
@@ -24,10 +25,10 @@ def read_id_list(file) -> pl.DataFrame:
                 chain=m.group("chain"),
                 base=m.group("base"),
                 id=int(m.group("id")),
-                ins=m.group("ins") or ' ',
-                alt=m.group("alt") or '?',
+                ins=m.group("ins") or None,
+                alt=m.group("alt") or None,
             ))
-    return pl.DataFrame(results)
+    return pl.DataFrame(results, schema={ "pdbid": pl.Utf8, "chain": pl.Utf8, "base": pl.Utf8, "id": pl.Int64, "ins": pl.Utf8, "alt": pl.Utf8 })
 
 def read_id_lists(directory) -> dict[str, pl.DataFrame]:
     return {
@@ -38,6 +39,7 @@ def read_id_lists(directory) -> dict[str, pl.DataFrame]:
     }
 
 def add_res_filter_columns(df, residue_lists: dict[str, pl.DataFrame]):
+    print(next(iter(residue_lists.values())))
     rcols = { f"{name}-r{resix}":
         df.join(reslist.with_columns(pl.lit(True).alias("__tmp")), left_on=["pdbid", f"chain{resix}", f"res{resix}", f"nr{resix}", f"alt{resix}", f"ins{resix}"], right_on=["pdbid", "chain", "base", "id", "alt", "ins"], how="left")
             .get_column("__tmp")

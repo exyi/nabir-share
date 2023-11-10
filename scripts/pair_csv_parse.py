@@ -65,3 +65,14 @@ def scan_pair_csvs(files: list[str], header=None):
         df = df.select([ pl.col(f'column_{1+i}').alias(n) for i, (n, t) in enumerate(csv_schema) ])
     # df = df.filter(pl.col("tripletx").eq("x") & pl.col("triplety").eq("y") & pl.col("tripletz").eq("z") & pl.col("pdbsymstr").eq("1_555"))
     return df
+
+def normalize_columns(df: pl.DataFrame) -> pl.DataFrame:
+    def norm_ins(col: pl.Expr):
+        return pl.when((col == '?') | (col == ' ') | (col == '')).then(pl.lit(None, dtype=pl.Utf8)).otherwise(col)
+    return df.with_columns(
+        pl.col("pdbid").str.to_lowercase().alias("pdbid"),
+        norm_ins(pl.col("ins1")).alias("ins1"),
+        norm_ins(pl.col("ins2")).alias("ins2"),
+        norm_ins(pl.col("alt1")).alias("alt1"),
+        norm_ins(pl.col("alt2")).alias("alt2"),
+    )

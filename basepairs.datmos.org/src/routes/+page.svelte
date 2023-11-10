@@ -18,6 +18,7 @@
     'A-G-tHS',
     'A-G-tWS',
     // 'G-G-cWH',
+    'A-G-tSS',
     'A-A-tHH',
     'A-A-tWW'
   ]) {

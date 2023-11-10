@@ -1,6 +1,6 @@
 import itertools
 import subprocess
-from typing import Any, Optional, Union
+from typing import Any, Generator, Optional, Union
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 import matplotlib.patheffects
@@ -8,6 +8,7 @@ import polars as pl, numpy as np, numpy.typing as npt
 import os, sys, math, re
 import pairs
 import pair_defs
+import pair_csv_parse
 import seaborn as sns
 import scipy.stats
 import matplotlib.pyplot as plt
@@ -54,6 +55,9 @@ class HistogramDef:
 
     def copy(self, **kwargs):
         return dataclasses.replace(self, **kwargs)
+    def drop_columns(self, cols):
+        ix = [ i for i, c in enumerate(self.columns) if c not in cols ]
+        return self.select_columns(ix)
     def select_columns(self, ix: Union[int, list[int]]):
         if isinstance(ix, int):
             ix = [ix]
@@ -67,7 +71,7 @@ histogram_defs = [
     HistogramDef(
         "H-bond length",
         "Distance (Å)",
-        ["hb_0_length", "hb_1_length", "hb_2_length"],
+        ["hb_0_length", "hb_1_length", "hb_2_length", "hb_3_length", "hb_4_length"],
         # bin_width=0.05,
         pseudomin=2,
         pseudomax=6
@@ -75,7 +79,7 @@ histogram_defs = [
     HistogramDef(
         "H-bond donor angle",
         "Angle (°)",
-        ["hb_0_donor_angle", "hb_1_donor_angle", "hb_2_donor_angle"],
+        ["hb_0_donor_angle", "hb_1_donor_angle", "hb_2_donor_angle", "hb_3_donor_angle", "hb_4_donor_angle"],
         # bin_width=2,
         pseudomin=0,
         pseudomax=360
@@ -83,7 +87,7 @@ histogram_defs = [
     HistogramDef(
         "H-bond acceptor angle",
         "Angle (°)",
-        ["hb_0_acceptor_angle", "hb_1_acceptor_angle", "hb_2_acceptor_angle"],
+        ["hb_0_acceptor_angle", "hb_1_acceptor_angle", "hb_2_acceptor_angle", "hb_3_acceptor_angle", "hb_4_acceptor_angle"],
         pseudomin=0,
         pseudomax=360
     )
@@ -207,6 +211,20 @@ def get_histogram_ticksize(max, max_ticks = 8):
         if ticksize * max_ticks > max:
             return ticksize
 
+def get_hidden_columns(df: pl.DataFrame, pair_type: tuple[str, str]):
+    pt_hbonds = pair_defs.get_hbonds(pair_type, throw=True)
+    hide_columns = [ i for i, hb in enumerate(pt_hbonds) if pair_defs.is_bond_hidden(pair_type, hb) ]
+    # if len(hide_columns) == len(pt_hbonds):
+    #     # all filtered out? fuckit
+    #     visible_columns = h.columns
+
+    columns_to_drop = df.limit(1).select(*(
+        pl.col(f"^hb_{i}_.*$")
+        for i in hide_columns
+    )).columns
+    print(f"{pair_type}: {hide_columns=} {columns_to_drop} {pt_hbonds}")
+    return set(columns_to_drop)
+
 def make_histogram_group(dataframes: list[pl.DataFrame], axes: list[plt.Axes], titles: list[str], pair_type: tuple[str, str], h: HistogramDef):
     xmin, xmax = get_bounds(dataframes, pair_type, h)
 
@@ -317,6 +335,9 @@ def make_subplots(sp = subplots):
 
 def make_bond_pages(df: pl.DataFrame, outdir: str, pair_type: tuple[str, str], hs: list[HistogramDef], images = None, highlights: Optional[list[Optional[pl.DataFrame]]] = None, title_suffix = ""):
 
+    hidden_bonds = get_hidden_columns(df, pair_type)
+    if len(hidden_bonds) > 0:
+        hs = [ h.drop_columns(hidden_bonds) for h in hs ]
     dataframes = [ df.filter(resolution_filter) for _, resolution_filter in resolutions ]
     pages: list[tuple[Figure, list[Axes]]] = [ make_subplots(subplots) for _ in resolutions ]
     titles = [ f"{format_pair_type(pair_type, is_dna=('DNA' in resolution_lbl))} {resolution_lbl}{title_suffix}" for (resolution_lbl, _), df in zip(resolutions, dataframes) ]
@@ -359,7 +380,7 @@ def make_bond_pages(df: pl.DataFrame, outdir: str, pair_type: tuple[str, str], h
             if highlight is None or len(highlight) == 0:
                 continue
 
-            for ax, h in zip(p[1][1:], histogram_defs):
+            for ax, h in zip(p[1][1:], hs):
                 for col_i, col in enumerate(h.columns):
                     if col in highlight.columns and highlight[0, col] is not None:
                         ax.plot([ float(highlight[0, col]) ], [ 0 ], marker="o", color=f"C{col_i}")
@@ -417,6 +438,7 @@ def save(fig: Figure, title, outdir):
 
 def load_pair_table(file: str):
     df = pl.read_parquet(file) if file.endswith(".parquet") else pl.read_csv(file)
+    df = pair_csv_parse.normalize_columns(df)
 
     df = df.with_columns(
         pl.col("^hb_\\d+_donor_angle$") / np.pi * 180,
@@ -430,7 +452,7 @@ def infer_pair_type(filename: str):
     elif m := re.match(r"^([AGCUT]-[AGCUT])-([ct][HSW]{2})\b", filename):
         return m.group(2), m.group(1)
     else:
-        raise ValueError(f"Unknown pair type: {filename}")
+        return None
     
 def tranpose_dict(d, columns):
     return {
@@ -439,13 +461,20 @@ def tranpose_dict(d, columns):
         for k, v in d.items()
     }
 
+def sample_for_kde(x: np.ndarray, threshold = 5_000):
+    if len(x) <= threshold:
+        return x
+    else:
+        return np.random.choice(x, threshold, replace=False)
+
+
 def calculate_stats(df: pl.DataFrame, pair_type):
     if len(df) == 0:
         raise ValueError("No data")
     columns = df.select(pl.col("^hb_\\d+_(length|donor_angle|acceptor_angle)$")).columns
-    print(f"{columns=}")
+    # print(f"{columns=}")
     cdata = [ df[c].drop_nulls().to_numpy() for c in columns ]
-    kdes = [ scipy.stats.gaussian_kde(c) if len(c) > 5 else None for c in cdata ]
+    kdes = [ scipy.stats.gaussian_kde(sample_for_kde(c)) if len(c) > 5 else None for c in cdata ]
     kde_modes = [ None if kde is None else c[np.argmax(kde.pdf(c))] for kde, c in zip(kdes, cdata) ]
     medians = [ np.median(c) if len(c) > 0 else None for c in cdata ]
     means = [ np.mean(c) if len(c) > 0 else None for c in cdata ]
@@ -536,13 +565,95 @@ def reexport_df(df: pl.DataFrame, columns):
     df = df.drop([col for col in df.columns if re.match(r"[DR]NA-(0-1[.]8|1[.]8-3[.]5)(-r\d+)?", col)])
     return df
 
+def enumerate_pair_types(files: list[str]) -> Generator[tuple[tuple[str, str], pl.DataFrame], None, None]:
+    for file in files:
+        pair_type = infer_pair_type(os.path.basename(file))
+        if pair_type is not None:
+            yield pair_type, load_pair_table(file)
+        else:
+            df = load_pair_table(file)
+            assert "type" in df.columns, f"{file} does not contain type column"
+            df = df.with_columns(
+                (pl.col("res1").map_dict(pairs.resname_map, default=pl.col("res1")) + "-" +
+                 pl.col("res2").map_dict(pairs.resname_map, default=pl.col("res2"))
+                ).alias("pair_bases")
+            )
+            groups = df.group_by("type", "pair_bases")
+            all_pairs_types = set(pair_defs.PairType.from_tuple(pt) for pt, _ in groups)
+            for k, gdf in groups:
+                k: Any
+                pair_type = pair_defs.PairType.from_tuple(k)
+                if len(set(pair_type.bases).difference(["A", "C", "G", "U", "T"])) > 0:
+                    print(f"skipping weird bases: {pair_type}, count = {len(gdf)}")
+                    continue
+                if pair_type.is_swappable() and not pair_type.is_preferred_orientation() and pair_type.swap() in all_pairs_types:
+                    print(f"skipping {pair_type} because it is redundant")
+                    continue
+                yield pair_type.to_tuple(), gdf
+
+def save_statistics(all_statistics, output_dir):
+    df = pl.DataFrame(all_statistics)
+    df.write_csv(os.path.join(output_dir, "statistics.csv"))
+    bond_count = 10
+    pt_family_dict = { pt: ix + 1 for ix, pt in enumerate(pair_defs.pair_types) }
+    df2 = pl.concat([
+        df.select(
+            pl.col("pair_type").map_dict(pt_family_dict).alias("Family"),
+            pl.col("pair_type").alias("LW pair type"),
+            pl.col("pair").alias("Pair bases"),
+            pl.col("pair").str.split("-").apply(lambda x: x[0]).alias("Base 1"),
+            pl.col("pair").str.split("-").apply(lambda x: x[1]).alias("Base 2"),
+            pl.col("count").alias("Count"),
+            pl.col("resolution_cutoff").alias("Resolution cutoff"),
+            pl.lit(i).alias("hb_ix"),
+            pl.col(f"hb_{i}_label").alias("H-bond Atoms"),
+            pl.col(f"hb_{i}_length_mode").alias("Mode Distance"),
+            pl.col(f"hb_{i}_length_median").alias("Median Distance"),
+            pl.col(f"hb_{i}_length_mean").alias("Mean Distance"),
+            pl.col(f"hb_{i}_length_std").alias("Std Distance"),
+            pl.col(f"hb_{i}_donor_angle_mode").alias("Mode Donor Angle"),
+            pl.col(f"hb_{i}_donor_angle_median").alias("Median Donor Angle"),
+            pl.col(f"hb_{i}_donor_angle_mean").alias("Mean Donor Angle"),
+            pl.col(f"hb_{i}_donor_angle_std").alias("Std Donor Angle"),
+            pl.col(f"hb_{i}_acceptor_angle_mode").alias("Mode Acceptor Angle"),
+            pl.col(f"hb_{i}_acceptor_angle_median").alias("Median Acceptor Angle"),
+            pl.col(f"hb_{i}_acceptor_angle_mean").alias("Mean Acceptor Angle"),
+            pl.col(f"hb_{i}_acceptor_angle_std").alias("Std Acceptor Angle"),
+        )
+        for i in range(bond_count)
+        if f"hb_{i}_label" in df.columns
+    ])
+    df2 = df2.filter(pl.col("Mean Distance").is_not_null())
+    df2 = df2.with_columns(
+        pl.Series(
+            "hidden",
+            [
+                pair_defs.is_bond_hidden((pt, b), pair_defs.get_hbonds((pt, b))[ix])
+                for pt, b, ix in zip(df2["LW pair type"], df2["Pair bases"], df2["hb_ix"])
+            ]
+        )
+    )
+    df2 = df2.sort([ "Family", "Base 1", "Base 2", "hb_ix" ])
+    print("Wrote", os.path.join(output_dir, "statistics.csv"), "and", os.path.join(output_dir, "statistics2.csv"))
+    df2.write_csv(os.path.join(output_dir, "statistics2.csv"))
+
+    import xlsxwriter
+    xlsx = os.path.join(output_dir, "statistics2.xlsx")
+    with xlsxwriter.Workbook(xlsx) as workbook:
+
+        df2.write_excel(workbook, worksheet="All", dtype_formats={ pl.Float64: "0.00" }, hidden_columns=["hb_ix", "Pair bases"])
+        resolutions = df2["Resolution cutoff"].unique().to_list()
+        for r in resolutions:
+            df2.filter(pl.col("Resolution cutoff") == r)\
+                .write_excel(workbook, worksheet=f"{r}", dtype_formats={ pl.Float64: "0.00" }, hidden_columns=["hb_ix", "Pair bases", "Resolution cutoff"])
+
+
 def main(argv):
     import argparse
     parser = argparse.ArgumentParser(description="Generate histogram plots")
     parser.add_argument("input_file", help="Input file", nargs="+")
     parser.add_argument("--residue-directory", required=True)
     parser.add_argument("--output-dir", "-o", required=True, help="Output directory")
-    parser.add_argument("--pairing-type", default=None, type=str, help="For example tWS-A-G")
     args = parser.parse_args(argv)
 
     residue_lists = residue_filter.read_id_lists(args.residue_directory)
@@ -551,19 +662,23 @@ def main(argv):
 
     all_statistics = []
 
-    for file in args.input_file:
-        pair_type = infer_pair_type(args.pairing_type or os.path.basename(file))
-        df = load_pair_table(file)
+    for pair_type, df in enumerate_pair_types(args.input_file):
         df = residue_filter.add_res_filter_columns(df, residue_lists)
-        print(file)
-        print(df.select(pl.col("^hb_\\d+_length$")).describe())
+        print(f"{pair_type}: total count = {len(df)}")
+        print(df.select(pl.col("^hb_\\d+_length$"), pl.col("resolution"), is_some_quality.alias("some_quality")).describe())
 
         dff, stat_columns = None, None
         nicest_bps: Optional[list[int]] = None
         statistics = []
-        for resolution_cutoff in [1.8, 2.2, 3.0]:
-            dff = df.filter(is_some_quality)\
-                    .filter(pl.col("resolution") <= resolution_cutoff)\
+        for resolution_label, resolution_filter in {
+            # "unfiltered": True,
+            "1.8 Å": (pl.col("resolution") <= 1.8) & is_some_quality,
+            "2.5 Å": (pl.col("resolution") <= 2.5) & is_some_quality,
+            "RNA 3.0 Å": (pl.col("resolution") <= 3.0) & is_some_quality & is_rna,
+            "DNA 3.0": (pl.col("resolution") <= 3.0) & is_some_quality & is_dna,
+            "3.0 Å": (pl.col("resolution") <= 3.0) & is_some_quality,
+        }.items():
+            dff = df.filter(resolution_filter)\
                     .filter(pl.any_horizontal(pl.col("^hb_\\d+_length$").is_not_null()))
             if len(dff) == 0:
                 continue
@@ -571,14 +686,14 @@ def main(argv):
             statistics.append({
                 "pair": pair_type[1],
                 "pair_type": pair_type[0],
-                "resolution_cutoff": resolution_cutoff,
+                "resolution_cutoff": resolution_label,
                 **stats,
             })
             if "nicest_bp_indices" in statistics[-1]:
                 nicest_bps = statistics[-1]["nicest_bp_indices"]
                 del statistics[-1]["nicest_bp_indices"]
         if dff is None or stat_columns is None:
-            print(f"WARNING: No data in {file}")
+            print(f"WARNING: No data in {pair_type}")
             continue
 
         print(nicest_bps, len(dff) if dff is not None else 0)
@@ -599,9 +714,9 @@ def main(argv):
         #     for f in make_bond_pages(df, args.output_dir, pair_type, [ h.select_columns(column) for h in histogram_defs], images=dna_rna_images, highlights=dna_rna_highlights, title_suffix=f" #{column}")
         # ]
         all_statistics.extend(statistics)
-        reexport_df(df, stat_columns).write_parquet(os.path.join(args.output_dir, f"{pair_type[1]}-{pair_type[0]}.parquet"))
+        # reexport_df(df, stat_columns).write_parquet(os.path.join(args.output_dir, f"{pair_type[1]}-{pair_type[0]}.parquet"))
         results.append({
-            "input_file": file,
+            # "input_file": file,
             "pair_type": pair_type,
             "count": len(df),
             "score": len(df.filter(is_high_quality)) + len(df.filter(is_med_quality)) / 100,
@@ -620,9 +735,7 @@ def main(argv):
 
     subprocess.run(["gs", "-dBATCH", "-dNOPAUSE", "-q", "-sDEVICE=pdfwrite", "-dPDFSETTINGS=/prepress", f"-sOutputFile={os.path.join(args.output_dir, 'hbonds-merged.pdf')}", *output_files])
     print("Wrote", os.path.join(args.output_dir, 'hbonds-merged.pdf'))
-    statistics_df = pl.DataFrame(all_statistics)
-    statistics_df.write_csv(os.path.join(args.output_dir, "statistics.csv"))
-    print("Wrote", os.path.join(args.output_dir, "statistics.csv"))
+    save_statistics(all_statistics, args.output_dir)
 
     with open(os.path.join(args.output_dir, "output.json"), "w") as f:
         import json
