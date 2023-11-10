@@ -323,15 +323,24 @@ def make_images(df: pl.DataFrame, output_dir: str, bpargs: BPArgs):
     # if cmd.is_gui_thread():
         # cmd.quit()
 
-def process_init(niceness):
+def process_init(niceness, affinity):
+    import multiprocessing
     if niceness:
         x = os.nice(0)
         os.nice(niceness - x)
+    if affinity:
+        os.sched_setaffinity(0, affinity)
 
-def make_images_mp(df: pl.DataFrame, output_dir: str, threads: int, niceness: Optional[int], bpargs: BPArgs):
+def make_images_mp(df: pl.DataFrame, output_dir: str, threads: int, affinity: Optional[list[int]], niceness: Optional[int], bpargs: BPArgs):
+    # if affinity is None:
+    #     affinities = [None] * threads
+    # elif len(affinity) == threads:
+    #     affinities = [ [a] for a in affinity ]
+    # else:
+    #     affinities = [affinity] * threads
     import multiprocessing
     multiprocessing.set_start_method("spawn")
-    with multiprocessing.Pool(threads, initializer=process_init, initargs=(niceness,)) as pool:
+    with multiprocessing.Pool(threads, initializer=process_init, initargs=(niceness,affinity)) as pool:
         processes = [
             pool.apply_async(process_group, (pdbid, group, output_dir, bpargs))
 
@@ -345,7 +354,8 @@ def main(argv):
     parser = argparse.ArgumentParser(description="Generate contact images")
     parser.add_argument("input", help="Input CSV file", nargs="+")
     parser.add_argument("--output-dir", "-o", required=True, help="Output directory")
-    parser.add_argument("--threads", "-t", type=int, default=1, help="Number of threads to use")
+    parser.add_argument("--threads", "-t", type=int, default=None, help="Number of threads to use")
+    parser.add_argument("--cpu_affinity", type=int, nargs="*", default=None, help="Which CPUs to use (list of integers, indexed from 0)")
     parser.add_argument("--niceness", type=int, default=None, help="Run the process with the specified niceness (don't change by default)")
     parser.add_argument("--standard-orientation", type=eval, default=False, help="When set to true, orient the base pair such that the first nucleotide is always left and the N1/N9 - C1' is along the y-axis (N is above C)")
     parser.add_argument("--label-atoms", type=str, nargs="*", default=[], help="Atom names to label")
@@ -357,11 +367,17 @@ def main(argv):
     import pair_csv_parse
     df = pair_csv_parse.scan_pair_csvs(args.input).collect()
     bpargs = BPArgs(args.standard_orientation, args.movie, args.incremental, args.skip_bad)
-    if args.threads == 1:
-        process_init(args.niceness)
+    threads = args.threads
+    if threads is None and args.cpu_affinity is not None:
+        threads = len(args.cpu_affinity)
+    if threads is None:
+        threads = 1
+
+    if threads == 1:
+        process_init(args.niceness, args.cpu_affinity)
         make_images(df, args.output_dir, bpargs)
     else:
-        make_images_mp(df, args.output_dir, args.threads, args.niceness, bpargs)
+        make_images_mp(df, args.output_dir, args.threads, args.cpu_affinity, args.niceness, bpargs)
 
 if __name__ == "__main__" or __name__ == "pymol":
     main(sys.argv[1:])
