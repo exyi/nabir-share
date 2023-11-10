@@ -171,9 +171,11 @@ def orient_pair(pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2,
     # cmd.hide("labels", "pair_contacts")
     if find_water:
         find_and_select_water("%rightnt", "%pair and not %rightnt")
-        cmd.distance("pair_w_contacts", "%pair", "nwaters", mode=2)
+        cmd.distance("pair_w_contacts", "%pair", "%nwaters", mode=2)
         cmd.hide("labels", "pair_w_contacts")
-        cmd.show("nb_spheres", "nwaters")
+        cmd.show("nb_spheres", "%nwaters")
+        cmd.color("0xff0000", "%nwaters")
+        # cmd.set("nb_spheres_size", 0.3, "nwaters")
     cmd.util.cba("grey", f"%pair")
     normal_atoms_selection = "not (name C2' or name C3' or name C4' or name C5' or name O2' or name O3' or name O4' or name O5' or name P or name OP1 or name OP2)"
     highlight_bonds("%rightnt", "%pair and not %rightnt", hbonds, label_atoms)
@@ -194,10 +196,13 @@ def orient_pair(pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2,
     cmd.set("label_font_id", 7)
     if grey_context:
         cmd.show("sticks", f"%{pdbid} and not %pair")
-        cmd.set_bond("stick_radius", 0.07, f"%{pdbid} and not %pair")
-        cmd.set_bond("stick_transparency", 0.4, f"%{pdbid} and not %pair")
+        cmd.set_bond("stick_radius", 0.07, f"%{pdbid} and not %pair and not resname HOH")
+        cmd.set_bond("stick_transparency", 0.4, f"%{pdbid} and not %pair and not resname HOH")
         cmd.clip("slab", 12, "%pair")
-        cmd.color("0xeeeeee", f"%{pdbid} and not %pair")
+        cmd.color("0xeeeeee", f"%{pdbid} and not %pair and not resname HOH")
+
+    cmd.set_bond("stick_radius", 0.25, "%pair")
+    cmd.set_bond("stick_transparency", 0.0, "%pair")
 
 @dataclass
 class BPArgs:
@@ -205,6 +210,7 @@ class BPArgs:
     standard_orientation: bool
     movie: int
     incremental: bool
+    skip_bad: bool
 
 def make_pair_image(output_file, pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2, bpargs: BPArgs, hbonds: Optional[list[tuple[str, str, str, str]]]):
     print(bpargs)
@@ -229,6 +235,7 @@ def make_pair_rot_movie(output_file, pdbid, chain1, nt1, ins1, alt1, chain2, nt2
         cmd.bg_color("white")
         cmd.set("ray_shadow", 0)
         cmd.set("antialias", 1)
+        # cmd.set("max_threads", 1!)
 
         use_ffmpeg_directly = True
         if output_file.endswith(".dir"):
@@ -265,6 +272,17 @@ def make_pair_rot_movie(output_file, pdbid, chain1, nt1, ins1, alt1, chain2, nt2
 
 
 def process_group(pdbid, group: pl.DataFrame, output_dir: str, bpargs: BPArgs):
+    if bpargs.skip_bad:
+        orig_len = len(group)
+        bond_length_cols = [pl.col(f"hb_{i}_length") for i in range(5) if f"hb_{i}_length" in group.columns]
+        if len(bond_length_cols):
+            group = group.filter(
+                pl.any_horizontal(*[c.is_not_null() & (c < 5) for c in bond_length_cols])
+            )
+        print(f"skipping {orig_len - len(group)}/{orig_len} bad pairs in {pdbid}")
+
+    if len(group) == 0:
+        return
     pdbid = str(pdbid)
     loaded = False
     def load_if_needed() -> None:
@@ -332,11 +350,12 @@ def main(argv):
     parser.add_argument("--label-atoms", type=str, nargs="*", default=[], help="Atom names to label")
     parser.add_argument("--movie", type=int, default=0, help="If not zero, produce a rotating animation of the base pair")
     parser.add_argument("--incremental", type=bool, default=False, help="Generate the image/video only if it does not exist yet")
+    parser.add_argument("--skip-bad", type=bool, default=False, help="Skip basepairs with bad or missing parameters")
     args = parser.parse_args(argv)
 
     import pair_csv_parse
     df = pair_csv_parse.scan_pair_csvs(args.input).collect()
-    bpargs = BPArgs(args.standard_orientation, args.movie, args.incremental)
+    bpargs = BPArgs(args.standard_orientation, args.movie, args.incremental, args.skip_bad)
     if args.threads == 1:
         process_init(args.niceness)
         make_images(df, args.output_dir, bpargs)
