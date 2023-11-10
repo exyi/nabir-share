@@ -344,11 +344,13 @@ def get_stats_for_csv(df_: pl.DataFrame, structure: Bio.PDB.Structure.Structure,
             continue
 
 def remove_duplicate_pairs(df: pl.DataFrame):
-    def pair_id(chain1, res1, ins1, alt1, chain2, res2, ins2, alt2):
-        pair = [ (chain1, res1, ins1, alt1), (chain2, res2, ins2, alt2) ]
+    def pair_id(type, res1, res2, chain1, nr1, ins1, alt1, chain2, nr2, ins2, alt2):
+        pair_defs.is_preferred_pair_type_orientation
+        pair = [ (chain1, nr1, ins1, alt1), (chain2, nr2, ins2, alt2) ]
         pair.sort()
-        return "|".join(tuple(str(x) for x in (pair[0] + pair[1])))
-    pair_ids = [ pair_id(chain1, res1, ins1, alt1, chain2, res2, ins2, alt2) for chain1, res1, ins1, alt1, chain2, res2, ins2, alt2 in zip(df["chain1"], df["nr1"], df["ins1"], df["alt1"], df["chain2"], df["nr2"], df["ins2"], df["alt2"]) ]
+        bases = resname_map.get(res1, res1) + "-" + resname_map.get(res2, res2)
+        return type + "-" + bases + "|".join(tuple(str(x) for x in (pair[0] + pair[1])))
+    pair_ids = [ pair_id(type, res1, res2, chain1, nr1, ins1, alt1, chain2, nr2, ins2, alt2) for type, res1, res2, chain1, nr1, ins1, alt1, chain2, nr2, ins2, alt2 in zip(df["type"], df["res1"], df["res2"], df["chain1"], df["nr1"], df["ins1"], df["alt1"], df["chain2"], df["nr2"], df["ins2"], df["alt2"]) ]
     df = df.with_columns(
         pl.Series(pair_ids, dtype=pl.Utf8).alias("_tmp_pair_id")
     ).with_row_count("_tmp_row_nr")
@@ -357,9 +359,9 @@ def remove_duplicate_pairs(df: pl.DataFrame):
         if col.startswith("hb_") and col.endswith("_length"):
             score += pl.col(col).fill_null(100)
         if col.startswith("dssr_"):
-            score += pl.col(col).is_null().cast(pl.Float64) * 3
+            score += pl.col(col).is_null().cast(pl.Float64) * 0.03
         if col == "bogopropeller":
-            score += pl.col(col).is_null().cast(pl.Float64) * 10
+            score += pl.col(col).is_null().cast(pl.Float64)
 
     df = df.sort([score, "chain1", "nr1", "ins1", "alt1", "chain2", "nr2", "ins2", "alt2"])
     df = df.unique(["type", "pdbid", "model", "_tmp_pair_id"], keep="first", maintain_order=True)

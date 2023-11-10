@@ -23,6 +23,15 @@ class PairType:
         return f"PairType({repr(self.type)}, {self.bases})"
     def to_tuple(self) -> tuple[str, str]:
         return (self.type, self.bases[0] + "-" + self.bases[1])
+    def swap(self) -> 'PairType':
+        return PairType(self.type[0] + self.type[2] + self.type[1], (self.bases[1], self.bases[0]))
+    def is_preferred_orientation(self) -> bool:
+        return is_preferred_pair_type_orientation(self.to_tuple())
+    def is_swappable(self):
+        if self.to_tuple() in hbonding_atoms and self.swap().to_tuple() in hbonding_atoms:
+            # both definitions exist,
+            return False
+        return True
     @staticmethod
     def from_tuple(t: tuple[str, str]) -> "PairType":
         return PairType(t[0], tuple(t[1].split("-"))) # type: ignore
@@ -85,7 +94,7 @@ def swap_pair_type(pair_type: tuple[str, str]) -> tuple[str, str]:
     assert t[0] in "ct"
     return (t[0] + t[2] + t[1], bases[1] + "-" + bases[0])
 
-def is_canonical_pair_type(pair_type: tuple[str, str]) -> bool:
+def is_preferred_pair_type_orientation(pair_type: tuple[str, str]) -> bool:
     other = swap_pair_type(pair_type)
     if other == pair_type:
         return True
@@ -249,6 +258,11 @@ my_hbonding_atoms: dict[tuple[str, str], list[tuple[str, str, str, str]]] = {
 
 # hbonding_atoms = my_hbonding_atoms
 hbonding_atoms = read_pair_definitions()
+
+
+def is_bond_hidden(pair_type, b) -> bool:
+    return b[1][1] == 'C' or b[2][1] == 'C' or \
+        b[1].endswith("'") or b[2].endswith("'")
 
 def get_hbonds(pair_type: Union[tuple[str, str], PairType], throw=True) -> list[tuple[str, str, str, str]]:
     if isinstance(pair_type, PairType):
