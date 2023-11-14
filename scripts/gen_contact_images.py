@@ -20,7 +20,7 @@ def residue_selection(chain, nt, ins, alt):
         nt += str(ins)
 
     if alt and alt != ' ' and alt != '?':
-        alt = f" alt {alt}"
+        alt = f" and alt {alt}"
     else:
         alt = ""
     
@@ -60,14 +60,14 @@ def rotate_to_y_axis(bond1, bond2):
     # cmd.color("red", f"({bond1}) or ({bond2})")
     return abs(angle) > 0.1
 
-def orient_nucleotide_as_main():
-    if cmd.get_coords("%rightnt and (name N9)") is None:
-        natom = "N1"
+def get_n_atom(sele):
+    if cmd.get_coords(f"({sele}) and (name N9)") is None:
+        return "N1"
     else:
-        natom = "N9"
-    for i in range(1):
-        # it does not converge instantly, no idea why
-        rotate_to_y_axis("%rightnt and (name C1')", f"%rightnt and (name {natom})")
+        return "N9"
+
+def flip_image_to_order(orient_updown = True):
+    natom_r = get_n_atom("%rightnt")
 
     # main nucleotide should be on the left
     rightC1_A = transform_to_camera_space(cmd.get_coords("%rightnt and (name C1')")[0])
@@ -75,8 +75,26 @@ def orient_nucleotide_as_main():
     if rightC1_A[0] > leftC1_A[0]:
         cmd.turn("y", 180)
         rightC1_B = transform_to_camera_space(cmd.get_coords("%rightnt and (name C1')")[0])
-        print(f"flipped {rightC1_A} to {rightC1_B}")
+        print(f"flipped along Y {rightC1_A} to {rightC1_B}")
+
+
+    if orient_updown:
+        # keep C1' atoms at the top
+        rightC1 = transform_to_camera_space(cmd.get_coords("%rightnt and (name C1')")[0])
+        leftC1 = transform_to_camera_space(cmd.get_coords("%pair and (not %rightnt) and (name C1')")[0])
+        midle = transform_to_camera_space(np.mean(cmd.get_coords("%pair"), axis=0))
+        if (rightC1[1] + leftC1[1]) / 2 < midle[1]:
+            cmd.turn("x", 180)
+
+
+def orient_nucleotide_as_main():
+    natom = get_n_atom("%rightnt")
+    for i in range(1):
+        # it does not converge instantly, no idea why
         rotate_to_y_axis("%rightnt and (name C1')", f"%rightnt and (name {natom})")
+    flip_image_to_order(orient_updown=False)
+    rotate_to_y_axis("%rightnt and (name C1')", f"%rightnt and (name {natom})")
+
 
 def find_and_select_water(nt1, nt2):
     # coords1 = np.array(cmd.get_coords(nt1))
@@ -155,7 +173,7 @@ def orient_pair(pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2,
     hbonds: Optional[list[tuple[str, str, str, str]]] = None,
     label_atoms=True,
     grey_context=False,
-    find_water=False):
+    find_water=True):
     cmd.hide("everything", f"%{pdbid}")
     pair_selection =f"%{pdbid} and ({residue_selection(chain1, nt1, ins1, alt1)} or {residue_selection(chain2, nt2, ins2, alt2)})"
     print(pair_selection)
@@ -186,6 +204,8 @@ def orient_pair(pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2,
         orient_nucleotide_as_main()
     else:
         cmd.orient(f"%pair and {normal_atoms_selection}")
+        flip_image_to_order(orient_updown=True)
+        
     cmd.zoom("%pair", 0)
     # cmd.center("%rightnt")
     cmd.set("label_color", "black")

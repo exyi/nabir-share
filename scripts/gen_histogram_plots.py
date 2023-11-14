@@ -33,6 +33,7 @@ subplots = (2, 2)
 resolutions = [
     ("DNA ≤3 Å", is_some_quality & is_rna.is_not() & (pl.col("resolution") <= 3)),
     ("RNA ≤3 Å", is_some_quality & is_rna & (pl.col("resolution") <= 3)),
+    # ("No filter ≤3 Å", (pl.col("resolution") <= 3)),
     # ("DNA >3 Å", is_rna.is_not() & (pl.col("resolution") > 3)),
     # ("RNA >3 Å", is_rna & (pl.col("resolution") > 3)),
     # ("DNA ≤1.8 Å", is_high_quality & is_rna.is_not()),
@@ -268,7 +269,7 @@ def make_histogram_group(dataframes: list[pl.DataFrame], axes: list[plt.Axes], t
             renamed_columns_ = renamed_columns.select(
                 pl.col(legend[j]).alias(legend[i])
                 for i, j in symetric_bonds
-                if i < len(legend) and j < len(legend)
+                if i < len(legend) and j < len(legend) and legend[j] in renamed_columns.columns
             )
             if len(renamed_columns_.columns) == len(renamed_columns.columns):
                 print("Merging symetric bonds: ", symetric_bonds)
@@ -499,8 +500,8 @@ def calculate_stats(df: pl.DataFrame, pair_type):
         int(np.argmax(np.concatenate([ [0.1], score * df.select(r.alias("x"))["x"].fill_null(False).to_numpy()]))) - 1
         for _, r in resolutions
     ]
-    print(f"{nicest_basepairs=}")
-    print(f"{nicest_basepair=} LL={calc_datapoint_log_likelihood(df[nicest_basepair, :])} Σσ={score[nicest_basepair]} {next(df[nicest_basepair, columns].iter_rows())}")
+    # print(f"{nicest_basepairs=}")
+    # print(f"{nicest_basepair=} LL={calc_datapoint_log_likelihood(df[nicest_basepair, :])} Σσ={score[nicest_basepair]} {next(df[nicest_basepair, columns].iter_rows())}")
 
     new_df_columns = {
         "mode_deviations": calc_datapoint_mode_deviations,
@@ -579,6 +580,7 @@ def enumerate_pair_types(files: list[str]) -> Generator[tuple[tuple[str, str], p
                 ).alias("pair_bases")
             )
             groups = df.group_by("type", "pair_bases")
+            print(f"{file}: {len(df)} rows, types: {list(sorted([ (k, len(gdf)) for k, gdf in groups ], key=lambda x: x[1], reverse=True))}")
             all_pairs_types = set(pair_defs.PairType.from_tuple(pt) for pt, _ in groups)
             for k, gdf in groups:
                 k: Any
@@ -607,18 +609,18 @@ def save_statistics(all_statistics, output_dir):
             pl.col("resolution_cutoff").alias("Resolution cutoff"),
             pl.lit(i).alias("hb_ix"),
             pl.col(f"hb_{i}_label").alias("H-bond Atoms"),
-            pl.col(f"hb_{i}_length_mode").alias("Mode Distance"),
-            pl.col(f"hb_{i}_length_median").alias("Median Distance"),
-            pl.col(f"hb_{i}_length_mean").alias("Mean Distance"),
-            pl.col(f"hb_{i}_length_std").alias("Std Distance"),
-            pl.col(f"hb_{i}_donor_angle_mode").alias("Mode Donor Angle"),
-            pl.col(f"hb_{i}_donor_angle_median").alias("Median Donor Angle"),
-            pl.col(f"hb_{i}_donor_angle_mean").alias("Mean Donor Angle"),
-            pl.col(f"hb_{i}_donor_angle_std").alias("Std Donor Angle"),
-            pl.col(f"hb_{i}_acceptor_angle_mode").alias("Mode Acceptor Angle"),
-            pl.col(f"hb_{i}_acceptor_angle_median").alias("Median Acceptor Angle"),
-            pl.col(f"hb_{i}_acceptor_angle_mean").alias("Mean Acceptor Angle"),
-            pl.col(f"hb_{i}_acceptor_angle_std").alias("Std Acceptor Angle"),
+            pl.col(f"hb_{i}_length_mode").cast(pl.Float64).alias("Mode Distance"),
+            pl.col(f"hb_{i}_length_median").cast(pl.Float64).alias("Median Distance"),
+            pl.col(f"hb_{i}_length_mean").cast(pl.Float64).alias("Mean Distance"),
+            pl.col(f"hb_{i}_length_std").cast(pl.Float64).alias("Std Distance"),
+            pl.col(f"hb_{i}_donor_angle_mode").cast(pl.Float64).alias("Mode Donor Angle"),
+            pl.col(f"hb_{i}_donor_angle_median").cast(pl.Float64).alias("Median Donor Angle"),
+            pl.col(f"hb_{i}_donor_angle_mean").cast(pl.Float64).alias("Mean Donor Angle"),
+            pl.col(f"hb_{i}_donor_angle_std").cast(pl.Float64).alias("Std Donor Angle"),
+            pl.col(f"hb_{i}_acceptor_angle_mode").cast(pl.Float64).alias("Mode Acceptor Angle"),
+            pl.col(f"hb_{i}_acceptor_angle_median").cast(pl.Float64).alias("Median Acceptor Angle"),
+            pl.col(f"hb_{i}_acceptor_angle_mean").cast(pl.Float64).alias("Mean Acceptor Angle"),
+            pl.col(f"hb_{i}_acceptor_angle_std").cast(pl.Float64).alias("Std Acceptor Angle"),
         )
         for i in range(bond_count)
         if f"hb_{i}_label" in df.columns
@@ -692,6 +694,7 @@ def main(argv):
             if "nicest_bp_indices" in statistics[-1]:
                 nicest_bps = statistics[-1]["nicest_bp_indices"]
                 del statistics[-1]["nicest_bp_indices"]
+            print(f"{pair_type} {resolution_label}: {len(dff)}/{len(df)} ")
         if dff is None or stat_columns is None:
             print(f"WARNING: No data in {pair_type}")
             continue

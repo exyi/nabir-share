@@ -261,6 +261,7 @@ hbonding_atoms = read_pair_definitions()
 
 
 def is_bond_hidden(pair_type, b) -> bool:
+    return False
     return b[1][1] == 'C' or b[2][1] == 'C' or \
         b[1].endswith("'") or b[2].endswith("'")
 
