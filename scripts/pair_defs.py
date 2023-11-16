@@ -1,11 +1,15 @@
+import functools
 import itertools
 import os, math, re, csv, dataclasses
-from typing import Union
+from typing import Optional, Union
 
+@functools.total_ordering
 @dataclasses.dataclass(frozen=True)
 class PairType:
     type: str
     bases: tuple[str, str]
+    variant: str = ""
+    n:bool = False
 
     def __post_init__(self):
         # assert len(self.type) == 3
@@ -15,16 +19,22 @@ class PairType:
         # assert self.type[2] in "WSH"
         # assert self.bases[0] in "ACGU"
         # assert self.bases[1] in "ACGU"
-        if len(self.type) != 3 or len(self.bases) != 2 or self.type[0] not in "ct" or self.type[1] not in "WSH" or self.type[2] not in "WSH" or (len(self.bases[0]) == 1 and self.bases[0] not in "ACGU") or (len(self.bases[1]) == 1 and self.bases[1] not in "ACGU"):
+        if len(self.type) != 3 or len(self.bases) != 2 or self.type[0] not in "ct" or self.type[1].upper() not in "BWSH" or self.type[2].upper() not in "WSHB" or (len(self.bases[0]) == 1 and self.bases[0] not in "ACGU") or (len(self.bases[1]) == 1 and self.bases[1] not in "ACGU"):
             raise ValueError(f"Invalid pair type: PairType({repr(self.type)}, {self.bases})")
+    @property
+    def full_type(self) -> str:
+        return f"{'n' if self.n else ''}{self.type}{self.variant}"
+    @property
+    def bases_str(self) -> str:
+        return "-".join(self.bases)
     def __str__(self) -> str:
-        return f"{self.type}-{'-'.join(self.bases)}"
+        return f"{self.full_type}-{self.bases_str}"
     def __repr__(self) -> str:
-        return f"PairType({repr(self.type)}, {self.bases})"
-    def to_tuple(self) -> tuple[str, str]:
-        return (self.type, self.bases[0] + "-" + self.bases[1])
+        return f"PairType({repr(self.type)}, {self.bases}{f', {repr(self.variant) if self.variant or self.n else str()}'}{', n=True' if self.n else ''})"
+    def to_tuple(self, simplify = False) -> tuple[str, str]:
+        return (self.type if simplify else self.full_type, self.bases_str)
     def swap(self) -> 'PairType':
-        return PairType(self.type[0] + self.type[2] + self.type[1], (self.bases[1], self.bases[0]))
+        return PairType(self.type[0] + self.type[2] + self.type[1], (self.bases[1], self.bases[0]), self.variant, self.n)
     def is_preferred_orientation(self) -> bool:
         return is_preferred_pair_type_orientation(self.to_tuple())
     def is_swappable(self):
@@ -32,10 +42,39 @@ class PairType:
             # both definitions exist,
             return False
         return True
+    def swap_is_nop(self) -> bool:
+        return self.type[1] == self.type[2] and self.bases[0] == self.bases[1]
+    
+    def order_key(self):
+        t = self.type.lower()
+        return (
+            pair_types.index(t) if t in pair_types else 1000,
+            self.bases[1],
+            self.bases[0],
+            self.variant,
+            self.n,
+        )
+    
+    def __lt__(self, other: 'PairType') -> bool:
+        return self.order_key() < other.order_key()
     @staticmethod
     def from_tuple(t: tuple[str, str]) -> "PairType":
-        return PairType(t[0], tuple(t[1].split("-"))) # type: ignore
-    
+        type, bases = t
+        return PairType.create(type, *bases.split("-")) # type: ignore
+    @staticmethod
+    def create(type, base1, base2, name_map: Optional[dict[str, str]] = None):
+        if name_map is not None:
+            base1 = name_map.get(base1, base1)
+            base2 = name_map.get(base2, base2)
+        variant = ''
+        n = False
+        if type[0] == 'n':
+            n = True
+            type = type[1:]
+        if type[-1] in ['a']:
+            variant = type[-1]
+            type = type[:-1]
+        return PairType(type, (base1, base2), variant, n)
     @staticmethod
     def parse(s: str) -> "PairType":
         raise NotImplementedError("PairType.parse is not implemented")
@@ -48,12 +87,12 @@ def read_pair_definitions(file = os.path.join(os.path.dirname(__file__), "H_bond
     header = lines[header_i]
     data = lines[header_i + 1:]
     def translate_pair_type(line):
-        m = re.match(r"(cis |trans )([WSH])/([WSH])", line[0].strip(), re.IGNORECASE)
+        m = re.match(r"^(cis |trans )([WSH])/([WSH])(a?)", line[0].strip(), re.IGNORECASE)
         if not m:
             # print("WARNING: Invalid pair type: " + line[0])
             return None
         ct = { "c": "c", "t": "t", "cis":"c", "trans": "t" }[m.group(1)[0].strip().lower()]
-        return f"{ct}{m.group(2).upper()}{m.group(3).upper()}"
+        return f"{ct}{m.group(2).upper()}{m.group(3).upper()}{m.group(4)}"
     
     result_mapping = {}
     for line in data:
@@ -90,19 +129,21 @@ def hbond_swap_nucleotides(hbond: tuple[str, str, str, str]) -> tuple[str, str, 
 def swap_pair_type(pair_type: tuple[str, str]) -> tuple[str, str]:
     t, bases = pair_type
     bases = bases.split("-")
-    assert len(pair_type) == 2 and len(t) == 3 and len(bases) == 2
+    assert len(pair_type) == 2 and len(t) >= 3 and len(bases) == 2
     assert t[0] in "ct"
-    return (t[0] + t[2] + t[1], bases[1] + "-" + bases[0])
+    return (t[0] + t[2] + t[1] + t[3:], bases[1] + "-" + bases[0])
 
-def is_preferred_pair_type_orientation(pair_type: tuple[str, str]) -> bool:
-    other = swap_pair_type(pair_type)
+def is_preferred_pair_type_orientation(pair_type: Union[PairType, tuple[str, str]]) -> bool:
+    if isinstance(pair_type, tuple):
+        pair_type = PairType.from_tuple(pair_type)
+    other = pair_type.swap()
     if other == pair_type:
         return True
-    if other[0] == pair_type[0]:
+    if other.type == pair_type.type:
         # symetric pair type like cWW, cHH, ...
         # we prefer A > G > C > U (who knows why)
-        preference = [ "A", "G", "C", "U" ]
-        bases = pair_type[1].split("-")
+        preference = [ "A", "DA", "G", "DG", "C", "DC", "U", "DU", "T", "DT" ]
+        bases = pair_type.bases
         if bases[0] not in preference and bases[1] not in preference:
             # weird bases, alphabetical order
             return bases[0] <= bases[1]
@@ -111,19 +152,19 @@ def is_preferred_pair_type_orientation(pair_type: tuple[str, str]) -> bool:
         elif bases[1] not in preference:
             return True
 
-        return preference.index(pair_type[1][0]) <= preference.index(other[1][0])
+        return preference.index(bases[0]) <= preference.index(bases[1])
     else:
         # non-symetric pair type like cWH, cWS, ...
-        return pair_type[0] in pair_types
+        return pair_type.type.lower() in pair_types
 
 # all pair type ordered according to The Paper
 pair_types = [
-    "cWW", "tWW",
-    "cWH", "tWH",
-    "cWS", "tWS",
-    "cHH", "tHH",
-    "cHS", "tHS",
-    "cSS", "tSS"
+    "cww", "tww",
+    "cwh", "twh",
+    "cws", "tws",
+    "chh", "thh",
+    "chs", "ths",
+    "css", "tss"
 ]
 
 sugar_atom_connectivity = [
@@ -259,7 +300,6 @@ my_hbonding_atoms: dict[tuple[str, str], list[tuple[str, str, str, str]]] = {
 # hbonding_atoms = my_hbonding_atoms
 hbonding_atoms = read_pair_definitions()
 
-
 def is_bond_hidden(pair_type, b) -> bool:
     return False
     return b[1][1] == 'C' or b[2][1] == 'C' or \
@@ -267,13 +307,21 @@ def is_bond_hidden(pair_type, b) -> bool:
 
 def get_hbonds(pair_type: Union[tuple[str, str], PairType], throw=True) -> list[tuple[str, str, str, str]]:
     if isinstance(pair_type, PairType):
-        pair_type = pair_type.to_tuple()
-    if pair_type in hbonding_atoms:
-        return hbonding_atoms[pair_type]
+        type = pair_type.type + pair_type.variant
+        bases = pair_type.bases_str
+    else:
+        type, bases = pair_type
+
+    if type.startswith("n"):
+        type = type[1:]
+    if type[1].islower() or type[2].islower():
+        type = type[0] + type[1].upper() + type[2].upper() + type[3:]
+    if (type, bases) in hbonding_atoms:
+        return hbonding_atoms[(type, bases)]
     
-    pair_type_s = swap_pair_type(pair_type)
-    if pair_type_s in hbonding_atoms:
-        return [ hbond_swap_nucleotides(hbond) for hbond in hbonding_atoms[pair_type_s] ]
+    (type, bases) = swap_pair_type((type, bases))
+    if (type, bases) in hbonding_atoms:
+        return [ hbond_swap_nucleotides(hbond) for hbond in hbonding_atoms[(type, bases)] ]
     
     if throw:
         raise KeyError(f"Pair type {pair_type} not found in hbonding_atoms")

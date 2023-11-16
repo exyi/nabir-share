@@ -15,6 +15,12 @@ def _find_in_cache(pdb_id):
     for cache_dir in pdb_cache_dirs:
         if not os.path.isdir(cache_dir):
             continue
+        if os.path.exists(f := os.path.join(cache_dir, pdb_id + ".cif.gz")):
+            return f
+        if os.path.exists(f := os.path.join(cache_dir, pdb_id + ".cif.zst")):
+            return f
+        if os.path.exists(f := os.path.join(cache_dir, pdb_id + ".cif")):
+            return f
         subdir = os.path.join(cache_dir, pdb_id[:2].lower())
         if not os.path.isdir(subdir):
             subdir = ([ os.path.join(cache_dir, s) for s in os.listdir(cache_dir) if pdb_id.lower().startswith(s.lower())] or [ None ])[0]

@@ -319,7 +319,7 @@ def process_group(pdbid, group: pl.DataFrame, output_dir: str, bpargs: BPArgs):
         alt1 = None if alt1 == '?' else alt1
         alt2 = None if alt2 == '?' else alt2
         if pair_type:
-            pt = pair_defs.PairType(pair_type, (pair_defs.map_resname(res1), pair_defs.map_resname(res2)))
+            pt = pair_defs.PairType.create(pair_type, pair_defs.map_resname(res1), pair_defs.map_resname(res2))
             hbonds = pair_defs.get_hbonds(pt)
             hbonds = [ b for b in hbonds if not pair_defs.is_bond_hidden(pt, b) ]
         else:

@@ -2,6 +2,7 @@
 
 from collections import defaultdict
 from dataclasses import dataclass
+from multiprocessing.pool import Pool
 import os
 import re
 from typing import Optional, Sequence, TextIO, Union
@@ -252,15 +253,28 @@ def find_pairing_files(directory):
                 print("WARNING: duplicate basepairing PDBID", pdbid, ":", f, "and", result[pdbid])
             result[pdbid] = os.path.join(directory, f)
     return result
+def _load_frame(file, filter):
+    try:
+        bps = read_fr3d_basepairing(file)
+    except Exception as e:
+        raise Exception(f"Error parsing {file}") from e
+    if len(bps["model"]) == 0:
+        return None
+    return pl.DataFrame(bps).filter(filter)
 
-def read_fr3d_files_df(files: Sequence[str], filter=pl.lit(True)) -> pl.DataFrame:
-    frames = []
-    for f in files:
-        try:
-            bps = read_fr3d_basepairing(f)
-        except Exception as e:
-            raise Exception(f"Error parsing {f}") from e
-        if len(bps["model"]) == 0:
-            continue
-        frames.append(pl.DataFrame(bps).filter(filter))
+def read_fr3d_files_df(pool: Optional[Pool], files: Sequence[str], filter=pl.lit(True)) -> pl.DataFrame:
+
+    if pool is None:
+        frames = []
+        for f in files:
+            df = _load_frame(f, filter)
+            if df is not None:
+                frames.append(df)
+    else:
+        frames = [
+            pool.apply_async(_load_frame, args=(f, filter))
+            for f in files
+        ]
+        frames = [ f.get() for f in frames ]
+        frames = [ f for f in frames if f is not None ]
     return pl.concat(frames)

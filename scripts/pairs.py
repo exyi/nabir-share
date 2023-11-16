@@ -1,5 +1,6 @@
 import functools
 import itertools
+from multiprocessing.pool import Pool
 from typing import Any, List, Optional, Tuple
 import Bio.PDB, Bio.PDB.Structure, Bio.PDB.Model, Bio.PDB.Residue, Bio.PDB.Atom, Bio.PDB.Chain, Bio.PDB.Entity
 import os, sys, io, gzip, math, numpy as np
@@ -345,7 +346,6 @@ def get_stats_for_csv(df_: pl.DataFrame, structure: Bio.PDB.Structure.Structure,
 
 def remove_duplicate_pairs(df: pl.DataFrame):
     def pair_id(type, res1, res2, chain1, nr1, ins1, alt1, chain2, nr2, ins2, alt2):
-        pair_defs.is_preferred_pair_type_orientation
         pair = [ (chain1, nr1, ins1, alt1), (chain2, nr2, ins2, alt2) ]
         pair.sort()
         bases = resname_map.get(res1, res1) + "-" + resname_map.get(res2, res2)
@@ -370,7 +370,7 @@ def remove_duplicate_pairs(df: pl.DataFrame):
     return df
 
 def get_max_bond_count(df: pl.DataFrame):
-    pair_types = list(set(pair_defs.PairType(type, (resname_map.get(res1, res1), resname_map.get(res2, res2))) for type, res1, res2 in df[["type", "res1", "res2"]].unique().iter_rows()))
+    pair_types = list(set(pair_defs.PairType.create(type, res1, res2, name_map=resname_map) for type, res1, res2 in df[["type", "res1", "res2"]].unique().iter_rows()))
     bond_count = max(len(pair_defs.get_hbonds(p, throw=False)) for p in pair_types)
     print("Analyzing pair types:", *pair_types, "with bond count =", bond_count)
     return max(3, bond_count)
@@ -426,7 +426,7 @@ def export_stats_csv(pdbid, df: pl.DataFrame, add_metadata_columns: bool, pair_t
 def df_hstack(columns: list[pl.DataFrame]) -> pl.DataFrame:
     return functools.reduce(pl.DataFrame.hstack, columns)
 
-def load_inputs(args) -> pl.DataFrame:
+def load_inputs(pool: Pool, args) -> pl.DataFrame:
     inputs: list[str] = args.inputs
     if len(inputs) == 0:
         raise ValueError("No input files specified")
@@ -434,10 +434,10 @@ def load_inputs(args) -> pl.DataFrame:
     if inputs[0].endswith(".parquet") or inputs[0].endswith('.csv'):
         print(f'Loading basepairing CSV files')
         df = scan_pair_csvs(args.inputs).sort('pdbid', 'model', 'nr1', 'nr2').collect()
-    elif inputs[0].endswith("_basepair.txt"):
+    elif inputs[0].endswith("_basepair.txt") or inputs[0].endswith("_basepair_detail.txt"):
         print(f"Loading {len(inputs)} basepair files")
         import fr3d_parser
-        df = fr3d_parser.read_fr3d_files_df(args.inputs, filter=pl.col("symmetry_operation") == '').sort('pdbid', 'model', 'nr1', 'nr2')
+        df = fr3d_parser.read_fr3d_files_df(pool, args.inputs, filter=pl.col("symmetry_operation") == '').sort('pdbid', 'model', 'nr1', 'nr2')
     else:
         raise ValueError("Unknown input file type")
     if "type" not in df.columns:
@@ -446,8 +446,8 @@ def load_inputs(args) -> pl.DataFrame:
         df = df.select(pl.lit(args.pair_type).alias("type"), pl.col("*"))
     return df
 
-def main(pool, args):
-    df = load_inputs(args)
+def main(pool: Pool, args):
+    df = load_inputs(pool, args)
     max_bond_count = get_max_bond_count(df)
     groups = list(df.groupby(pl.col("pdbid")))
 

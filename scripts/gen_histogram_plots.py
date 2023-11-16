@@ -8,6 +8,7 @@ import polars as pl, numpy as np, numpy.typing as npt
 import os, sys, math, re
 import pairs
 import pair_defs
+from pair_defs import PairType
 import pair_csv_parse
 import seaborn as sns
 import scipy.stats
@@ -116,8 +117,8 @@ def format_length_label(atoms: tuple[str, str], swap=False):
 
     return f"{a[1:]} · · · {b[1:]}"
 
-def is_symmetric_pair_type(pair_type: tuple[str, str]):
-    if pair_type[1] != pair_type[1][::-1] or pair_type[0][1] != pair_type[0][2]:
+def is_symmetric_pair_type(pair_type: PairType):
+    if not pair_type.swap_is_nop():
         return False
 
     hbonds = pair_defs.get_hbonds(pair_type)
@@ -126,7 +127,7 @@ def is_symmetric_pair_type(pair_type: tuple[str, str]):
         for hb in hbonds
     )
 
-def get_label(col: str, pair_type: tuple[str, str]):
+def get_label(col: str, pair_type: PairType):
     hbonds = pair_defs.get_hbonds(pair_type)
     swap = is_swapped(pair_type)
     
@@ -143,18 +144,17 @@ def get_label(col: str, pair_type: tuple[str, str]):
         if len(hbonds) <= ix: return None
         return format_length_label(hbonds[ix][1:3], swap=swap)
 
-def is_swapped(pair_type: tuple[str, str]):
-    symtype = pair_type[0] in ["cWW", "tWW", "cHH", "tHH", "cSS", "tSS"]
-    return pair_type[1] == "C-G" and symtype or pair_type[0] not in pair_defs.pair_types
-def format_pair_type(pair_type, is_dna = False, is_rna=False):
-    pair_kind, pair_bases = pair_type
+def is_swapped(pair_type: PairType):
+    symtype = pair_type.type in ["cWW", "tWW", "cHH", "tHH", "cSS", "tSS"]
+    return pair_type.bases_str == "C-G" and symtype or pair_type.type.lower() not in pair_defs.pair_types
+def format_pair_type(pair_type: PairType, is_dna = False, is_rna=False):
+    pair_kind, pair_bases = pair_type.to_tuple()
     if is_dna == True:
         pair_bases = pair_bases.replace("U", "T")
     elif is_rna == True:
         pair_bases = pair_bases.replace("T", "U")
     if is_swapped(pair_type):
-        assert len(pair_kind) == 3
-        return format_pair_type((f"{pair_kind[0]}{pair_kind[2]}{pair_kind[1]}", "-".join(reversed(pair_bases.split("-")))))
+        return format_pair_type(pair_type.swap())
     elif len(pair_bases) == 3 and pair_bases[1] == '-':
         return pair_kind + " " + pair_bases.replace("-", "")
     else:
@@ -175,7 +175,7 @@ def crop_image(img: np.ndarray, padding = (0, 0, 0, 0)):
 
     return img[xlim[0]:xlim[1], ylim[0]:ylim[1], :]
 
-def get_bounds(dataframes: list[pl.DataFrame], pair_type: tuple[str, str], h: HistogramDef):
+def get_bounds(dataframes: list[pl.DataFrame], pair_type: PairType, h: HistogramDef):
     if h.min is not None:
         assert h.max is not None
         return h.min, h.max
@@ -212,7 +212,7 @@ def get_histogram_ticksize(max, max_ticks = 8):
         if ticksize * max_ticks > max:
             return ticksize
 
-def get_hidden_columns(df: pl.DataFrame, pair_type: tuple[str, str]):
+def get_hidden_columns(df: pl.DataFrame, pair_type: PairType):
     pt_hbonds = pair_defs.get_hbonds(pair_type, throw=True)
     hide_columns = [ i for i, hb in enumerate(pt_hbonds) if pair_defs.is_bond_hidden(pair_type, hb) ]
     # if len(hide_columns) == len(pt_hbonds):
@@ -226,7 +226,7 @@ def get_hidden_columns(df: pl.DataFrame, pair_type: tuple[str, str]):
     print(f"{pair_type}: {hide_columns=} {columns_to_drop} {pt_hbonds}")
     return set(columns_to_drop)
 
-def make_histogram_group(dataframes: list[pl.DataFrame], axes: list[plt.Axes], titles: list[str], pair_type: tuple[str, str], h: HistogramDef):
+def make_histogram_group(dataframes: list[pl.DataFrame], axes: list[Axes], titles: list[str], pair_type: PairType, h: HistogramDef):
     xmin, xmax = get_bounds(dataframes, pair_type, h)
 
     if h.bin_width is not None:
@@ -287,7 +287,7 @@ def make_histogram_group(dataframes: list[pl.DataFrame], axes: list[plt.Axes], t
         sns.histplot(data=renamed_columns.to_pandas(),
                     #  binwidth=bin_width if len(renamed_columns) > 2 else None,
                     #  binwidth=bin_width,
-                     bins=binses,
+                     bins=binses, # type:ignore
                      kde=(hist_kde and len(dfs) >= 5),
                      legend=True,
                      ax=ax)
@@ -317,10 +317,11 @@ def make_histogram_group(dataframes: list[pl.DataFrame], axes: list[plt.Axes], t
 
         
         # for i, colname in enumerate(renamed_columns.columns):
-
         #     # add normal distribution for comparison
         #     col = renamed_columns[colname]
-        #     if len(col) > 10:
+        #     if len(col) < 4:
+        #         continue
+        #     if len(col) > 30:
         #         col = col.filter((col > col.quantile(0.05)) & (col < col.quantile(0.95)))
         #     mean = float(col.mean())
         #     std = float(col.std())
@@ -334,12 +335,14 @@ def make_subplots(sp = subplots):
     fig, sp = plt.subplots(*sp)
     return fig, list(sp.reshape(-1))
 
-def make_bond_pages(df: pl.DataFrame, outdir: str, pair_type: tuple[str, str], hs: list[HistogramDef], images = None, highlights: Optional[list[Optional[pl.DataFrame]]] = None, title_suffix = ""):
+def make_bond_pages(df: pl.DataFrame, outdir: str, pair_type: PairType, hs: list[HistogramDef], images = None, highlights: Optional[list[Optional[pl.DataFrame]]] = None, title_suffix = ""):
 
     hidden_bonds = get_hidden_columns(df, pair_type)
     if len(hidden_bonds) > 0:
         hs = [ h.drop_columns(hidden_bonds) for h in hs ]
     dataframes = [ df.filter(resolution_filter) for _, resolution_filter in resolutions ]
+    if sum(len(df) for df in dataframes) < 70:
+        return
     pages: list[tuple[Figure, list[Axes]]] = [ make_subplots(subplots) for _ in resolutions ]
     titles = [ f"{format_pair_type(pair_type, is_dna=('DNA' in resolution_lbl))} {resolution_lbl}{title_suffix}" for (resolution_lbl, _), df in zip(resolutions, dataframes) ]
     print(titles)
@@ -399,7 +402,7 @@ def make_bond_pages(df: pl.DataFrame, outdir: str, pair_type: tuple[str, str], h
             # fig.tight_layout(pad=3.0)
             yield save(fig, title, outdir)
 
-def make_resolution_comparison_page(df: pl.DataFrame, outdir: str, pair_type: tuple[str, str], h: HistogramDef, images = []):
+def make_resolution_comparison_page(df: pl.DataFrame, outdir: str, pair_type: PairType, h: HistogramDef, images = []):
     title = f"{format_pair_type(pair_type)} {h.title}"
 
     dataframes = [ df.filter(resolution_filter) for _, resolution_filter in resolutions ]
@@ -448,9 +451,9 @@ def load_pair_table(file: str):
     return df
 
 def infer_pair_type(filename: str):
-    if m := re.match(r"^([ct][HSW]{2})-([AGCUT]-[AGCUT])\b", filename):
+    if m := re.match(r"^(n?[ct][HSW]{2}a?)-([AGCUT]-[AGCUT])\b", filename):
         return m.group(1), m.group(2)
-    elif m := re.match(r"^([AGCUT]-[AGCUT])-([ct][HSW]{2})\b", filename):
+    elif m := re.match(r"^([AGCUT]-[AGCUT])-(n?[ct][HSW]{2}a?)\b", filename):
         return m.group(2), m.group(1)
     else:
         return None
@@ -526,7 +529,7 @@ def calculate_stats(df: pl.DataFrame, pair_type):
 
     return new_df_columns, result_stats
 
-def create_pair_image(row: pl.DataFrame, output_dir: str, pair_type: tuple[str,str]) -> Optional[str]:
+def create_pair_image(row: pl.DataFrame, output_dir: str, pair_type: PairType) -> Optional[str]:
     if len(row) == 0:
         return None
     os.makedirs(os.path.join(output_dir, "img"), exist_ok=True)
@@ -566,11 +569,11 @@ def reexport_df(df: pl.DataFrame, columns):
     df = df.drop([col for col in df.columns if re.match(r"[DR]NA-(0-1[.]8|1[.]8-3[.]5)(-r\d+)?", col)])
     return df
 
-def enumerate_pair_types(files: list[str]) -> Generator[tuple[tuple[str, str], pl.DataFrame], None, None]:
+def enumerate_pair_types(files: list[str]) -> Generator[tuple[PairType, pl.DataFrame], None, None]:
     for file in files:
         pair_type = infer_pair_type(os.path.basename(file))
         if pair_type is not None:
-            yield pair_type, load_pair_table(file)
+            yield PairType.from_tuple(pair_type), load_pair_table(file)
         else:
             df = load_pair_table(file)
             assert "type" in df.columns, f"{file} does not contain type column"
@@ -591,16 +594,20 @@ def enumerate_pair_types(files: list[str]) -> Generator[tuple[tuple[str, str], p
                 if pair_type.is_swappable() and not pair_type.is_preferred_orientation() and pair_type.swap() in all_pairs_types:
                     print(f"skipping {pair_type} because it is redundant")
                     continue
-                yield pair_type.to_tuple(), gdf
+                if pair_type.type[1].islower() and pair_type.type[2].isupper() and pair_type.type[1] == pair_type.type[2].lower():
+                    continue
+                if pair_type.n:
+                    continue
+                yield pair_type, gdf
 
 def save_statistics(all_statistics, output_dir):
-    df = pl.DataFrame(all_statistics)
+    df = pl.DataFrame(all_statistics, infer_schema_length=100_000)
     df.write_csv(os.path.join(output_dir, "statistics.csv"))
     bond_count = 10
     pt_family_dict = { pt: ix + 1 for ix, pt in enumerate(pair_defs.pair_types) }
     df2 = pl.concat([
         df.select(
-            pl.col("pair_type").map_dict(pt_family_dict).alias("Family"),
+            pl.col("pair_type").str.to_lowercase().map_dict(pt_family_dict).alias("Family"),
             pl.col("pair_type").alias("LW pair type"),
             pl.col("pair").alias("Pair bases"),
             pl.col("pair").str.split("-").apply(lambda x: x[0]).alias("Base 1"),
@@ -686,8 +693,8 @@ def main(argv):
                 continue
             stat_columns, stats = calculate_stats(dff, pair_type)
             statistics.append({
-                "pair": pair_type[1],
-                "pair_type": pair_type[0],
+                "pair": pair_type.bases_str,
+                "pair_type": pair_type.full_type,
                 "resolution_cutoff": resolution_label,
                 **stats,
             })
@@ -720,7 +727,7 @@ def main(argv):
         # reexport_df(df, stat_columns).write_parquet(os.path.join(args.output_dir, f"{pair_type[1]}-{pair_type[0]}.parquet"))
         results.append({
             # "input_file": file,
-            "pair_type": pair_type,
+            "pair_type": pair_type.to_tuple(),
             "count": len(df),
             "score": len(df.filter(is_high_quality)) + len(df.filter(is_med_quality)) / 100,
             "files": output_files,
@@ -733,7 +740,7 @@ def main(argv):
 
     # results.sort(key=lambda r: r["score"], reverse=True)
     # results.sort(key=lambda r: r["pair_type"])
-    results.sort(key=lambda r: (pair_defs.pair_types.index(r["pair_type"][0]), r["pair_type"][1][::-1]))
+    results.sort(key=lambda r: pair_defs.PairType.from_tuple(r["pair_type"]))
     output_files = [ f for r in results for f in r["files"] ]
 
     subprocess.run(["gs", "-dBATCH", "-dNOPAUSE", "-q", "-sDEVICE=pdfwrite", "-dPDFSETTINGS=/prepress", f"-sOutputFile={os.path.join(args.output_dir, 'hbonds-merged.pdf')}", *output_files])
