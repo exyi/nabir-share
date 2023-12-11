@@ -290,6 +290,9 @@ def make_pair_rot_movie(output_file, pdbid, chain1, nt1, ins1, alt1, chain2, nt2
     finally:
         cmd.mclear()
 
+def save_str(file: str, x: str):
+    with open(file, "w") as f:
+        f.write(x)
 
 def process_group(pdbid, group: pl.DataFrame, output_dir: str, bpargs: BPArgs):
     if bpargs.skip_bad:
@@ -333,6 +336,10 @@ def process_group(pdbid, group: pl.DataFrame, output_dir: str, bpargs: BPArgs):
 
         load_if_needed()
         make_pair_image(output_file + ".png", pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2, bpargs, hbonds)
+        # save_str(output_file + ".xyz", cmd.exporting.get_xyzstr("%pair"))
+        # save_str(output_file + ".cif", cmd.exporting.get_cifstr("%pair"))
+        # save_str(output_file + ".pdb", cmd.exporting.get_pdbstr("%pair"))
+        # save_str(output_file + ".sdf", cmd.exporting.get_sdfstr("%pair"))
         make_pair_rot_movie(output_file + ".mp4", pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2, bpargs, hbonds)
 
     cmd.reinitialize()
