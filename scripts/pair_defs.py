@@ -58,7 +58,9 @@ class PairType:
     def __lt__(self, other: 'PairType') -> bool:
         return self.order_key() < other.order_key()
     @staticmethod
-    def from_tuple(t: tuple[str, str]) -> "PairType":
+    def from_tuple(t: Union['PairType', tuple[str, str]]) -> "PairType":
+        if isinstance(t, PairType):
+            return t
         type, bases = t
         return PairType.create(type, *bases.split("-")) # type: ignore
     @staticmethod
@@ -300,10 +302,15 @@ my_hbonding_atoms: dict[tuple[str, str], list[tuple[str, str, str, str]]] = {
 # hbonding_atoms = my_hbonding_atoms
 hbonding_atoms = read_pair_definitions()
 
-def is_bond_hidden(pair_type, b) -> bool:
+def is_ch_bond(pair_type: PairType, b: tuple[str, str, str, str]) -> bool:
+    return b[1][1] == 'C' or b[2][1] == 'C'
+
+def is_bond_to_sugar(pair_type: PairType, b: tuple[str, str, str, str]) -> bool:
+    return b[1].endswith("'") or b[2].endswith("'")
+
+def is_bond_hidden(pair_type: PairType, b: tuple[str, str, str, str]) -> bool:
     return False
-    return b[1][1] == 'C' or b[2][1] == 'C' or \
-        b[1].endswith("'") or b[2].endswith("'")
+    return is_ch_bond(pair_type, b) or is_bond_to_sugar(pair_type, b)
 
 def get_hbonds(pair_type: Union[tuple[str, str], PairType], throw=True) -> list[tuple[str, str, str, str]]:
     if isinstance(pair_type, PairType):

@@ -223,7 +223,7 @@ def get_hidden_columns(df: pl.DataFrame, pair_type: PairType):
         pl.col(f"^hb_{i}_.*$")
         for i in hide_columns
     )).columns
-    print(f"{pair_type}: {hide_columns=} {columns_to_drop} {pt_hbonds}")
+    print(f"{pair_type}: {hide_columns=} drop={columns_to_drop} hbonds={pt_hbonds}")
     return set(columns_to_drop)
 
 def make_histogram_group(dataframes: list[pl.DataFrame], axes: list[Axes], titles: list[str], pair_type: PairType, h: HistogramDef):
@@ -336,20 +336,19 @@ def make_subplots(sp = subplots):
     return fig, list(sp.reshape(-1))
 
 def make_bond_pages(df: pl.DataFrame, outdir: str, pair_type: PairType, hs: list[HistogramDef], images = None, highlights: Optional[list[Optional[pl.DataFrame]]] = None, title_suffix = ""):
-
     hidden_bonds = get_hidden_columns(df, pair_type)
     if len(hidden_bonds) > 0:
         hs = [ h.drop_columns(hidden_bonds) for h in hs ]
     dataframes = [ df.filter(resolution_filter) for _, resolution_filter in resolutions ]
-    if sum(len(df) for df in dataframes) < 70:
-        return
+    # if sum(len(df) for df in dataframes) < 70:
+    #     return
     pages: list[tuple[Figure, list[Axes]]] = [ make_subplots(subplots) for _ in resolutions ]
     titles = [ f"{format_pair_type(pair_type, is_dna=('DNA' in resolution_lbl))} {resolution_lbl}{title_suffix}" for (resolution_lbl, _), df in zip(resolutions, dataframes) ]
     print(titles)
     for p, title, df in zip(pages, titles, dataframes):
         fig, _ = p
         # fig.tight_layout(pad=3.0)
-        fig.suptitle(title + f" ({len(df)})")
+        fig.suptitle(title + f" ({len(df)}, class {determine_bp_class(df, pair_type)})")
 
     for i, h in enumerate(hs):
         make_histogram_group(dataframes, [ p[1][i+1] for p in pages ], [h.title] * len(dataframes), pair_type, h)
@@ -432,13 +431,17 @@ def make_resolution_comparison_page(df: pl.DataFrame, outdir: str, pair_type: Pa
 
 
 def save(fig: Figure, title, outdir):
-    os.makedirs(outdir, exist_ok=True)
-    pdf=os.path.join(outdir, title + ".pdf")
-    fig.savefig(pdf, dpi=300)
-    fig.savefig(os.path.join(outdir, title + ".png"))
-    plt.close(fig)
-    print(f"Wrote {pdf}")
-    return pdf
+    try:
+        os.makedirs(outdir, exist_ok=True)
+        pdf=os.path.join(outdir, title + ".pdf")
+        fig.savefig(pdf, dpi=300)
+        fig.savefig(os.path.join(outdir, title + ".png"))
+        plt.close(fig)
+        print(f"Wrote {pdf}")
+        return pdf
+    except Exception as e:
+        print(f"Error writing {title}: {e}")
+        raise e
 
 def load_pair_table(file: str):
     df = pl.read_parquet(file) if file.endswith(".parquet") else pl.read_csv(file)
@@ -471,6 +474,34 @@ def sample_for_kde(x: np.ndarray, threshold = 5_000):
     else:
         return np.random.choice(x, threshold, replace=False)
 
+def determine_bp_class(df: pl.DataFrame, pair_type: PairType, is_rna = None):
+    if is_rna is None:
+        if len(df) == 0:
+            is_rna = True
+        else:
+            is_rna = df['res1'].str.starts_with("D").not_().any() or df['res2'].str.starts_with("D").not_().any()
+    assert isinstance(is_rna, bool)
+    hbonds = pair_defs.get_hbonds(pair_type)
+    non_c_bonds = [ b for b in hbonds if not pair_defs.is_ch_bond(pair_type, b) ]
+    good_base_bonds = [ b for b in hbonds if not pair_defs.is_bond_to_sugar(pair_type, b) and not pair_defs.is_ch_bond(pair_type, b) ]
+
+    def unique_atoms1(bonds):
+        return set(atom1 for _, atom1, _, _ in bonds)
+    def unique_atoms2(bonds):# -> set[Any]:
+        return set(atom2 for _, _, atom2, _ in bonds)
+    
+    def n_unique_atoms(bonds):
+        return min(len(unique_atoms1(bonds)), len(unique_atoms2(bonds)))
+    
+    print(f"{pair_type} ~C={len(non_c_bonds)} good={len(good_base_bonds)} all={len(hbonds)} {non_c_bonds}")
+    print(f"    {list(unique_atoms1(non_c_bonds))} {list(unique_atoms2(non_c_bonds))} | #uniq = {n_unique_atoms(good_base_bonds)} {n_unique_atoms(non_c_bonds)}")
+
+    if n_unique_atoms(good_base_bonds) >= 2:
+        return 1
+    elif is_rna and n_unique_atoms(good_base_bonds) >= 1 and n_unique_atoms(non_c_bonds) >= 2:
+        return 2
+    else:
+        return 3
 
 def calculate_stats(df: pl.DataFrame, pair_type):
     if len(df) == 0:
@@ -513,6 +544,7 @@ def calculate_stats(df: pl.DataFrame, pair_type):
 
     result_stats = {
         "count": len(df),
+        "bp_class": determine_bp_class(df, pair_type),
         "nicest_bp": str(next(df[nicest_basepair, ["pdbid", "model", "chain1", "res1", "nr1", "ins1", "alt1", "chain2", "res2", "nr2", "ins2", "alt2"]].iter_rows())),
         "nicest_bp_index": nicest_basepair,
         "nicest_bp_indices": nicest_basepairs,
@@ -613,6 +645,7 @@ def save_statistics(all_statistics, output_dir):
             pl.col("pair").str.split("-").apply(lambda x: x[0]).alias("Base 1"),
             pl.col("pair").str.split("-").apply(lambda x: x[1]).alias("Base 2"),
             pl.col("count").alias("Count"),
+            pl.col("bp_class").alias("Class"),
             pl.col("resolution_cutoff").alias("Resolution cutoff"),
             pl.lit(i).alias("hb_ix"),
             pl.col(f"hb_{i}_label").alias("H-bond Atoms"),
@@ -633,14 +666,19 @@ def save_statistics(all_statistics, output_dir):
         if f"hb_{i}_label" in df.columns
     ])
     df2 = df2.filter(pl.col("Mean Distance").is_not_null())
+    hidden_col = []
+    for pt, b, ix in zip(df2["LW pair type"], df2["Pair bases"], df2["hb_ix"]):
+        hbonds = pair_defs.get_hbonds((pt, b))
+        hidden = False
+        if ix < len(hbonds):
+            hidden = pair_defs.is_bond_hidden((pt, b), hbonds[ix])
+        else:
+            print(f"WARNING: {pt} {b} has only {len(hbonds)} bonds, but {ix} is requested ({hbonds})")
+
+        hidden_col.append(hidden)
+
     df2 = df2.with_columns(
-        pl.Series(
-            "hidden",
-            [
-                pair_defs.is_bond_hidden((pt, b), pair_defs.get_hbonds((pt, b))[ix])
-                for pt, b, ix in zip(df2["LW pair type"], df2["Pair bases"], df2["hb_ix"])
-            ]
-        )
+        pl.Series("hidden", hidden_col, dtype=pl.Boolean)
     )
     df2 = df2.sort([ "Family", "Base 1", "Base 2", "hb_ix" ])
     print("Wrote", os.path.join(output_dir, "statistics.csv"), "and", os.path.join(output_dir, "statistics2.csv"))
@@ -706,7 +744,7 @@ def main(argv):
             print(f"WARNING: No data in {pair_type}")
             continue
 
-        print(nicest_bps, len(dff) if dff is not None else 0)
+        print("nicest_bps:", nicest_bps, "out of", len(dff) if dff is not None else 0)
         # output_files = [
         #     f
         #     for h in histogram_defs
