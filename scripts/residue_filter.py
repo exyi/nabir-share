@@ -39,9 +39,15 @@ def read_id_lists(directory) -> dict[str, pl.DataFrame]:
     }
 
 def add_res_filter_columns(df, residue_lists: dict[str, pl.DataFrame]):
-    print(next(iter(residue_lists.values())))
+    # print(next(iter(residue_lists.values())))
     rcols = { f"{name}-r{resix}":
-        df.join(reslist.with_columns(pl.lit(True).alias("__tmp")), left_on=["pdbid", f"chain{resix}", f"res{resix}", f"nr{resix}", f"alt{resix}", f"ins{resix}"], right_on=["pdbid", "chain", "base", "id", "alt", "ins"], how="left")
+        df.join(
+            reslist.with_columns(pl.lit(True).alias("__tmp")),
+            left_on=["pdbid", f"chain{resix}", f"res{resix}", f"nr{resix}", f"alt{resix}", f"ins{resix}"],
+            right_on=["pdbid", "chain", "base", "id", "alt", "ins"],
+            how="left",
+            join_nulls=True
+        )
             .get_column("__tmp")
             .fill_null(False)
         for name, reslist in residue_lists.items()

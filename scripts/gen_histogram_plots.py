@@ -602,6 +602,7 @@ def reexport_df(df: pl.DataFrame, columns):
     return df
 
 def enumerate_pair_types(files: list[str], include_nears: bool) -> Generator[tuple[PairType, pl.DataFrame], None, None]:
+    assert len(files) > 0 and isinstance(files, list) and isinstance(files[0], str)
     for file in files:
         pair_type = infer_pair_type(os.path.basename(file))
         if pair_type is not None:
@@ -610,8 +611,8 @@ def enumerate_pair_types(files: list[str], include_nears: bool) -> Generator[tup
             df = load_pair_table(file)
             assert "type" in df.columns, f"{file} does not contain type column"
             df = df.with_columns(
-                (pl.col("res1").map_dict(pairs.resname_map, default=pl.col("res1")) + "-" +
-                 pl.col("res2").map_dict(pairs.resname_map, default=pl.col("res2"))
+                (pl.col("res1").replace(pairs.resname_map) + "-" +
+                 pl.col("res2").replace(pairs.resname_map)
                 ).alias("pair_bases")
             )
             groups = df.group_by("type", "pair_bases")
@@ -639,11 +640,11 @@ def save_statistics(all_statistics, output_dir):
     pt_family_dict = { pt: ix + 1 for ix, pt in enumerate(pair_defs.pair_types) }
     df2 = pl.concat([
         df.select(
-            pl.col("pair_type").str.to_lowercase().map_dict(pt_family_dict).alias("Family"),
+            pl.col("pair_type").str.to_lowercase().replace(pt_family_dict, default=-1).alias("Family"),
             pl.col("pair_type").alias("LW pair type"),
             pl.col("pair").alias("Pair bases"),
-            pl.col("pair").str.split("-").apply(lambda x: x[0]).alias("Base 1"),
-            pl.col("pair").str.split("-").apply(lambda x: x[1]).alias("Base 2"),
+            pl.col("pair").str.split("-").map_elements(lambda x: x[0]).alias("Base 1"),
+            pl.col("pair").str.split("-").map_elements(lambda x: x[1]).alias("Base 2"),
             pl.col("count").alias("Count"),
             pl.col("bp_class").alias("Class"),
             pl.col("resolution_cutoff").alias("Resolution cutoff"),
@@ -713,7 +714,7 @@ def main(argv):
 
     for pair_type, df in enumerate_pair_types(args.input_file, args.include_nears):
         df = residue_filter.add_res_filter_columns(df, residue_lists)
-        print(f"{pair_type}: total count = {len(df)}")
+        print(f"{pair_type}: total count = {len(df)}, quality count = {len(df.filter(is_some_quality))}")
         print(df.select(pl.col("^hb_\\d+_length$"), pl.col("resolution"), is_some_quality.alias("some_quality")).describe())
 
         dff, stat_columns = None, None
@@ -743,7 +744,7 @@ def main(argv):
                 del statistics[-1]["nicest_bp_indices"]
             print(f"{pair_type} {resolution_label}: {len(dff)}/{len(df)} ")
         if dff is None or stat_columns is None:
-            print(f"WARNING: No data in {pair_type}")
+            print(f"WARNING: No data in {pair_type} ({len(df)=}, len(filtered)={len(df.filter(is_some_quality))}")
             continue
 
         print("nicest_bps:", nicest_bps, "out of", len(dff) if dff is not None else 0)
