@@ -601,7 +601,7 @@ def reexport_df(df: pl.DataFrame, columns):
     df = df.drop([col for col in df.columns if re.match(r"[DR]NA-(0-1[.]8|1[.]8-3[.]5)(-r\d+)?", col)])
     return df
 
-def enumerate_pair_types(files: list[str]) -> Generator[tuple[PairType, pl.DataFrame], None, None]:
+def enumerate_pair_types(files: list[str], include_nears: bool) -> Generator[tuple[PairType, pl.DataFrame], None, None]:
     for file in files:
         pair_type = infer_pair_type(os.path.basename(file))
         if pair_type is not None:
@@ -628,7 +628,7 @@ def enumerate_pair_types(files: list[str]) -> Generator[tuple[PairType, pl.DataF
                     continue
                 if pair_type.type[1].islower() and pair_type.type[2].isupper() and pair_type.type[1] == pair_type.type[2].lower():
                     continue
-                if pair_type.n:
+                if pair_type.n and not include_nears:
                     continue
                 yield pair_type, gdf
 
@@ -700,6 +700,8 @@ def main(argv):
     parser = argparse.ArgumentParser(description="Generate histogram plots")
     parser.add_argument("input_file", help="Input file", nargs="+")
     parser.add_argument("--residue-directory", required=True)
+    parser.add_argument("--reexport", default='none', choices=['none', 'partitioned'], help="Write out parquet files with calculated statistics columns (log likelihood, mode deviations)")
+    parser.add_argument("--include-nears", default=False, action="store_true", help="If FR3D is run in basepair_detailed mode, it reports near basepairs (denoted as ncWW). By default, we ignore them, but this option includes them in the output.")
     parser.add_argument("--output-dir", "-o", required=True, help="Output directory")
     args = parser.parse_args(argv)
 
@@ -709,7 +711,7 @@ def main(argv):
 
     all_statistics = []
 
-    for pair_type, df in enumerate_pair_types(args.input_file):
+    for pair_type, df in enumerate_pair_types(args.input_file, args.include_nears):
         df = residue_filter.add_res_filter_columns(df, residue_lists)
         print(f"{pair_type}: total count = {len(df)}")
         print(df.select(pl.col("^hb_\\d+_length$"), pl.col("resolution"), is_some_quality.alias("some_quality")).describe())
@@ -762,7 +764,8 @@ def main(argv):
         #     for f in make_bond_pages(df, args.output_dir, pair_type, [ h.select_columns(column) for h in histogram_defs], images=dna_rna_images, highlights=dna_rna_highlights, title_suffix=f" #{column}")
         # ]
         all_statistics.extend(statistics)
-        # reexport_df(df, stat_columns).write_parquet(os.path.join(args.output_dir, f"{pair_type[1]}-{pair_type[0]}.parquet"))
+        if args.reexport == "partitioned":
+            reexport_df(df, stat_columns).write_parquet(os.path.join(args.output_dir, f"{pair_type}.parquet"))
         results.append({
             # "input_file": file,
             "pair_type": pair_type.to_tuple(),
