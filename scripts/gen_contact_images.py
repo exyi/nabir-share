@@ -61,31 +61,52 @@ def rotate_to_y_axis(bond1, bond2):
     return abs(angle) > 0.1
 
 def get_n_atom(sele):
+    assert cmd.get_coords(f"({sele}) and (name C1')") is not None, sele
     if cmd.get_coords(f"({sele}) and (name N9)") is None:
         return "N1"
     else:
         return "N9"
 
-def flip_image_to_order(orient_updown = True):
+def flip_image_to_order(orient_updown = False, orient_left_phosphate_up = False, orient_left_c1_down = False):
     natom_r = get_n_atom("%rightnt")
+    natom_l = get_n_atom("%leftnt")
 
     # main nucleotide should be on the left
     rightC1_A = transform_to_camera_space(cmd.get_coords("%rightnt and (name C1')")[0])
-    leftC1_A = transform_to_camera_space(cmd.get_coords("%pair and (not %rightnt) and (name C1')")[0])
-    if rightC1_A[0] > leftC1_A[0]:
+    leftC1_A = transform_to_camera_space(cmd.get_coords("%leftnt and (name C1')")[0])
+    if rightC1_A[0] < leftC1_A[0]:
         cmd.turn("y", 180)
         rightC1_B = transform_to_camera_space(cmd.get_coords("%rightnt and (name C1')")[0])
         print(f"flipped along Y {rightC1_A} to {rightC1_B}")
 
-
     if orient_updown:
         # keep C1' atoms at the top
         rightC1 = transform_to_camera_space(cmd.get_coords("%rightnt and (name C1')")[0])
-        leftC1 = transform_to_camera_space(cmd.get_coords("%pair and (not %rightnt) and (name C1')")[0])
+        leftC1 = transform_to_camera_space(cmd.get_coords("%leftnt and (name C1')")[0])
         midle = transform_to_camera_space(np.mean(cmd.get_coords("%pair"), axis=0))
         if (rightC1[1] + leftC1[1]) / 2 < midle[1]:
             cmd.turn("x", 180)
 
+    if orient_left_phosphate_up and cmd.get_coords("%leftnt and (name P)") is not None:
+        # keep C5' atoms at the top
+        left_p = transform_to_camera_space(cmd.get_coords("%leftnt and (name P)")[0])
+        middle = transform_to_camera_space(np.mean(cmd.get_coords("%pair"), axis=0))
+        print(f"P-up {left_p=} {middle=}")
+        if left_p[1] < middle[1]:
+            cmd.turn("x", 180)
+            print(f"flipped along X {left_p} to {transform_to_camera_space(cmd.get_coords('%leftnt and (name P)')[0])}")
+
+    if orient_left_c1_down and cmd.get_coords("%leftnt and (name C1')") is not None:
+        # keep C5' atoms at the top
+        left_c1 = transform_to_camera_space(cmd.get_coords("%leftnt and (name C1')")[0])
+        left_n = transform_to_camera_space(cmd.get_coords(f"%leftnt and (name {natom_l})")[0])
+        print(f"C-N down {left_c1=} {left_n=} {natom_l=}")
+        if left_c1[1] > left_n[1]:
+            print("flipping along X")
+            cmd.turn("x", 180)
+            left_c1_ = transform_to_camera_space(cmd.get_coords("%leftnt and (name C1')")[0])
+            left_n_ = transform_to_camera_space(cmd.get_coords(f"%leftnt and (name {natom_l})")[0])
+            print(f'C-N down {left_c1_=} {left_n_=}')
 
 def orient_nucleotide_as_main():
     natom = get_n_atom("%rightnt")
@@ -173,13 +194,14 @@ def orient_pair(pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2,
     hbonds: Optional[list[tuple[str, str, str, str]]] = None,
     label_atoms=True,
     grey_context=False,
-    find_water=True):
+    find_water=True,
+    pair_type: Optional[pair_defs.PairType] = None):
     cmd.hide("everything", f"%{pdbid}")
     pair_selection =f"%{pdbid} and ({residue_selection(chain1, nt1, ins1, alt1)} or {residue_selection(chain2, nt2, ins2, alt2)})"
     print(pair_selection)
     cmd.select("pair", pair_selection)
-    cmd.select("rightnt", f"%pair and ({residue_selection(chain1, nt1, ins1, alt1)})")
-    # cmd.select("rightnt", f"%pair and ({residue_selection(chain2, nt2, ins2, alt2)})")
+    cmd.select("leftnt", f"%pair and ({residue_selection(chain1, nt1, ins1, alt1)})")
+    cmd.select("rightnt", f"%pair and ({residue_selection(chain2, nt2, ins2, alt2)})")
     cmd.show("sticks", "%pair")
     cmd.delete("pair_contacts")
     cmd.delete("pair_w_contacts")
@@ -188,15 +210,15 @@ def orient_pair(pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2,
     # cmd.distance("pair_contacts", "%pair", "%pair", mode=2)
     # cmd.hide("labels", "pair_contacts")
     if find_water:
-        find_and_select_water("%rightnt", "%pair and not %rightnt")
+        find_and_select_water("%rightnt", "%leftnt")
         cmd.distance("pair_w_contacts", "%pair", "%nwaters", mode=2)
         cmd.hide("labels", "pair_w_contacts")
         cmd.show("nb_spheres", "%nwaters")
         cmd.color("0xff0000", "%nwaters")
         # cmd.set("nb_spheres_size", 0.3, "nwaters")
-    cmd.util.cba("grey", f"%pair")
+    cmd.util.cba("gray70", f"%pair")
     normal_atoms_selection = "not (name C2' or name C3' or name C4' or name C5' or name O2' or name O3' or name O4' or name O5' or name P or name OP1 or name OP2)"
-    highlight_bonds("%rightnt", "%pair and not %rightnt", hbonds, label_atoms)
+    highlight_bonds("%leftnt", "%rightnt", hbonds, label_atoms)
     # if "all" in label_atoms:
     #     cmd.label("%pair", "name")
     if standard_orientation:
@@ -204,7 +226,12 @@ def orient_pair(pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2,
         orient_nucleotide_as_main()
     else:
         cmd.orient(f"%pair and {normal_atoms_selection}")
-        flip_image_to_order(orient_updown=True)
+        if pair_type is None:
+            flip_image_to_order(orient_updown=True)
+        elif (pt_fam := pair_type.type.lower()).startswith("cw") or pt_fam.startswith("tw"):
+            flip_image_to_order(orient_left_c1_down=True)
+        else:
+            flip_image_to_order(orient_left_phosphate_up=True)
         
     cmd.zoom("%pair", 0)
     # cmd.center("%rightnt")
@@ -221,6 +248,8 @@ def orient_pair(pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2,
         cmd.clip("slab", 12, "%pair")
         cmd.color("0xeeeeee", f"%{pdbid} and not %pair and not resname HOH")
 
+    cmd.h_add("%pair")
+
     cmd.set_bond("stick_radius", 0.25, "%pair")
     cmd.set_bond("stick_transparency", 0.0, "%pair")
 
@@ -232,18 +261,18 @@ class BPArgs:
     incremental: bool
     skip_bad: bool
 
-def make_pair_image(output_file, pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2, bpargs: BPArgs, hbonds: Optional[list[tuple[str, str, str, str]]]):
+def make_pair_image(output_file, pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2, bpargs: BPArgs, hbonds: Optional[list[tuple[str, str, str, str]]], pair_type: Optional[pair_defs.PairType]):
     print(bpargs)
-    orient_pair(pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2, standard_orientation=bpargs.standard_orientation, hbonds=hbonds)
+    orient_pair(pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2, standard_orientation=bpargs.standard_orientation, hbonds=hbonds, pair_type=pair_type)
     cmd.png(output_file, width=2560, height=1440, ray=1)
     print(f"Saved basepair image {output_file}")
 
-def make_pair_rot_movie(output_file, pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2, bpargs: BPArgs, hbonds: Optional[list[tuple[str, str, str, str]]]):
+def make_pair_rot_movie(output_file, pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2, bpargs: BPArgs, hbonds: Optional[list[tuple[str, str, str, str]]], pair_type: Optional[pair_defs.PairType]):
     length = bpargs.movie
     if length == 0:
         return
 
-    orient_pair(pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2, standard_orientation=bpargs.standard_orientation, hbonds=hbonds, label_atoms=False, grey_context=True, find_water=True)
+    orient_pair(pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2, standard_orientation=bpargs.standard_orientation, hbonds=hbonds, label_atoms=False, grey_context=True, find_water=True, pair_type=pair_type)
     try:
         cmd.mset("1", length)
         cmd.mview("store", 1)
@@ -327,6 +356,7 @@ def process_group(pdbid, group: pl.DataFrame, output_dir: str, bpargs: BPArgs):
             hbonds = [ b for b in hbonds if not pair_defs.is_bond_hidden(pt, b) ]
         else:
             hbonds = None
+            pt = None
 
         output_file = os.path.join(pdbdir, f"{chain1}_{nt1}{ins1 or ''}{alt1 or ''}-{chain2}_{nt2}{ins2 or ''}{alt2 or ''}")
         if bpargs.incremental and os.path.exists(output_file + ".png"):
@@ -335,12 +365,12 @@ def process_group(pdbid, group: pl.DataFrame, output_dir: str, bpargs: BPArgs):
                 continue
 
         load_if_needed()
-        make_pair_image(output_file + ".png", pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2, bpargs, hbonds)
+        make_pair_image(output_file + ".png", pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2, bpargs, hbonds, pt)
         # save_str(output_file + ".xyz", cmd.exporting.get_xyzstr("%pair"))
         # save_str(output_file + ".cif", cmd.exporting.get_cifstr("%pair"))
         # save_str(output_file + ".pdb", cmd.exporting.get_pdbstr("%pair"))
         # save_str(output_file + ".sdf", cmd.exporting.get_sdfstr("%pair"))
-        make_pair_rot_movie(output_file + ".mp4", pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2, bpargs, hbonds)
+        make_pair_rot_movie(output_file + ".mp4", pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2, bpargs, hbonds, pt)
 
     cmd.reinitialize()
 

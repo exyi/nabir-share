@@ -640,13 +640,13 @@ def save_statistics(all_statistics, output_dir):
     pt_family_dict = { pt: ix + 1 for ix, pt in enumerate(pair_defs.pair_types) }
     df2 = pl.concat([
         df.select(
+            pl.col("bp_class").alias("Class"),
             pl.col("pair_type").str.to_lowercase().replace(pt_family_dict, default=-1).alias("Family"),
             pl.col("pair_type").alias("LW pair type"),
             pl.col("pair").alias("Pair bases"),
             pl.col("pair").str.split("-").map_elements(lambda x: x[0]).alias("Base 1"),
             pl.col("pair").str.split("-").map_elements(lambda x: x[1]).alias("Base 2"),
             pl.col("count").alias("Count"),
-            pl.col("bp_class").alias("Class"),
             pl.col("resolution_cutoff").alias("Resolution cutoff"),
             pl.lit(i).alias("hb_ix"),
             pl.col(f"hb_{i}_label").alias("H-bond Atoms"),
@@ -681,7 +681,7 @@ def save_statistics(all_statistics, output_dir):
     df2 = df2.with_columns(
         pl.Series("hidden", hidden_col, dtype=pl.Boolean)
     )
-    df2 = df2.sort([ "Family", "Base 1", "Base 2", "hb_ix" ])
+    df2 = df2.sort([ "Class", "Family", "Base 1", "Base 2", "hb_ix" ])
     print("Wrote", os.path.join(output_dir, "statistics.csv"), "and", os.path.join(output_dir, "statistics2.csv"))
     df2.write_csv(os.path.join(output_dir, "statistics2.csv"))
 
@@ -767,12 +767,14 @@ def main(argv):
         all_statistics.extend(statistics)
         if args.reexport == "partitioned":
             reexport_df(df, stat_columns).write_parquet(os.path.join(args.output_dir, f"{pair_type}.parquet"))
+            reexport_df(df.filter(is_some_quality), stat_columns).write_parquet(os.path.join(args.output_dir, f"{pair_type}-filtered.parquet"))
         results.append({
             # "input_file": file,
             "pair_type": pair_type.to_tuple(),
             "count": len(df),
             "score": len(df.filter(is_high_quality)) + len(df.filter(is_med_quality)) / 100,
             "files": output_files,
+            "bp_class": statistics[-1]["bp_class"],
             "statistics": statistics,
             "labels": [
                 get_label(f"hb_{i}_length", pair_type) for i in range(3)
@@ -782,7 +784,7 @@ def main(argv):
 
     # results.sort(key=lambda r: r["score"], reverse=True)
     # results.sort(key=lambda r: r["pair_type"])
-    results.sort(key=lambda r: pair_defs.PairType.from_tuple(r["pair_type"]))
+    results.sort(key=lambda r: (r["bp_class"], pair_defs.PairType.from_tuple(r["pair_type"])))
     output_files = [ f for r in results for f in r["files"] ]
 
     subprocess.run(["gs", "-dBATCH", "-dNOPAUSE", "-q", "-sDEVICE=pdfwrite", "-dPDFSETTINGS=/prepress", f"-sOutputFile={os.path.join(args.output_dir, 'hbonds-merged.pdf')}", *output_files])

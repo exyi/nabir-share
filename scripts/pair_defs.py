@@ -310,6 +310,7 @@ def is_bond_to_sugar(pair_type: PairType, b: tuple[str, str, str, str]) -> bool:
 
 def is_bond_hidden(pair_type: PairType, b: tuple[str, str, str, str]) -> bool:
     return False
+    return is_ch_bond(pair_type, b)
     return is_ch_bond(pair_type, b) or is_bond_to_sugar(pair_type, b)
 
 def get_hbonds(pair_type: Union[tuple[str, str], PairType], throw=True) -> list[tuple[str, str, str, str]]:
