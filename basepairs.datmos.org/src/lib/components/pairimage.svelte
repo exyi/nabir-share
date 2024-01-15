@@ -118,7 +118,7 @@
     {#if url == null}
       <span>no image</span>
     {:else if pngFallback}
-      <img src={url} alt="x" loading="lazy" />
+      <img src={url} alt="image wasn't generated" loading="lazy" />
     {:else}
       <img src={url} srcset={generateSrcset(url, webpFallback)} alt="xxx" loading="lazy" on:error={onerror} />
     {/if}

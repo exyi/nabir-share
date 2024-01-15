@@ -1,11 +1,15 @@
 <script lang="ts">
 	import { filterToSqlCondition, makeSqlQuery, type NucleotideFilterModel } from "$lib/dbLayer";
+  import type metadataModule from '$lib/metadata';
+  import RangeSlider from 'svelte-range-slider-pips'
 
     export let filter: NucleotideFilterModel
     export let selectingFromTable: string | null = null
+    export let metadata: typeof metadataModule[0] | null = null
     export let mode: "ranges" | "sql" = "ranges"
 
-    let bonds = ["0", "1", "2"]
+    let bonds = ["Bond 0", "Bond 1", "Bond 2"]
+    $: bonds = metadata?.labels?.filter(l => l != null) ?? ["Bond 0", "Bond 1", "Bond 2"]
     let ranges = {
         length: bonds.map(_ => ({ min: "", max: "" })),
         accAngle: bonds.map(_ => ({ min: "", max: "" })),
@@ -31,10 +35,11 @@
     function modeChange(e: Event & { currentTarget:EventTarget & HTMLInputElement }) {
       mode = e.currentTarget.value as any
 
+      const currentSqlQuery = makeSqlQuery(selectingFromTable.endsWith('_f') ? {... filter, filtered: false} : filter, selectingFromTable)
       if (mode=="sql" && !filter.sql) {
-        filter = {...filter, sql: makeSqlQuery(filter, selectingFromTable) }
+        filter = {...filter, sql: currentSqlQuery }
       }
-      if (mode == "ranges" && filter.sql.trim() == makeSqlQuery(filter, selectingFromTable).trim()) {
+      if (mode == "ranges" && filter.sql.trim() == currentSqlQuery.trim()) {
         filter = {...filter, sql: "" }
       }
     }
@@ -55,14 +60,43 @@
     font-size: 1rem;
     font-weight: bold;
     text-align: center;
+    height: 1.5rem;
+  }
+  .panel-field {
+    height: 1.75rem;
+    margin-bottom: 0.75rem;
+  }
+  .flex-columns {
+    display: flex;
+    width: 100%;
+    justify-content: center;
+  }
+  .flex-columns > * {
+    flex: 0 1 auto;
+  }
+
+  .num-input {
+    max-width: 100px;
+  }
+
+  .field-body {
+    flex-grow: 1;
+  }
+
+  .mode-selection {
+    display: flex;
+    justify-content: center;
+  }
+  .sql-editor {
+    font-family: 'Fira Code', 'Consolas', monospace;
   }
 </style>
 
 <div>
-    <div class="control">
+    <div class="control mode-selection">
         <label class="radio">
           <input type="radio" checked={mode=="ranges"} value="ranges" name="editor_mode" on:change={modeChange}>
-          Ranges
+          Parameter ranges
         </label>
         <label class="radio">
           <input type="radio" checked={mode=="sql"} value="sql" name="editor_mode" on:change={modeChange}>
@@ -71,20 +105,30 @@
     </div>
     
     {#if mode=="ranges"}
-    <div class="columns" >
+    <div class="flex-columns" >
+        <div class="column">
+          <div class="panel-title"></div>
+          {#each bonds as bond, i}
+            <div class="panel-field">{bond}</div>
+          {/each}
+        </div>
         <div class="column">
             <h3 class="panel-title">Length</h3>
             {#each bonds as bond, i}
-            <div class="field is-horizontal">
-                <div class="field-label">Bond {bond}</div>
+              <div class="panel-field range-slider-wrapper" style="display: none">
+                <RangeSlider min={0} max={6} step={0.1} pushy={true} suffix="Å" float={true}
+                            values={[Number(ranges.length[i].min || 0), Number(ranges.length[i].max || 6)]}
+                            on:change={e => { ranges.length[i].min = ""+e.detail.values[0]; ranges.length[i].max = ""+e.detail.values[1] }} />
+              </div>
+              <div class="panel-field field is-horizontal">
                 <div class="field-body">
-                  <div class="field is-expanded">
+                  <div class="field">
                     <div class="field has-addons">
                       <p class="control">
-                        <input class="input is-small" type="number" step="0.1" min=0 max=6 placeholder="Min" bind:value={ranges.length[i].min}>
+                        <input class="input is-small num-input" type="number" step="0.1" min=0 max=6 placeholder="Min" bind:value={ranges.length[i].min}>
                       </p>
-                      <p class="control is-expanded">
-                        <input class="input is-small" type="number" step="0.1" min=0 max=6 placeholder="Max" bind:value={ranges.length[i].max}>
+                      <p class="control">
+                        <input class="input is-small num-input" type="number" step="0.1" min=0 max=6 placeholder="Max" bind:value={ranges.length[i].max}>
                       </p>
                     </div>
                   </div>
@@ -95,18 +139,16 @@
         <div class="column">
             <h3 class="panel-title">Donor Angle</h3>
             {#each bonds as bond, i}
-            <div class="field is-horizontal">
-                <div class="field-label">Bond {bond}</div>
+            <div class="panel-field field is-horizontal">
+                <!-- <div class="field-label">Bond {bond}</div> -->
                 <div class="field-body">
-                  <div class="field is-expanded">
-                    <div class="field has-addons">
-                      <p class="control">
-                        <input class="input is-small" type="number" step="5" min=0 max=360 placeholder="Min" bind:value={ranges.donAngle[i].min}>
-                      </p>
-                      <p class="control is-expanded">
-                        <input class="input is-small" type="number" step="5" min=0 max=360 placeholder="Max" bind:value={ranges.donAngle[i].max}>
-                      </p>
-                    </div>
+                  <div class="field has-addons">
+                    <p class="control">
+                      <input class="input is-small num-input" type="number" step="5" min=0 max=360 placeholder="Min" bind:value={ranges.donAngle[i].min}>
+                    </p>
+                    <p class="control">
+                      <input class="input is-small num-input" type="number" step="5" min=0 max=360 placeholder="Max" bind:value={ranges.donAngle[i].max}>
+                    </p>
                   </div>
                 </div>
               </div>
@@ -116,18 +158,16 @@
         <div class="column">
             <h3 class="panel-title">Acceptor Angle</h3>
             {#each bonds as bond, i}
-            <div class="field is-horizontal">
-                <div class="field-label">Bond {bond}</div>
+            <div class="panel-field field is-horizontal">
+                <!-- <div class="field-label">Bond {bond}</div> -->
                 <div class="field-body">
-                  <div class="field is-expanded">
-                    <div class="field has-addons">
-                      <p class="control">
-                        <input class="input is-small" type="number" step="5" min=0 max=360 placeholder="Min" bind:value={ranges.accAngle[i].min}>
-                      </p>
-                      <p class="control is-expanded">
-                        <input class="input is-small" type="number" step="5" min=0 max=360 placeholder="Max" bind:value={ranges.accAngle[i].max}>
-                      </p>
-                    </div>
+                  <div class="field has-addons">
+                    <p class="control">
+                      <input class="input is-small num-input" type="number" step="5" min=0 max=360 placeholder="Min" bind:value={ranges.accAngle[i].min}>
+                    </p>
+                    <p class="control">
+                      <input class="input is-small num-input" type="number" step="5" min=0 max=360 placeholder="Max" bind:value={ranges.accAngle[i].max}>
+                    </p>
                   </div>
                 </div>
               </div>
@@ -158,9 +198,23 @@
                   <option value="">pdbid</option>
                   <option value="pdbid DESC, model DESC, chain1 DESC, nr1 DESC">pdbid descending</option>
                   <option value="resolution NULLS LAST, pdbid, model, chain1, nr1">resolution</option>
+                  <option value="mode_deviations">Deviation from KDE mode</option>
+                  <option value="log_likelihood DESC">KDE log likelihood</option>
                 </select>
               </div>
             </div>
+          </div>
+          <div class="control">
+            <label class="checkbox" title="Filter out redundant nucleotides or nucleoties with bad something TODO">
+              <input type="checkbox" checked={filter.filtered} on:change={e => filter = {...filter, filtered: e.currentTarget.checked }}>
+              Representative set
+            </label>
+          </div>
+          <div class="control">
+            <label class="checkbox" title="Include 'nearly pairs' as reported by fr3d basepair_detailed function">
+              <input type="checkbox" checked={filter.includeNears} on:change={e => filter = {...filter, includeNears: e.currentTarget.checked }}>
+              Include near-pairs
+            </label>
           </div>
         </div>
 
@@ -168,7 +222,7 @@
 
     {:else if mode=="sql"}
       <div>
-        <textarea class="textarea" bind:value={filter.sql} style="width: 100%;"></textarea>
+        <textarea class="textarea sql-editor" bind:value={filter.sql} style="width: 100%;"></textarea>
       </div>
     {/if}
 </div>

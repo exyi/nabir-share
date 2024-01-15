@@ -6,21 +6,23 @@
     export let pair: PairingInfo
 
 
-    function residueSelection(r: NucleotideId) {
-        const chain = String(r.chain)
+    function resSele(r: NucleotideId) {
         let nt = String(r.resnum).replace("-", "\\-")
         if (r.inscode) {
             nt += String(r.inscode)
         }
 
         const alt = r.altloc ? ` alt ${r.altloc}` : ""
-        return `(chain ${chain} and resi ${nt}${alt})`
+        return `resi ${nt}${alt}`
     }
     
     function generatePymolScript(s: PairId): string[] {
         const script = []
         script.push(`fetch ${s.nt1?.pdbid}`)
-        const pairSelection = `${s.nt1?.pdbid} and (${residueSelection(s.nt1)} or ${residueSelection(s.nt2)})`
+        const pairSelection =
+            String(s.nt1?.chain) == String(s.nt2?.chain) ?
+                `${s.nt1?.pdbid} and chain ${s.nt1?.chain} and (${resSele(s.nt1)} or ${resSele(s.nt2)})` :
+                `${s.nt1?.pdbid} and (chain ${s.nt1.chain} and ${resSele(s.nt1)} or chain ${s.nt2.chain} and ${resSele(s.nt2)})`;
         script.push(`select pair, ${pairSelection}`)
         script.push(`show sticks, %pair`)
         script.push(`orient %pair`)
@@ -38,6 +40,9 @@
     .imgpane > * {
         flex-grow: 1;
         width: 40vw;
+    }
+    table th {
+        white-space: nowrap;
     }
 
 
