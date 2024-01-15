@@ -90,7 +90,7 @@
         await addView(t, t)
       } else if ((t.endsWith('_f') || t.endsWith('-f') || t.endsWith('_n') || t.endsWith('-n')) &&
         tryParsePairingType(t.slice(0, -2)) != null) {
-        await addView(t, t.slice(0, -2) + (t.endsWith('f') ? '-filtered' : '-n'))
+        await addView(t, (t.endsWith('n') ? 'n' : '') + t.slice(0, -2) + (t.endsWith('f') ? '-filtered' : ''))
       } else {
         if (!existingTables.has(t))
           console.warn(`Maybe missing table: ${t}?`)
@@ -105,6 +105,7 @@
   }
   let resultsPromise: Promise<arrow.Table<any> | undefined> = new Promise(() => {})
   let results = []
+  let resultsCount = 0
   let resultsAgg: ResultsAggregates = {}
 
   $: {
@@ -160,14 +161,18 @@
 
   const updateResultsLock = new AsyncLock()
 
+  function queryFromTable(filter: NucleotideFilterModel) {
+    let queryTable = `selectedpair` + (filter.filtered ? "_f" : "")
+    if (filter.includeNears) {
+      queryTable = `(select * FROM ${queryTable} UNION ALL BY NAME SELECT * from selectedpair_n)`
+    }
+    return queryTable
+  }
   async function updateResults() {
     async function core(conn: AsyncDuckDBConnection, abort: AbortSignal) {
 
-      let queryTable = `selectedpair` + (filter.filtered ? "_f" : "")
-      if (filter.includeNears) {
-        queryTable = `(select * FROM ${queryTable} UNION ALL BY NAME SELECT * from selectedpair_n)`
-      }
-      const sql = filterMode == "sql" ? filter.sql : makeSqlQuery(filter, queryTable)
+      
+      const sql = filterMode == "sql" ? filter.sql : makeSqlQuery(filter, queryFromTable(filter))
       console.log(sql)
       abort.throwIfAborted()
       await ensureViews(conn, abort, sql)
@@ -179,6 +184,7 @@
       resultsPromise = conn.query(sql)
       resultsAgg = {}
       const resultTable = await resultsPromise
+      resultsCount = resultTable.numRows
       results = Array.from(convertQueryResults(resultTable, parsePairingType(selectedPairing), 100));
       console.log({resultsPromise, results})
       const cols = resultTable.schema.names
@@ -270,7 +276,7 @@
 </div>
 <div class="filters">
   <FilterEditor bind:filter={filter}
-    selectingFromTable={filter.filtered ? 'selectedpair_f' : `selectedpair`}
+    selectingFromTable={filter && queryFromTable(filter)}
     metadata={getMetadata(selectedPairing)}
     bind:mode={filterMode} />
 </div>
@@ -338,6 +344,11 @@
   </div>
 {/if}
 <PairImages pairs={results} rootImages={imgDir} imgAttachement=".png" videoAttachement=".mp4" />
+{#if resultsCount != results?.length && resultsCount > 0}
+  <Spinner></Spinner>
+  <p style="text-align: center">Loading more... than 100 items is not implemented at the moment</p>
+{/if}
+
 </Modal>
 <style>
   .stats-row {

@@ -51,7 +51,7 @@
     <div class="imgpane">
         <img src={imageUrl} alt='x' />
         {#if videoUrl}
-            <video src={videoUrl} autoplay muted loop />
+            <video src={videoUrl} autoplay muted loop controls />
         {/if}
     </div>
     <div>

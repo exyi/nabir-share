@@ -1,6 +1,6 @@
 <script lang="ts">
     import Pairimage from "./pairimage.svelte";
-    import type { PairId, PairingInfo, PairingType } from "../pairing";
+    import type { PairId, PairingInfo } from "../pairing";
 
     export let pairs: PairingInfo[]
     export let rootImages: string
@@ -18,7 +18,7 @@
 
 <div class="imgcontainer">
     {#each pairs as p}
-        <Pairimage pair={p} url={getUrl(p.id, imgAttachement)} videoUrl={getUrl(p.id, videoAttachement)} />
+        <Pairimage pair={p} url={getUrl(p.id, imgAttachement)} videoUrl={getUrl(p.id, videoAttachement)} allowHoverVideo={false} />
     {/each}
 </div>
 

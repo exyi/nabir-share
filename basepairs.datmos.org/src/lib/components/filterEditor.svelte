@@ -70,6 +70,7 @@
     display: flex;
     width: 100%;
     justify-content: center;
+    flex-wrap: wrap;
   }
   .flex-columns > * {
     flex: 0 1 auto;
@@ -94,11 +95,11 @@
 
 <div>
     <div class="control mode-selection">
-        <label class="radio">
+        <label class="radio" title="Filter by constraining the H-bond parameters.">
           <input type="radio" checked={mode=="ranges"} value="ranges" name="editor_mode" on:change={modeChange}>
           Parameter ranges
         </label>
-        <label class="radio">
+        <label class="radio" title="Filter by anything you want using SQL.">
           <input type="radio" checked={mode=="sql"} value="sql" name="editor_mode" on:change={modeChange}>
           SQL
         </label>
@@ -113,7 +114,7 @@
           {/each}
         </div>
         <div class="column">
-            <h3 class="panel-title">Length</h3>
+            <h3 class="panel-title" title="Length in Å between the donor and acceptor heavy atoms">Length</h3>
             {#each bonds as bond, i}
               <div class="panel-field range-slider-wrapper" style="display: none">
                 <RangeSlider min={0} max={6} step={0.1} pushy={true} suffix="Å" float={true}
@@ -137,7 +138,7 @@
             {/each}
         </div>
         <div class="column">
-            <h3 class="panel-title">Donor Angle</h3>
+            <h3 class="panel-title" title="Angle in degrees between the acceptor, donor and its covalently bound atom.">Donor Angle</h3>
             {#each bonds as bond, i}
             <div class="panel-field field is-horizontal">
                 <!-- <div class="field-label">Bond {bond}</div> -->
@@ -156,7 +157,7 @@
         </div>
 
         <div class="column">
-            <h3 class="panel-title">Acceptor Angle</h3>
+            <h3 class="panel-title" title="Angle in degrees between the donor, acceptor and its covalently bound atom">Acceptor Angle</h3>
             {#each bonds as bond, i}
             <div class="panel-field field is-horizontal">
                 <!-- <div class="field-label">Bond {bond}</div> -->
@@ -176,11 +177,11 @@
 
         <div class="column">
           <div class="control">
-            <label class="radio">
+            <label class="radio" title="At least one of the nucleotides is RNA">
               <input type="radio" name="rna_dna_mode" value="rna" checked={filter.dna == false} on:change={dnaRnaChange}>
               RNA
             </label>
-            <label class="radio">
+            <label class="radio" title="At least one of the nucleotides is DNA">
               <input type="radio" name="rna_dna_mode" value="dna" checked={filter.dna == true} on:change={dnaRnaChange}>
               DNA
             </label>
@@ -197,9 +198,9 @@
                 <select bind:value={filter.orderBy} id="ntfilter-order-by">
                   <option value="">pdbid</option>
                   <option value="pdbid DESC, model DESC, chain1 DESC, nr1 DESC">pdbid descending</option>
-                  <option value="resolution NULLS LAST, pdbid, model, chain1, nr1">resolution</option>
-                  <option value="mode_deviations">Deviation from KDE mode</option>
-                  <option value="log_likelihood DESC">KDE log likelihood</option>
+                  <option value="resolution NULLS LAST, pdbid, model, chain1, nr1" title="Reported resolution of the source PDB structure">resolution</option>
+                  <option value="mode_deviations" title="Number of standard deviations between the H-bond parameters and the modes (peaks) calculated from Kernel Density Estimate. Use to list &quot;nicest&quot; pairs and avoid secondary modes.">Deviation from KDE mode</option>
+                  <option value="log_likelihood DESC" title="Multiplied likelihoods of all H-bond parameters in their Kernel Density Estimate distribution. Use to list &quot;nicest&quot; pairs without disqualifying secondary modes.">KDE log likelihood</option>
                 </select>
               </div>
             </div>
@@ -223,6 +224,10 @@
     {:else if mode=="sql"}
       <div>
         <textarea class="textarea sql-editor" bind:value={filter.sql} style="width: 100%;"></textarea>
+        <p class="help is-link">Use the SQL language to filter by anything. <code>selectedpair</code>, <code>selectedpair_f</code> and <code>selectedpair_n</code> contain the currently selected pair type, <code>_f</code> suffix are the filtered non-redundant set, <code>_n</code> suffix are the "nearly pairs". All other pair types are available in tables like <code>'tWW-A-A'</code> with the optional <code>_f</code> or <code>_n</code> suffix. The query runs in the browser, so run as many <code>DROP DATABASE</code>s as you please.</p>
+        <p>
+
+        </p>
       </div>
     {/if}
 </div>

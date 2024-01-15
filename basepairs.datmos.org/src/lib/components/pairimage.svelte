@@ -11,11 +11,13 @@
   export let pair: PairingInfo | undefined
   export let videoPreload: boolean = false
   export let videoShow: boolean = false
+  export let allowHoverVideo: boolean = true
+
 
 
   let pngFallback = false,
     webpFallback = false,
-    videoLoaded = false,
+    videoLoaded = false
   const resolutions = [ [450, 800 ], [720, 1280], [1080, 1980], [1440, 2560 ] ],
     webpResolution = [ [450, 800 ], [1440, 2560 ] ]
 
@@ -65,6 +67,10 @@
     flex-direction: column;
     flex-grow: 1;
   }
+  .header {
+    text-align: center;
+    font-size: 0.75rem;
+  }
   .img-root {
     position: relative;
     aspect-ratio: 16 / 9;
@@ -102,12 +108,12 @@
 
 <div class="pairimage">
 <div class="header">
-    {pair?.id.nt1.pdbid}{pair?.id.nt1.model > 1 ? "-" + pair?.id.nt1.model : ""}
-    {pair?.id.nt1.chain}-{pair?.id.nt1.resname??''}{pair?.id.nt1.resnum}{pair?.id.nt1.altloc??''}{pair?.id.nt1.inscode??''}
+    <strong>{pair?.id.nt1.pdbid}</strong>{pair?.id.nt1.model > 1 ? "-" + pair?.id.nt1.model : ""}
+    {pair?.id.nt1.chain}-{pair?.id.nt1.resname??''}<strong>{pair?.id.nt1.resnum}{pair?.id.nt1.altloc??''}{pair?.id.nt1.inscode??''}</strong>
     · · ·
-    {pair?.id.nt2.chain}-{pair?.id.nt2.resname??''}{pair?.id.nt2.resnum}{pair?.id.nt2.altloc??''}{pair?.id.nt2.inscode??''}
+    {pair?.id.nt2.chain}-{pair?.id.nt2.resname??''}<strong>{pair?.id.nt2.resnum}{pair?.id.nt2.altloc??''}{pair?.id.nt2.inscode??''}</strong>
 </div>
-<div class="img-root" class:allow-video={videoUrl != null} class:video-show={videoShow} on:mouseover={() => { videoLoaded = true }} on:focus={() => { videoLoaded = true }}
+<div class="img-root" class:allow-video={allowHoverVideo && videoUrl != null} class:video-show={videoShow} on:mouseover={() => { videoLoaded = true }} on:focus={() => { videoLoaded = true }}
     on:click={() => showModal()}>
   <div class="video">
     {#if videoLoaded || videoPreload || videoShow}
