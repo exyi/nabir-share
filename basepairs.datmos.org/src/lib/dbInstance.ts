@@ -3,7 +3,7 @@ import { AsyncDuckDB, AsyncDuckDBConnection, DuckDBDataProtocol } from '@duckdb/
 import metadata from '$lib/metadata.ts';
 import { initDB } from '$lib/duckdb'
 import { normalizePairFamily, compareFamilies } from '$lib/pairing'
-let db: any = null;
+// let db: any = null;
 let conn: AsyncDuckDBConnection | null = null
 
 export const parquetFiles = {
@@ -21,7 +21,8 @@ for (const [family, bases] of pairTypes) {
   parquetFiles[`n${family}-${bases}`] = `n${family}-${bases}.parquet`
   parquetFiles[`${family}-${bases}_n`] = `n${family}-${bases}.parquet`
 }
-export const fileBase = "https://pairs.exyi.cz/tables/"
+export const host = window.location.hostname.match(/(^|[.])localhost$/) ? 'localhost' : window.location.hostname
+export const fileBase = `${host == 'localhost' ? 'https://pairs.exyi.cz/' : document.baseURI}tables/`
 
 export function getConnectionSync(): AsyncDuckDBConnection {
   if (!conn)

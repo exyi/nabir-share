@@ -1,11 +1,10 @@
 <script lang="ts">
   import PairImages from '$lib/components/pairimages.svelte'
   import Spinner from '$lib/components/Spinner.svelte'
-  export let data;
   import { base } from '$app/paths';
   import metadata from '$lib/metadata'
 	import FilterEditor from '$lib/components/filterEditor.svelte';
-	import { aggregateBondParameters, aggregatePdbCountQuery, aggregateTypesQuery, filterToSqlCondition, makeSqlQuery, type NucleotideFilterModel } from '$lib/dbLayer.js';
+	import { aggregateBondParameters, aggregatePdbCountQuery, aggregateTypesQuery, defaultFilter, filterToSqlCondition, makeSqlQuery, parseUrl, type NucleotideFilterModel, filterToUrl } from '$lib/dbLayer.js';
 	import { fix_position } from 'svelte/internal';
 	import { parsePairingType, type NucleotideId, type PairId, type PairingInfo, type HydrogenBondInfo, tryParsePairingType } from '$lib/pairing.js';
 	import { Modal } from 'svelte-simple-modal';
@@ -13,12 +12,43 @@
 	import { AsyncLock } from '$lib/lock.js';
   import * as db from '$lib/dbInstance';
   import type * as arrow from 'apache-arrow'
+	import { AsyncDebouncer } from '$lib/debouncer.js';
 
   let selectedFamily = 'tWW'
   let selectedPairing = 'tWW-A-A'
 
   let filterMode: "ranges" | "sql" = "ranges"
-  let filter: NucleotideFilterModel = { bond_acceptor_angle: [], bond_donor_angle: [], bond_length: [], filtered: true, includeNears: false }
+  let filter: NucleotideFilterModel = defaultFilter()
+
+  function setModeFromUrl(url: string) {
+    url = url.replace(/^#/, '')
+    const x = parseUrl(url)
+    filterMode = x.mode
+    filter = x.filter
+    if (x.pairType != null) {
+      selectedFamily = db.pairFamilies.find(f => f.toLowerCase() == x.pairFamily.toLowerCase()) ?? x.pairFamily
+      selectedPairing = db.pairTypes.map(([f, b]) => `${f}-${b}`).find(f => f.toLowerCase() == x.pairType.toLowerCase()) ?? x.pairType
+    }
+    updateUrlNow()
+  }
+
+  setModeFromUrl(window.location.hash)
+  window.addEventListener("hashchange", (ev: HashChangeEvent) => setModeFromUrl(window.location.hash))
+  const urlUpdateDebouncer = new AsyncDebouncer(700, true)
+
+  function updateUrlNow() {
+    const params = filterToUrl(filter, filterMode)
+    const url = `${selectedPairing}/${params.toString()}`
+    history.pushState({}, "", '#' + url)
+  }
+  function updateUrl() {
+    urlUpdateDebouncer.debounce(updateUrlNow)
+  }
+
+  $: {
+    selectedPairing, filterMode, filter
+    updateUrl()
+  }
 
   // Set up the db connection as an empty promise.
   const connPromise = db.connect();
@@ -240,7 +270,7 @@
   }
 
   // const imgDir = "http://[2a01:4f8:c2c:bb6c:4::8]:12345/"
-  const imgDir = "https://pairs.exyi.cz/img"
+  const imgDir = db.host == 'localhost' ? "https://pairs.exyi.cz/img" : document.baseURI + 'pregen-img'
   // const imgDir = base+"/img"
 </script>
 

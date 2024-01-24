@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { filterToSqlCondition, makeSqlQuery, type NucleotideFilterModel } from "$lib/dbLayer";
+	import { filterToSqlCondition, makeSqlQuery, type NucleotideFilterModel, type Range } from "$lib/dbLayer";
   import type metadataModule from '$lib/metadata';
   import RangeSlider from 'svelte-range-slider-pips'
 
@@ -10,27 +10,37 @@
 
     let bonds = ["Bond 0", "Bond 1", "Bond 2"]
     $: bonds = metadata?.labels?.filter(l => l != null) ?? ["Bond 0", "Bond 1", "Bond 2"]
-    let ranges = {
-        length: bonds.map(_ => ({ min: "", max: "" })),
-        accAngle: bonds.map(_ => ({ min: "", max: "" })),
-        donAngle: bonds.map(_ => ({ min: "", max: "" })),
-    }
-    function updateFilter() {
-        function convertRange(x: any) {
-            return { min: (isNaN(Number.parseFloat(x.min)) ? null : Number.parseFloat(x.min)),
-                     max: (isNaN(Number.parseFloat(x.max)) ? null : Number.parseFloat(x.max)) }
-        }
-        filter = { ...filter,
-            bond_length: bonds.map((_, i) => convertRange(ranges.length[i])),
-            bond_acceptor_angle: bonds.map((_, i) => convertRange(ranges.accAngle[i])),
-            bond_donor_angle: bonds.map((_, i) => convertRange(ranges.donAngle[i]))
-        }
+    function tryParseNum(x: string) {
+      const n = Number.parseFloat(x)
+      return isNaN(n) ? null : n
     }
 
-    $:{
-        ranges
-        updateFilter()
+    function ensureLength(array: Range[], index: number) {
+      while (array.length <= index) {
+        array.push({})
+      }
     }
+    // let ranges = {
+    //     length: bonds.map(_ => ({ min: "", max: "" })),
+    //     accAngle: bonds.map(_ => ({ min: "", max: "" })),
+    //     donAngle: bonds.map(_ => ({ min: "", max: "" })),
+    // }
+    // function updateFilter() {
+    //     function convertRange(x: any) {
+    //         return { min: (isNaN(Number.parseFloat(x.min)) ? null : Number.parseFloat(x.min)),
+    //                  max: (isNaN(Number.parseFloat(x.max)) ? null : Number.parseFloat(x.max)) }
+    //     }
+    //     filter = { ...filter,
+    //         bond_length: bonds.map((_, i) => convertRange(ranges.length[i])),
+    //         bond_acceptor_angle: bonds.map((_, i) => convertRange(ranges.accAngle[i])),
+    //         bond_donor_angle: bonds.map((_, i) => convertRange(ranges.donAngle[i]))
+    //     }
+    // }
+
+    // $:{
+    //     ranges
+    //     updateFilter()
+    // }
 
     function modeChange(e: Event & { currentTarget:EventTarget & HTMLInputElement }) {
       mode = e.currentTarget.value as any
@@ -116,20 +126,20 @@
         <div class="column">
             <h3 class="panel-title" title="Length in Å between the donor and acceptor heavy atoms">Length</h3>
             {#each bonds as bond, i}
-              <div class="panel-field range-slider-wrapper" style="display: none">
+              <!-- <div class="panel-field range-slider-wrapper">
                 <RangeSlider min={0} max={6} step={0.1} pushy={true} suffix="Å" float={true}
                             values={[Number(ranges.length[i].min || 0), Number(ranges.length[i].max || 6)]}
                             on:change={e => { ranges.length[i].min = ""+e.detail.values[0]; ranges.length[i].max = ""+e.detail.values[1] }} />
-              </div>
+              </div> -->
               <div class="panel-field field is-horizontal">
                 <div class="field-body">
                   <div class="field">
                     <div class="field has-addons">
                       <p class="control">
-                        <input class="input is-small num-input" type="number" step="0.1" min=0 max=6 placeholder="Min" bind:value={ranges.length[i].min}>
+                        <input class="input is-small num-input" type="number" step="0.1" min=0 max=6 placeholder="Min" value={filter.bond_length[i]?.min} on:change={ev => { ensureLength(filter.bond_length, i); filter.bond_length[i].min = tryParseNum(ev.currentTarget.value)} }>
                       </p>
                       <p class="control">
-                        <input class="input is-small num-input" type="number" step="0.1" min=0 max=6 placeholder="Max" bind:value={ranges.length[i].max}>
+                        <input class="input is-small num-input" type="number" step="0.1" min=0 max=6 placeholder="Max" value={filter.bond_length[i]?.max} on:change={ev => { ensureLength(filter.bond_length, i); filter.bond_length[i].max = tryParseNum(ev.currentTarget.value)} }>
                       </p>
                     </div>
                   </div>
@@ -145,10 +155,10 @@
                 <div class="field-body">
                   <div class="field has-addons">
                     <p class="control">
-                      <input class="input is-small num-input" type="number" step="5" min=0 max=360 placeholder="Min" bind:value={ranges.donAngle[i].min}>
+                      <input class="input is-small num-input" type="number" step="5" min=0 max=360 placeholder="Min" value={filter.bond_donor_angle[i]?.min} on:change={ev => { ensureLength(filter.bond_donor_angle, i); filter.bond_donor_angle[i].min = tryParseNum(ev.currentTarget.value)} }>
                     </p>
                     <p class="control">
-                      <input class="input is-small num-input" type="number" step="5" min=0 max=360 placeholder="Max" bind:value={ranges.donAngle[i].max}>
+                      <input class="input is-small num-input" type="number" step="5" min=0 max=360 placeholder="Max" value={filter.bond_donor_angle[i]?.max} on:change={ev => { ensureLength(filter.bond_donor_angle, i); filter.bond_donor_angle[i].max = tryParseNum(ev.currentTarget.value)} }>
                     </p>
                   </div>
                 </div>
@@ -164,10 +174,10 @@
                 <div class="field-body">
                   <div class="field has-addons">
                     <p class="control">
-                      <input class="input is-small num-input" type="number" step="5" min=0 max=360 placeholder="Min" bind:value={ranges.accAngle[i].min}>
+                      <input class="input is-small num-input" type="number" step="5" min=0 max=360 placeholder="Min" value={filter.bond_acceptor_angle[i]?.min} on:change={ev => { ensureLength(filter.bond_acceptor_angle, i); filter.bond_acceptor_angle[i].min = tryParseNum(ev.currentTarget.value)} }>
                     </p>
                     <p class="control">
-                      <input class="input is-small num-input" type="number" step="5" min=0 max=360 placeholder="Max" bind:value={ranges.accAngle[i].max}>
+                      <input class="input is-small num-input" type="number" step="5" min=0 max=360 placeholder="Max" value={filter.bond_acceptor_angle[i]?.max} on:change={ev => { ensureLength(filter.bond_acceptor_angle, i); filter.bond_acceptor_angle[i].max = tryParseNum(ev.currentTarget.value)} }>
                     </p>
                   </div>
                 </div>

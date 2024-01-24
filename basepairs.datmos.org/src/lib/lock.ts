@@ -21,7 +21,7 @@ export class AsyncLock {
         if (!resolve) throw 'wtf'
         return () => {
             this.#lock = null;
-            resolve!();
+            resolve();
         }
     }
 
