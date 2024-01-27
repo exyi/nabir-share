@@ -9,7 +9,7 @@ def patch_duckdb_hack(directory):
             if done:
                 raise Exception(f'Multiple files found: {done} and {file}')
             done = file
-            content = re.sub(r'return new Response', 'return duckdb_init_response_content_type_hack(', content)
+            content = re.sub(r'return new Response\(', 'return duckdb_init_response_content_type_hack(', content)
             if content.count('duckdb_init_response_content_type_hack') != 1:
                 raise Exception(f'Failed to patch {file}')
             content = """
@@ -17,7 +17,7 @@ def patch_duckdb_hack(directory):
                     const response = new Response(...args)
                     response.headers.set("content-type", "application/wasm")
                     return response
-                }\n"""
+                }\n""" + content
             print(f'Patched DuckDB {file}')
             
             file.write_text(content, 'utf-8')

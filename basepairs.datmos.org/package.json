@@ -3,7 +3,7 @@
   "version": "0.0.3",
   "scripts": {
     "dev": "vite dev --port 1922",
-    "build": "vite build",
+    "build": "vite build && python patch-duckdb-hack.py docs/internal/immutable/workers",
     "package": "vite package",
     "preview": "vite preview",
     "check": "svelte-check --tsconfig ./tsconfig.json",
@@ -15,6 +15,7 @@
     "@duckdb/duckdb-wasm": "^1.28.0",
     "@sveltejs/adapter-static": "^1.0.6",
     "@sveltejs/kit": "^1.0.1",
+    "@types/d3": "^7.4.3",
     "@types/svelte-range-slider-pips": "^2.0.4",
     "@typescript-eslint/eslint-plugin": "^5.47.1",
     "@typescript-eslint/parser": "^5.47.1",
@@ -35,6 +36,7 @@
   "type": "module",
   "dependencies": {
     "bulma": "^0.9.4",
+    "d3": "^7.8.5",
     "svelte-simple-modal": "^1.6.1"
   }
 }
