@@ -4,7 +4,7 @@
   import { base } from '$app/paths';
   import metadata from '$lib/metadata'
 	import FilterEditor from '$lib/components/filterEditor.svelte';
-	import { aggregateBondParameters, aggregatePdbCountQuery, aggregateTypesQuery, defaultFilter, filterToSqlCondition, makeSqlQuery, parseUrl, type NucleotideFilterModel, filterToUrl } from '$lib/dbLayer.js';
+	import { aggregateBondParameters, aggregatePdbCountQuery, aggregateTypesQuery, defaultFilter, filterToSqlCondition, makeSqlQuery, parseUrl, type NucleotideFilterModel, filterToUrl, type HistogramSettingsModel, type StatisticsSettingsModel, fillStatLegends } from '$lib/dbModels.js';
 	import { fix_position } from 'svelte/internal';
 	import { parsePairingType, type NucleotideId, type PairId, type PairingInfo, type HydrogenBondInfo, tryParsePairingType } from '$lib/pairing.js';
 	import { Modal } from 'svelte-simple-modal';
@@ -13,12 +13,28 @@
   import * as db from '$lib/dbInstance';
   import type * as arrow from 'apache-arrow'
 	import { AsyncDebouncer } from '$lib/debouncer.js';
+  import HistogramPlot from '$lib/components/HistogramPlot.svelte';
+	import StatsPanel from '$lib/components/StatsPanel.svelte';
 
   let selectedFamily = 'tWW'
   let selectedPairing = 'tWW-A-A'
 
   let filterMode: "ranges" | "sql" = "ranges"
   let filter: NucleotideFilterModel = defaultFilter()
+  let testStats: StatisticsSettingsModel = {
+    enabled: false,
+    panels: [
+      { type: "histogram",
+        variables: [ { column: "hb_0_length", label: "" }, { column: "hb_1_length", label: "" }, { column: "hb_2_length", label: "" }, {column: "hb_3_length", label:""} ]
+      },
+      { type: "histogram",
+        variables: [ { column: "hb_0_donor_angle", label: "" }, { column: "hb_1_donor_angle", label: "" }, { column: "hb_2_donor_angle", label: "" }, {column: "hb_3_donor_angle", label:""} ]
+      },
+      { type: "histogram",
+        variables: [ { column: "hb_0_acceptor_angle", label: "" }, { column: "hb_1_acceptor_angle", label: "" }, { column: "hb_2_acceptor_angle", label: "" }, {column: "hb_3_acceptor_angle", label:""} ]
+      }
+    ]
+  }
 
   function setModeFromUrl(url: string) {
     url = url.replace(/^#/, '')
@@ -71,7 +87,8 @@
       connPromise
         .then(async conn => {
           console.log("Dropping existing views, switching to ", selectedPairing)
-          // await conn.cancelSent()
+          updateResultsLock.abortRunning()
+          await conn.cancelSent()
           await conn.query(`DROP VIEW IF EXISTS selectedpair`)
           await conn.query(`DROP VIEW IF EXISTS selectedpair_f`)
           await conn.query(`DROP VIEW IF EXISTS selectedpair_n`)
@@ -135,6 +152,7 @@
   }
   let resultsPromise: Promise<arrow.Table<any> | undefined> = new Promise(() => {})
   let results = []
+  let resultsTable: arrow.Table<any> | null = null
   let resultsCount = 0
   let resultsAgg: ResultsAggregates = {}
 
@@ -200,12 +218,16 @@
   }
   async function updateResults() {
     async function core(conn: AsyncDuckDBConnection, abort: AbortSignal) {
-
+      let startTime = performance.now()
+      const timing = { ensureViews: -1, query: -1, queryConvert: -1, aggPdbId: -1, aggTypes: -1, aggBondParams: -1 }
       
       const sql = filterMode == "sql" ? filter.sql : makeSqlQuery(filter, queryFromTable(filter))
       console.log(sql)
       abort.throwIfAborted()
       await ensureViews(conn, abort, sql)
+      timing.ensureViews = performance.now() - startTime
+      startTime = performance.now()
+
       if (false) {
         conn.query(sql).then(t => t.schema.metadata)
       }
@@ -213,11 +235,17 @@
       abort.throwIfAborted()
       resultsPromise = conn.query(sql)
       resultsAgg = {}
-      const resultTable = await resultsPromise
-      resultsCount = resultTable.numRows
-      results = Array.from(convertQueryResults(resultTable, parsePairingType(selectedPairing), 100));
-      console.log({resultsPromise, results})
-      const cols = resultTable.schema.names
+      resultsTable = await resultsPromise
+      timing.query = performance.now() - startTime
+      startTime = performance.now()
+
+      resultsCount = resultsTable.numRows
+      results = Array.from(convertQueryResults(resultsTable, parsePairingType(selectedPairing), 100));
+      timing.queryConvert = performance.now() - startTime
+      startTime = performance.now()
+
+      // console.log({resultsPromise, results})
+      const cols = resultsTable.schema.names
       if (cols.includes("type") && cols.includes("res1") && cols.includes("res2")) {
         abort.throwIfAborted()
         resultsAgg.types = Object.fromEntries(
@@ -225,6 +253,8 @@
         )
         console.log("types", resultsAgg.types)
         resultsAgg = resultsAgg
+        timing.aggTypes = performance.now() - startTime
+        startTime = performance.now()
       }
       if (cols.includes("pdbid")) {
         abort.throwIfAborted()
@@ -232,33 +262,44 @@
           Array.from(await conn.query(aggregatePdbCountQuery(sql))).map(x => [x.pdbid, x.count])
         )
         resultsAgg = resultsAgg
+        timing.aggPdbId = performance.now() - startTime
+        startTime = performance.now()
       }
       if (cols.some(x => String(x).startsWith("hb_"))) {
         abort.throwIfAborted()
-        const x = await conn.query(aggregateBondParameters(sql, cols.map(c => String(c))))
+        // const x = await conn.query(aggregateBondParameters(sql, cols.map(c => String(c))))
         resultsAgg.bondStats = []
-        for (let n of x.schema.names) {
-          n = String(n)
-          const m = n.match(/^hb_(\d+)_(.*)_([a-z0-9]+)$/)!
-          if (m == null) continue
-          const [ _, bond, param, stat ] = m
-          resultsAgg.bondStats.push({ bond: Number(bond), param: param as any, stat: stat as any, value: Number([... x][0][n]) })
-        }
-        console.log("stats", resultsAgg.bondStats)
+        // for (let n of x.schema.names) {
+        //   n = String(n)
+        //   const m = n.match(/^hb_(\d+)_(.*)_([a-z0-9]+)$/)!
+        //   if (m == null) continue
+        //   const [ _, bond, param, stat ] = m
+        //   resultsAgg.bondStats.push({ bond: Number(bond), param: param as any, stat: stat as any, value: Number([... x][0][n]) })
+        // }
+        // console.log("stats", resultsAgg.bondStats)
         resultsAgg = resultsAgg
+        timing.aggBondParams = performance.now() - startTime
+        startTime = performance.now()
       }
+
+      console.log("Loading finished: ", timing)
     }
 
     try {
       const conn = await connPromise
       await tableLoadPromise
-      // await conn.cancelSent()
+      console.log(`Running new query (L0 < ${filter.bond_length[0]?.max})`)
+      updateResultsLock.abortRunning()
+      await conn.cancelSent()
       return await updateResultsLock.withCancellableLock(abortSignal => core(conn, abortSignal))
 
     } catch (e) {
       resultsPromise = Promise.reject(e)
-      console.error("Loading data failed:", e)
-      throw e
+      const isOk = e.message?.includes("The operation was aborted") ?? false
+      if (!isOk) {
+        console.error("Loading data failed:", e)
+        throw e
+      }
     }
   }
 
@@ -270,7 +311,7 @@
   }
 
   // const imgDir = "http://[2a01:4f8:c2c:bb6c:4::8]:12345/"
-  const imgDir = db.host == 'localhost' ? "https://pairs.exyi.cz/img" : document.baseURI + 'pregen-img'
+  const imgDir = db.host == 'localhost' ? "https://pairs.exyi.cz/img" : (new URL('pregen-img', document.baseURI)).href
   // const imgDir = base+"/img"
 </script>
 
@@ -361,7 +402,16 @@
   <pre style="color: darkred">{error}</pre>
 {/await}
 {#if Object.keys(resultsAgg.types ?? 0)?.length}
-  <div class="stats-row">
+<div class="stats-row">
+
+  <div style="position: absolute; width: 200px; text-align: center; margin-left: -100px; left:50%">
+    {#if testStats.enabled}
+    <a style="text-align: center; :inline-end" href="javascript:" on:click={e => testStats.enabled = false }>▲ hide plots ▲</a>
+    {:else}
+    <a href="javascript:" on:click={() => testStats.enabled = true}>▽ show plots ▽</a>
+    {/if}
+  </div>
+  <div>
     {#each Object.entries(resultsAgg.types) as [type, count], i}
       {#if i > 0}, {/if}
       <strong>{count}</strong> × {type}
@@ -372,6 +422,12 @@
       </span>
     {/if}
   </div>
+</div>
+
+{#if testStats.enabled}
+  <StatsPanel data={resultsTable} settings={fillStatLegends(testStats, getMetadata(selectedPairing))} />
+{/if}
+
 {/if}
 <PairImages pairs={results} rootImages={imgDir} imgAttachement=".png" videoAttachement=".mp4" />
 {#if resultsCount != results?.length && resultsCount > 0}
@@ -387,6 +443,7 @@
     border-top: 1px solid #ccc;
     border-bottom: 1px solid #ccc;
   }
+
 /*
 .selector .selected {
   border: 2px solid black;

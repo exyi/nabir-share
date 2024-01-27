@@ -1,28 +1,53 @@
 export class AsyncLock {
 
-    #lock: Promise<void> | null = null
-    #nWaiting = 0
+    #queue: (() => void)[] = []
+    #locked = false
+    // #lock: Promise<void> | null = null
+    // #nWaiting = 0
     #cancelOnWait: AbortController | null = null
 
-    async acquire(): Promise<() => void> {
-        this.#nWaiting += 1;
-        while (this.#lock !== null) {
-            this.abortRunning()
-            await this.#lock;
+    acquire(abort?: AbortSignal): Promise<() => void> | (() => void) {
+        const runNext = () => {
+            if (this.#queue.length > 0) {
+                const next = this.#queue.shift()!
+                next()
+            }
+        }
+        if (!this.#locked) {
+            this.#locked = true
+            return () => {
+                this.#locked = false
+                runNext()
+            }
         }
 
-        if (this.#lock !== null) throw 'wtf'
+        return new Promise<() => void>((resolve, reject) => {
+            const handle = () => {
+                if (abort?.aborted) {
+                    reject(new DOMException("The operation was aborted.", "AbortError"))
+                    return;
+                }
+                if (this.#locked) {
+                    throw new Error("Well fuck")
+                }
+                this.#locked = true
+                resolve(() => {
+                    this.#locked = false
+                    runNext()
+                })
+            }
+            this.#queue.push(handle)
 
-        let resolve: null | (() => void) = null
-        this.#lock = new Promise(r => resolve = r);
-        
-        this.#nWaiting -= 1;
-
-        if (!resolve) throw 'wtf'
-        return () => {
-            this.#lock = null;
-            resolve();
-        }
+            if (abort) {
+                abort.addEventListener("abort", ev => {
+                    const ix = this.#queue.indexOf(handle)
+                    if (ix >= 0) {
+                        this.#queue.splice(ix, 1)
+                    }
+                    reject(new DOMException("The operation was aborted.", "AbortError"))
+                })
+            }
+        })
     }
 
     async withLock<T>(fn: () => Promise<T>): Promise<T> {
@@ -35,19 +60,18 @@ export class AsyncLock {
     }
 
     async withCancellableLock<T>(fn: (signal: AbortSignal) => Promise<T>): Promise<T> {
-        const release = await this.acquire();
+        const ac = this.#cancelOnWait ??= new AbortController()
+        const release = await this.acquire(ac.signal);
         try {
-            const controller = new AbortController()
-            this.#cancelOnWait = controller
-            return await fn(controller.signal);
+            ac.signal.throwIfAborted()
+            return await fn(ac.signal);
         } finally {
-            this.#cancelOnWait = null
             release();
         }
     }
 
     abortRunning() {
         if (this.#cancelOnWait) this.#cancelOnWait.abort()
-        return this.#lock
+        this.#cancelOnWait = null
     }
 }

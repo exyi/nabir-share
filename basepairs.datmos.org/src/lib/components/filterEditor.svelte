@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { filterToSqlCondition, makeSqlQuery, type NucleotideFilterModel, type Range } from "$lib/dbLayer";
+	import { filterToSqlCondition, makeSqlQuery, type NucleotideFilterModel, type Range } from "$lib/dbModels";
   import type metadataModule from '$lib/metadata';
   import RangeSlider from 'svelte-range-slider-pips'
 
@@ -236,7 +236,6 @@
         <textarea class="textarea sql-editor" bind:value={filter.sql} style="width: 100%;"></textarea>
         <p class="help is-link">Use the SQL language to filter by anything. <code>selectedpair</code>, <code>selectedpair_f</code> and <code>selectedpair_n</code> contain the currently selected pair type, <code>_f</code> suffix are the filtered non-redundant set, <code>_n</code> suffix are the "nearly pairs". All other pair types are available in tables like <code>'tWW-A-A'</code> with the optional <code>_f</code> or <code>_n</code> suffix. The query runs in the browser, so run as many <code>DROP DATABASE</code>s as you please.</p>
         <p>
-
         </p>
       </div>
     {/if}

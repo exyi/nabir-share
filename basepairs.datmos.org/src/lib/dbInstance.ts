@@ -22,7 +22,7 @@ for (const [family, bases] of pairTypes) {
   parquetFiles[`${family}-${bases}_n`] = `n${family}-${bases}.parquet`
 }
 export const host = window.location.hostname.match(/(^|[.])localhost$/) ? 'localhost' : window.location.hostname
-export const fileBase = `${host == 'localhost' ? 'https://pairs.exyi.cz/' : document.baseURI}tables/`
+export const fileBase = (new URL('tables/', host == 'localhost' ? 'https://pairs.exyi.cz/' : document.baseURI)).href
 
 export function getConnectionSync(): AsyncDuckDBConnection {
   if (!conn)
