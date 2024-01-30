@@ -2,6 +2,7 @@
     import type { HistogramSettingsModel, StatisticsSettingsModel } from "$lib/dbModels";
     import type * as arrow from 'apache-arrow'
 	import HistogramPlot from "./HistogramPlot.svelte";
+	import Density2DPlot from "./Density2DPlot.svelte";
 
     export let settings: StatisticsSettingsModel | null = null
     export let data: arrow.Table<any> | null = null
@@ -44,6 +45,8 @@
       <h4>{panel.title || '.'}</h4>
       {#if panel.type == "histogram"}
         <HistogramPlot data={data} settings={panel} />
+      {:else if panel.type == 'kde2d'}
+        <Density2DPlot data={data} settings={panel} />
       {:else}
         Unknown panel type: {panel.type}
       {/if}

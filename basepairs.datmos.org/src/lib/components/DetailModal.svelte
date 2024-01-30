@@ -45,6 +45,10 @@
         white-space: nowrap;
     }
 
+    code {
+        color: black;
+        background-color: transparent;
+    }
 
 </style>
 <div>
@@ -58,7 +62,7 @@
         <h4>PyMol script<span style="font-size: 1rem; font-weight: 400"> &nbsp;&nbsp;- copy and paste into PyMol command line</span></h4>
         <pre>{generatePymolScript(pair.id).join("\n")}</pre>
     </div>
-    <div style="display: flex; flex-direction: row">
+    <div style="display: flex; flex-direction: row;justify-content: space-evenly">
     {#if pair.hbonds}
         <table class="table is-narrow is-striped" style="width: fit-content">
             <tr>
@@ -76,18 +80,39 @@
             <tr>
                 <th>Donor angle</th>
                 {#each pair.hbonds as hb}
-                    <td>{(hb.donorAngle * 180 / Math.PI).toFixed(0)}°</td>
+                    <td>{(hb.donorAngle).toFixed(0)}°</td>
                 {/each}
             </tr>
             <tr>
                 <th>Acceptor angle</th>
                 {#each pair.hbonds as hb}
-                    <td>{(hb.acceptorAngle * 180 / Math.PI).toFixed(0)}°</td>
+                    <td>{(hb.acceptorAngle).toFixed(0)}°</td>
                 {/each}
             </tr>
         </table>
     {/if}
-    <table class="table is-narrow is-striped" style="width: fit-content">
+    {#if pair.id.nt1.pdbid}
+    <div>
+        <!-- <h4>From structure</h4> -->
+        <div class='media' style="max-width: 600px">
+            <div class="media-left">
+                <a href="https://www.rcsb.org/structure/{pair.id.nt1.pdbid}">
+                <code style="font-size: 3rem">{pair.id.nt1.pdbid}</code>
+                </a>
+            </div>
+            <div class="media-content">
+            <div class="content">
+                <p>
+                <strong>{pair.originalRow?.structure_method ?? ''}</strong> <small> at {pair.originalRow?.resolution ?? '?'} Å</small> <small>(published {pair.originalRow?.deposition_date ? new Date(pair.originalRow.deposition_date).toLocaleDateString('en', {month: 'long', day: 'numeric',  year: 'numeric'}) : ''})</small>
+                <br>
+                {pair.originalRow?.structure_name ?? ''}
+                </p>
+            </div>
+            </div>
+        </div>
+    </div>
+    {/if}
+    <!-- <table class="table is-narrow is-striped" style="width: fit-content">
         <tr>
             <th>Structure ID</th>
             <td>{pair.id.nt1.pdbid}</td>
@@ -108,12 +133,18 @@
             <th>Deposition date</th>
             <td>{pair.originalRow?.deposition_date ? new Date(pair.originalRow.deposition_date).toLocaleDateString('en', {month: 'long', day: 'numeric',  year: 'numeric'}) : ''}</td>
         </tr>
-    </table>
+    </table> -->
     </div>
     <div>
+        <table class="table is-narrow is-striped" style="width: fit-content">
+            
         {#each Object.entries(pair?.originalRow ?? {}) as [k, v]}
-            <div><b>{k}</b>: {v}</div>
+            <tr>
+                <td><b><code>{k}</code></b></td>
+                <td>{typeof v == "number" ? v.toPrecision(7) : v == null ? "" : "" + v}</td>
+            </tr>
         {/each}
+        </table>
         <!-- <pre>{JSON.stringify(pair, null, 2)}</pre> -->
     </div>
 </div>

@@ -32,7 +32,13 @@
       },
       { type: "histogram",
         variables: [ { column: "hb_0_acceptor_angle", label: "" }, { column: "hb_1_acceptor_angle", label: "" }, { column: "hb_2_acceptor_angle", label: "" }, {column: "hb_3_acceptor_angle", label:""} ]
-      }
+      },
+      { type: "kde2d",
+        variables: [ { column: "hb_0_length", label: "" }, { column: "resolution", label: "" } ] },
+      { type: "kde2d",
+        variables: [ { column: "hb_1_length", label: "" }, { column: "resolution", label: "" } ] },
+      { type: "kde2d",
+        variables: [ { column: "hb_2_length", label: "" }, { column: "resolution", label: "" } ] },
     ]
   }
 

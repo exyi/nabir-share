@@ -22,7 +22,9 @@ function andBitmap(destination: Uint8Array, source: Uint8Array, destOffset) {
     }
 }
 
-export function filterData(ArrayType: typeof Float64Array, data: readonly arrow.Data<any>[], filter: readonly arrow.Data<arrow.Bool>[] | null | undefined): [Float64Array, number, Uint8Array] {
+type DataList<T extends arrow.DataType<arrow.Type, any>> = readonly arrow.Data<T>[]
+
+export function filterData(ArrayType: typeof Float64Array, data: DataList<any>, filters: readonly DataList<arrow.Bool>[], nnfilters: readonly DataList<any>[]): [Float64Array, number, Uint8Array] {
     const totalCount = data.reduce((acc, cur) => acc + cur.length, 0)
     const bitmap = new Uint8Array(Math.ceil(totalCount / 8))
     bitmap.fill(0xff)
@@ -39,13 +41,22 @@ export function filterData(ArrayType: typeof Float64Array, data: readonly arrow.
         }
     }
 
-    if (filter != null) {
+    for (const filter of filters) {
         for (let i = 0, offset = 0; i < filter.length; offset += filter[i].length, i++) {
             const d = filter[i]
             if (d.nullable) {
                 andBitmap(bitmap, d.nullBitmap, offset)
             }
             andBitmap(bitmap, d.values, offset)
+        }
+    }
+
+    for (const nnfilter of nnfilters) {
+        for (let i = 0, offset = 0; i < nnfilter.length; offset += nnfilter[i].length, i++) {
+            const d = nnfilter[i]
+            if (d.nullable) {
+                andBitmap(bitmap, d.nullBitmap, offset)
+            }
         }
     }
 
@@ -79,13 +90,19 @@ export function getIndexIndex(bitmap: Uint8Array, count: number): Int32Array {
     return index
 }
 
-export function getColumnHelper(table: arrow.Table<any>, variable: VariableModel) {
+export function getColumnHelper(table: arrow.Table<any>, variable: VariableModel, shareFilters: VariableModel[] = [variable]) {
     const column = table.getChild(variable.column)
     if (column == null) {
         throw new Error(`Column ${variable.column} not found`)
     }
+    if (!shareFilters.includes(variable)) {
+        throw new Error("shareFilters must include itself")
+    }
+
+    const filters = shareFilters.flatMap(v => v.filterId ? [table.getChild(v.filterId).data] : [])
+    const nnfilters = shareFilters.filter(v => v != variable).map(v => table.getChild(v.column).data)
     const filter = variable.filterId ? table.getChild(variable.filterId) : null
-    const filtered = new Lazy(() => filterData(column.ArrayType, column.data, filter?.data))
+    const filtered = new Lazy(() => filterData(column.ArrayType, column.data, filters, nnfilters))
     return {
         arrowColumn: column,
         arrowFilter: filter,
@@ -135,4 +152,28 @@ export function binArrays(data: Float32Array | Float64Array, min, max, binCount)
         result[clamp(bin, 0, result.length - 1)]++
     }
     return result
+}
+
+export function arange(start: number, stop: number, step = 1): Int32Array {
+    const result = new Int32Array(Math.ceil((stop - start) / step))
+    for (let i = 0; i < result.length; i++) {
+        result[i] = start + i * step
+    }
+    return result
+}
+
+export function stddev(arr: Float64Array | Float32Array) {
+    if (arr.length <= 1) return 1;
+
+    let mean = 0
+    for (let i = 0; i < arr.length; i++) {
+        mean += arr[i]
+    }
+    mean /= arr.length
+    let dev = 0
+    for (let i = 0; i < arr.length; i++) {
+        dev += (arr[i] - mean) ** 2
+    }
+    dev /= arr.length - 1
+    return Math.sqrt(dev)
 }
