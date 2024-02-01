@@ -717,6 +717,12 @@ def main(argv):
         print(f"{pair_type}: total count = {len(df)}, quality count = {len(df.filter(is_some_quality))}")
         print(df.select(pl.col("^hb_\\d+_length$"), pl.col("resolution"), is_some_quality.alias("some_quality")).describe())
 
+        # good_bonds = [ i for i, bond in enumerate(pair_defs.get_hbonds(pair_type, throw=False) or []) if not pair_defs.is_bond_hidden(pair_type, bond) ]
+        # df = df.filter(pl.all_horizontal(pl.lit(True), *[
+        #     pl.col(f"hb_{i}_length") <= 3.1
+        #     for i in good_bonds
+        # ]))
+
         dff, stat_columns = None, None
         nicest_bps: Optional[list[int]] = None
         statistics = []

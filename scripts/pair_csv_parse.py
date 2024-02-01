@@ -1,4 +1,3 @@
-
 import polars as pl
 csv_schema = [
     ('pdbid', pl.Utf8),

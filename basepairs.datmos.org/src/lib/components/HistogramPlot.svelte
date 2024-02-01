@@ -114,30 +114,37 @@
 </script>
 
 <style>
-
+    .histogram-plot {
+        position: relative;
+        width: 100%;
+    }
+    svg {
+        width: 100%;
+        height: 100%;
+    }
 </style>
 
 <div class="histogram-plot">
-    <svg width={widthPx} height={heightPx} viewBox="0 0 {widthPx} {heightPx}">
+    <svg viewBox="0 0 {widthPx} {heightPx}">
         <g bind:this={svg}></g>
         <g>
         {#each settings?.variables ?? [] as v, i}
         {#if v.label != null}
-            <g opacity={hiddenColumns.includes(i) ? 0.5 : 1}>
+            <g opacity={hiddenColumns.includes(i) ? 0.5 : 1} on:click={() => {
+                if (hiddenColumns.includes(i)) {
+                    hiddenColumns = hiddenColumns.filter(x => x!=i)
+                } else {
+                    hiddenColumns = [ ...hiddenColumns, i ]
+                }
+            }} cursor="pointer">
                 <circle cx={widthPx - marginPx.right - 100} cy={marginPx.top + 30 * i + 6} r="6" style="fill: {d3.color(colors[i]).brighter(0.5).hex() ?? '#000000'}; fill-opacity: 0.6; stroke: {d3.color(colors[i]).darker(0.5).hex()}"/>
                 <text x={widthPx - marginPx.right - 90} y={marginPx.top + 30 * i + 12} text-anchor="start" alignment-baseline="middle">
                     <title>{v.column} {#if v.filterSql}WHERE {v.filterSql}{/if}</title>
                     {v.label}
                 </text>
-                <text on:click={() => {
-                    if (hiddenColumns.includes(i)) {
-                        hiddenColumns = hiddenColumns.filter(x => x!=i)
-                    } else {
-                        hiddenColumns = [ ...hiddenColumns, i ]
-                    }
-                }} x={widthPx - marginPx.right} y={marginPx.top + 30 * i + 12} text-anchor="end" alignment-baseline="middle" cursor="pointer">
+                <!-- <text x={widthPx - marginPx.right} y={marginPx.top + 30 * i + 12} text-anchor="end" alignment-baseline="middle" cursor="pointer">
                     {#if hiddenColumns.includes(i)}🐵{:else}🙈{/if}
-                </text>
+                </text> -->
             </g>
         {/if}
         {/each}

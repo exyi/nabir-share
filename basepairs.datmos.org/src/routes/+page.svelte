@@ -4,8 +4,7 @@
   import { base } from '$app/paths';
   import metadata from '$lib/metadata'
 	import FilterEditor from '$lib/components/filterEditor.svelte';
-	import { aggregateBondParameters, aggregatePdbCountQuery, aggregateTypesQuery, defaultFilter, filterToSqlCondition, makeSqlQuery, parseUrl, type NucleotideFilterModel, filterToUrl, type HistogramSettingsModel, type StatisticsSettingsModel, fillStatLegends } from '$lib/dbModels.js';
-	import { fix_position } from 'svelte/internal';
+	import { aggregateBondParameters, aggregatePdbCountQuery, aggregateTypesQuery, defaultFilter, filterToSqlCondition, makeSqlQuery, parseUrl, type NucleotideFilterModel, filterToUrl, type HistogramSettingsModel, type StatisticsSettingsModel, fillStatsLegends } from '$lib/dbModels.js';
 	import { parsePairingType, type NucleotideId, type PairId, type PairingInfo, type HydrogenBondInfo, tryParsePairingType } from '$lib/pairing.js';
 	import { Modal } from 'svelte-simple-modal';
 	import type { AsyncDuckDBConnection } from '@duckdb/duckdb-wasm';
@@ -21,24 +20,32 @@
 
   let filterMode: "ranges" | "sql" = "ranges"
   let filter: NucleotideFilterModel = defaultFilter()
+  let miniStats: HistogramSettingsModel[] = [
+      { type: "histogram",
+        variables: [ { column: "hb_0_length", label: "" }, { column: "hb_1_length", label: "" }, { column: "hb_2_length", label: "" }, {column: "hb_3_length", label:""} ] },
+      { type: "histogram",
+        variables: [ { column: "hb_0_donor_angle", label: "" }, { column: "hb_1_donor_angle", label: "" }, { column: "hb_2_donor_angle", label: "" }, {column: "hb_3_donor_angle", label:""} ] },
+      { type: "histogram",
+        variables: [ { column: "hb_0_acceptor_angle", label: "" }, { column: "hb_1_acceptor_angle", label: "" }, { column: "hb_2_acceptor_angle", label: "" }, {column: "hb_3_acceptor_angle", label:""} ] },
+  ]
   let testStats: StatisticsSettingsModel = {
     enabled: false,
     panels: [
       { type: "histogram",
-        variables: [ { column: "hb_0_length", label: "" }, { column: "hb_1_length", label: "" }, { column: "hb_2_length", label: "" }, {column: "hb_3_length", label:""} ]
-      },
+        title: "H-bond length (Å)",
+        variables: [ { column: "hb_0_length", label: "" }, { column: "hb_1_length", label: "" }, { column: "hb_2_length", label: "" }, {column: "hb_3_length", label:""} ] },
       { type: "histogram",
-        variables: [ { column: "hb_0_donor_angle", label: "" }, { column: "hb_1_donor_angle", label: "" }, { column: "hb_2_donor_angle", label: "" }, {column: "hb_3_donor_angle", label:""} ]
-      },
+        title: "H-bond donor angle (°)",
+        variables: [ { column: "hb_0_donor_angle", label: "" }, { column: "hb_1_donor_angle", label: "" }, { column: "hb_2_donor_angle", label: "" }, {column: "hb_3_donor_angle", label:""} ] },
       { type: "histogram",
-        variables: [ { column: "hb_0_acceptor_angle", label: "" }, { column: "hb_1_acceptor_angle", label: "" }, { column: "hb_2_acceptor_angle", label: "" }, {column: "hb_3_acceptor_angle", label:""} ]
-      },
-      { type: "kde2d",
-        variables: [ { column: "hb_0_length", label: "" }, { column: "resolution", label: "" } ] },
-      { type: "kde2d",
-        variables: [ { column: "hb_1_length", label: "" }, { column: "resolution", label: "" } ] },
-      { type: "kde2d",
-        variables: [ { column: "hb_2_length", label: "" }, { column: "resolution", label: "" } ] },
+        title: "H-bond acceptor angle (°)",
+        variables: [ { column: "hb_0_acceptor_angle", label: "" }, { column: "hb_1_acceptor_angle", label: "" }, { column: "hb_2_acceptor_angle", label: "" }, {column: "hb_3_acceptor_angle", label:""} ] },
+      // { type: "kde2d",
+      //   variables: [ { column: "hb_0_length", label: "" }, { column: "resolution", label: "" } ] },
+      // { type: "kde2d",
+      //   variables: [ { column: "hb_1_length", label: "" }, { column: "resolution", label: "" } ] },
+      // { type: "kde2d",
+      //   variables: [ { column: "hb_2_length", label: "" }, { column: "resolution", label: "" } ] },
     ]
   }
 
@@ -316,6 +323,12 @@
     return list
   }
 
+  function formatTitleForPair(family: string, bases: string) {
+    const m = metadata.find(m => m.pair_type[0] == family && m.pair_type[1] == bases)
+    if (m == null) return ""
+    return `${m.pair_type.join(' ')}, Class ${m.bp_class}, ${m.labels.length} H-bonds, ${m.statistics.map(s => s.count)}`
+  }
+
   // const imgDir = "http://[2a01:4f8:c2c:bb6c:4::8]:12345/"
   const imgDir = db.host == 'localhost' ? "https://pairs.exyi.cz/img" : (new URL('pregen-img', document.baseURI)).href
   // const imgDir = base+"/img"
@@ -347,6 +360,7 @@
       class="button"
       class:is-success={selectedPairing.toLowerCase() == `${family}-${bases}`.toLowerCase()}
       class:is-selected={selectedPairing.toLowerCase() == `${family}-${bases}`.toLowerCase()}
+      title={formatTitleForPair(family, bases)}
 
       on:click={() => {selectedPairing = `${family}-${bases}`}}>{selectedFamily == null ? family + "-" : ""}{bases}</button>
   {/each}
@@ -414,7 +428,7 @@
     {#if testStats.enabled}
     <a style="text-align: center; :inline-end" href="javascript:" on:click={e => testStats.enabled = false }>▲ hide plots ▲</a>
     {:else}
-    <a href="javascript:" on:click={() => testStats.enabled = true}>▽ show plots ▽</a>
+    <a href="javascript:" on:click={() => testStats.enabled = true}>▽ expand plots ▽</a>
     {/if}
   </div>
   <div>
@@ -428,10 +442,17 @@
       </span>
     {/if}
   </div>
+  {#if !testStats.enabled}
+    <div class="mini-stats">
+      {#each fillStatsLegends({ panels: miniStats, enabled: true }, getMetadata(selectedPairing)).panels as stat}
+        <HistogramPlot data={resultsTable} settings={stat} />
+      {/each}
+    </div>
+  {/if}
 </div>
 
 {#if testStats.enabled}
-  <StatsPanel data={resultsTable} settings={fillStatLegends(testStats, getMetadata(selectedPairing))} />
+  <StatsPanel data={resultsTable} settings={fillStatsLegends(testStats, getMetadata(selectedPairing))} />
 {/if}
 
 {/if}
@@ -457,4 +478,11 @@
 .selector {
 
 } */
+
+.mini-stats {
+  max-height: 100px;
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+}
 </style>

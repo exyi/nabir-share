@@ -154,6 +154,18 @@ export function binArrays(data: Float32Array | Float64Array, min, max, binCount)
     return result
 }
 
+export function binArray2D(x: Float32Array | Float64Array, y: Float32Array | Float64Array, minX, maxX, minY, maxY, binCountX, binCountY) {
+    const result = new Uint32Array(binCountX * binCountY).fill(0)
+    const binSizeX = (maxX - minX) / binCountX
+    const binSizeY = (maxY - minY) / binCountY
+    for (let i = 0; i < x.length; i++) {
+        const binX = clamp(Math.round((x[i] - minX) / binSizeX), 0, binCountX - 1)
+        const binY = clamp(Math.round((y[i] - minY) / binSizeY), 0, binCountY - 1)
+        result[binX + binY * binCountX]++
+    }
+    return result
+}
+
 export function arange(start: number, stop: number, step = 1): Int32Array {
     const result = new Int32Array(Math.ceil((stop - start) / step))
     for (let i = 0; i < result.length; i++) {

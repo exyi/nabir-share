@@ -103,7 +103,7 @@
             <div class="media-content">
             <div class="content">
                 <p>
-                <strong>{pair.originalRow?.structure_method ?? ''}</strong> <small> at {pair.originalRow?.resolution ?? '?'} Å</small> <small>(published {pair.originalRow?.deposition_date ? new Date(pair.originalRow.deposition_date).toLocaleDateString('en', {month: 'long', day: 'numeric',  year: 'numeric'}) : ''})</small>
+                <strong>{pair.originalRow?.structure_method ?? ''}</strong> <small> at {pair.originalRow?.resolution?.toFixed(2) ?? '?'} Å</small> <small>(published {pair.originalRow?.deposition_date ? new Date(pair.originalRow.deposition_date).toLocaleDateString('en', {month: 'long', day: 'numeric',  year: 'numeric'}) : ''})</small>
                 <br>
                 {pair.originalRow?.structure_name ?? ''}
                 </p>

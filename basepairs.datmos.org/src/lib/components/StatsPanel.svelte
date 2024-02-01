@@ -22,6 +22,9 @@
         align-items: center;
         margin: 0.5rem;
     }
+    .stat-panel > * {
+        width: 100%;
+    }
     @media (max-width: 800px) {
         .stat-panel {
             width: calc(100vw - 2rem);
@@ -37,12 +40,17 @@
             width: calc(33vw - 2rem);
         }
     }
+    .title {
+        text-align: center;
+        margin-bottom: -10px;
+    }
+
 </style>
 
 <div class="stat-panels">
     {#each settings.panels as panel, panelIndex}
     <div class="stat-panel">
-      <h4>{panel.title || '.'}</h4>
+      <h4 class="title is-6">{panel.title || '.'}</h4>
       {#if panel.type == "histogram"}
         <HistogramPlot data={data} settings={panel} />
       {:else if panel.type == 'kde2d'}

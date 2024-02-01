@@ -237,7 +237,7 @@ export function parseUrl(url: string): UrlParseResult {
 
 type UnwrapArray<T> = T extends Array<infer U> ? U : T
 
-export function fillStatLegends(stats: StatisticsSettingsModel, metadata: UnwrapArray<typeof metadataModule> | undefined): StatisticsSettingsModel {
+export function fillStatsLegends(stats: StatisticsSettingsModel, metadata: UnwrapArray<typeof metadataModule> | undefined): StatisticsSettingsModel {
     if (!stats.enabled || metadata == null) return stats
 
     const panels = stats.panels.map(p => {
@@ -260,4 +260,24 @@ export function fillStatLegends(stats: StatisticsSettingsModel, metadata: Unwrap
         return {...(p as object), variables} as HistogramSettingsModel
     })
     return {...stats, panels }
+}
+
+export function fillStatLegends(p: HistogramSettingsModel, metadata: UnwrapArray<typeof metadataModule> | undefined): HistogramSettingsModel {
+    const variables: VariableModel[] = p.variables.map(v => {
+        let label = v.label
+        if (!label && v.column.startsWith('hb_')) {
+            const m = /hb_(\d)_(\w+)/.exec(v.column)
+            if (m) {
+                const [_, i, name] = m
+                label = metadata.labels[Number(i)]
+            }
+        }
+        return { ...v, label }
+    })
+    if (p.type == 'kde2d') {
+        return {...p, variables: [ variables[0], variables[1] ]} as KDE2DSettingsModel
+    } else if (p.type == 'histogram') {
+        return {...p, variables } as HistogramSettingsModel
+    }
+    return {...(p as object), variables} as HistogramSettingsModel
 }

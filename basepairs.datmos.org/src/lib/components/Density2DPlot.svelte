@@ -34,6 +34,53 @@
         }
     }
 
+    function generateHistogramImg(data: Uint32Array, color: string, width: number, height: number) {
+        if (data.length != width * height) {
+            throw 'ne'
+        }
+
+        const canvas = document.createElement('canvas')
+        canvas.width = width
+        canvas.height = height
+        const ctx = canvas.getContext('2d')!
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, width, height);
+        const imageData = ctx.createImageData(width, height)
+        const colorBuffer = new Uint32Array(imageData.data.buffer)
+
+        const colorRgb = d3.color(color).rgb()
+        const colorInt = (colorRgb.r << 16) | (colorRgb.g << 8) | colorRgb.b
+
+        const max = data.reduce((a, b) => Math.max(a, b), 0)
+        const ascale = 255 / max
+
+        for (let i = 0; i < data.length; i++) {
+            const c = data[i]
+            const a = Math.min(255, c * ascale) | 0
+            colorBuffer[i] = (a << 24) | colorInt
+        }
+
+        ctx.putImageData(imageData, 0, 0)
+        return canvas.toDataURL("image/png")
+    }
+
+    function rollingMeans(x: Float64Array, y: Float64Array, minY, maxY, step) {
+        const means = new Float64Array((maxY - minY) / step + 1)
+        const counts = new Uint32Array((maxY - minY) / step + 1)
+
+        for (let i = 0; i < x.length; i++) {
+            const yIdx = Math.floor((y[i] - minY) / step)
+            means[yIdx] += x[i]
+            means[yIdx + 1] += x[i]
+            counts[yIdx]++
+            counts[yIdx + 1]++
+        }
+        for (let i = 0; i < means.length; i++) {
+            means[i] /= counts[i]
+        }
+        return means
+    }
+
     function rerender() {
         const startTime = performance.now()
         if (!settings) return
@@ -77,13 +124,19 @@
 
         const bandwidth = 0.5 * ((x.length)**(-1./(2+4))) * Math.max(xStd * Math.abs(xAxis.range()[1] - xAxis.range()[0]), yStd * Math.abs(yAxis.range()[1] - yAxis.range()[0]))
 
-        const contours = d3.contourDensity<number>()
-            .x(i => xScaled[i])
-            .y(i => yScaled[i])
-            .size([widthPx - marginPx.left - marginPx.right, heightPx - marginPx.top - marginPx.bottom])
-            .bandwidth(bandwidth)
-            .thresholds(40)
-            (a.arange(0, xScaled.length) as any)
+        const bins2d = a.binArray2D(x, y, xAxis.domain()[0], xAxis.domain()[1], yAxis.domain()[0], yAxis.domain()[1], 60, 60)
+        const bitmap = generateHistogramImg(bins2d, color, 60, 60)
+
+        const means = rollingMeans(x, y, yAxis.domain()[0], yAxis.domain()[1], (yAxis.domain()[1] - yAxis.domain()[0]) / 10)
+
+        // const contours = d3.contourDensity<number>()
+        //     .x(i => xScaled[i])
+        //     .y(i => yScaled[i])
+        //     .size([widthPx - marginPx.left - marginPx.right, heightPx - marginPx.top - marginPx.bottom])
+        //     .bandwidth(bandwidth)
+        //     .cellSize(2)
+        //     .thresholds(20)
+        //     (a.arange(0, xScaled.length) as any)
             
         const node = d3.select(svg)
         node.selectAll("*").remove()
@@ -99,26 +152,36 @@
             .attr("dy", ".71em")
             .text(settings.variables[1].label || settings.variables[1].column)
 
+        // node.append("g")
+        //     .attr("fill", "none")
+        //     .attr("stroke", d3.color(color).darker(1).hex())
+        //     .attr("stroke-linejoin", "round")
+        //     .selectAll()
+        //     .data(contours)
+        //     .join("path")
+        //     .attr("stroke-width", (d, i) => i % 5 ? 0.25 : 1)
+        //     .attr("d", d3.geoPath(d3.geoTransform({
+        //         // point(x, y) {
+        //         //     this.stream.point(xAxis(x * xStd), yAxis(y * yStd))
+        //         // }
+        //     })));
         node.append("g")
-            .attr("transform", `translate(${marginPx.left},${marginPx.top})`)
+            .append("path")
+            .attr("stroke", "red")
+            .attr("stroke-width", 3)
             .attr("fill", "none")
-            .attr("stroke", d3.color(color).darker(1).hex())
-            .attr("stroke-linejoin", "round")
-            .selectAll()
-            .data(contours)
-            .join("path")
-            .attr("stroke-width", (d, i) => i % 5 ? 0.25 : 1)
-            .attr("d", d3.geoPath(d3.geoTransform({
-                // point(x, y) {
-                //     this.stream.point(xAxis(x * xStd), yAxis(y * yStd))
-                // }
-            })));
-        // for (let colI = 0; colI < columns.length; colI++) {
-        //     node.append("circle").attr("cx",300).attr("cy", ).attr("r", 6).style("fill", "#69b3a2")
-        //     node.append("circle").attr("cx",300).attr("cy",60).attr("r", 6).style("fill", "#404080")
-        //     svg.append("text").attr("x", 320).attr("y", 30).text("variable A").style("font-size", "15px").attr("alignment-baseline","middle")
-        //     svg.append("text").attr("x", 320).attr("y", 60).text("variable B").style("font-size", "15px").attr("alignment-baseline","middle")
-        // }
+            .attr("d", d3.line()(Array.from(means).flatMap((x, i) => {
+                if (Number.isNaN(y)) return []
+                // if (i == 0) return [x, yAxis.range()[0]]
+                return [[xAxis(x), (yAxis.range()[0] * (rollingMeans.length - 1 - i) + yAxis.range()[1] * (i)) / (rollingMeans.length - 1)]]
+            })))
+        node.append("image")
+            .attr("x", marginPx.left)
+            .attr("y", -(heightPx - marginPx.bottom))
+            .attr("width", widthPx - marginPx.left - marginPx.right)
+            .attr("height", heightPx - marginPx.top - marginPx.bottom)
+            .attr("href", bitmap)
+            .attr("style", "image-rendering: pixelated; transform: scaleY(-1);")
         console.log(`KDE plot rendered in ${performance.now() - startTime}ms`)
     }
 
@@ -135,12 +198,20 @@
 </script>
 
 <style>
-
+    .density-plot {
+        position: relative;
+        width: 100%;
+    }
+    svg {
+        width: 100%;
+        height: 100%;
+    }
 </style>
 
-<div class="histogram-plot">
-    <svg width={widthPx} height={heightPx} viewBox="0 0 {widthPx} {heightPx}">
+<div class="density-plot">
+    <svg viewBox="0 0 {widthPx} {heightPx}">
         <g bind:this={svg}></g>
+
         <!-- <g>
         {#each settings?.variables ?? [] as v, i}
         {#if v.label != null}
