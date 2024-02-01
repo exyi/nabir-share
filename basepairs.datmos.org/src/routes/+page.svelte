@@ -49,6 +49,26 @@
     ]
   }
 
+
+  const urlUpdateDebouncer = new AsyncDebouncer(700, true)
+  let lastUrlUpdate = 0
+
+  function updateUrlNow() {
+    const params = filterToUrl(filter, filterMode)
+    const url = `${selectedPairing}/${params.toString()}`
+    if (window.location.hash.replace(/^#/, '') != url) {
+      if (lastUrlUpdate + 1000 < performance.now()) {
+        history.pushState({}, "", '#' + url)
+      } else {
+        history.replaceState({}, "", '#' + url)
+      }
+      lastUrlUpdate = performance.now()
+    }
+  }
+  function updateUrl() {
+    // urlUpdateDebouncer.debounce(updateUrlNow)
+    updateUrlNow()
+  }
   function setModeFromUrl(url: string) {
     url = url.replace(/^#/, '')
     const x = parseUrl(url)
@@ -63,16 +83,6 @@
 
   setModeFromUrl(window.location.hash)
   window.addEventListener("hashchange", (ev: HashChangeEvent) => setModeFromUrl(window.location.hash))
-  const urlUpdateDebouncer = new AsyncDebouncer(700, true)
-
-  function updateUrlNow() {
-    const params = filterToUrl(filter, filterMode)
-    const url = `${selectedPairing}/${params.toString()}`
-    history.pushState({}, "", '#' + url)
-  }
-  function updateUrl() {
-    urlUpdateDebouncer.debounce(updateUrlNow)
-  }
 
   $: {
     selectedPairing, filterMode, filter

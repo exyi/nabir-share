@@ -183,7 +183,7 @@ type UrlParseResult = {
 
 function parseRange(r: string | undefined | null): Range {
     if (!r) return {}
-    const m = r.match(/^(\d+)?\.\.(\d+)?$/)
+    const m = r.match(/^(-?\d+\.?\d*)?\.\.(-?\d+\.?\d*)?$/)
     if (!m) return {}
     const [_, min, max] = m
     return { min: min ? Number(min) : undefined, max: max ? Number(max) : undefined }
