@@ -40,7 +40,7 @@
         const startTime = performance.now()
 
         const variables = settings.variables //.filter((_, i) => !hiddenColumns.includes(i))
-        const columns = variables.map((v, i) => hiddenColumns.includes(i) ? null : a.getColumnHelper(data, v))
+        const columns = variables.map((v, i) => hiddenColumns.includes(i) || !v.column ? null : a.getColumnHelper(data, v))
         let min = Math.min(...columns.filter(c => c != null).map(c => c.data.reduce((a, b) => Math.min(a, b), 1e50)))
         let max = Math.max(...columns.filter(c => c != null).map(c => c.data.reduce((a, b) => Math.max(a, b), -1e50)))
         let defaultBinWidth: null | number = null
@@ -116,7 +116,7 @@
 <style>
     .histogram-plot {
         position: relative;
-        width: 100%;
+        /* width: 100%; */
     }
     svg {
         width: 100%;

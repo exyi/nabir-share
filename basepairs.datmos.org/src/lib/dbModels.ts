@@ -1,4 +1,6 @@
 import type metadataModule from './metadata'
+import _ from 'lodash'
+
 
 export type Range = {
     min?: number
@@ -18,8 +20,9 @@ export type NucleotideFilterModel = {
 
 export type StatisticsSettingsModel = {
     enabled: boolean
-    panels: (HistogramSettingsModel | KDE2DSettingsModel)[]
+    panels: (StatPanelSettingsModel)[]
 }
+export type StatPanelSettingsModel = HistogramSettingsModel | KDE2DSettingsModel
 export type HistogramSettingsModel = {
     type: "histogram"
     title?: string
@@ -29,7 +32,7 @@ export type HistogramSettingsModel = {
 export type KDE2DSettingsModel = {
     type: "kde2d"
     title?: string
-    variables: [ VariableModel, VariableModel ]
+    variables: VariableModel[]
 }
 export type VariableModel = {
     column: string
@@ -179,6 +182,7 @@ type UrlParseResult = {
     pairType: string | null
     mode: 'ranges' | 'sql'
     filter: NucleotideFilterModel
+    stats: StatisticsSettingsModel | null
 }
 
 function parseRange(r: string | undefined | null): Range {
@@ -232,52 +236,142 @@ export function parseUrl(url: string): UrlParseResult {
     filter.coplanarity = parseRange(f.get(`coplanar`))
     filter.orderBy = f.get(`order`)
 
-    return { pairFamily, pairType, mode, filter }
+    const stats = parseStatsFromUrl(f)
+
+    return { pairFamily, pairType, mode, filter, stats }
+}
+
+function statPanelToStrings(params: URLSearchParams, ix: number, stat: StatPanelSettingsModel) {
+    for (const [key, value] of Object.entries(statPresets)) {
+        if (_.isEqual(value, stat)) {
+            params.append(`st_${ix}`, "P" + key)
+            return
+        }
+    }
+    let prototypeVars = false
+    for (const [key, value] of Object.entries(statPresets)) {
+        if (_.isEqual(value.variables, stat.variables)) {
+            params.append(`st_${ix}`, "P" + key)
+            prototypeVars = true
+        }
+    }
+    if (!prototypeVars) {
+        params.append(`st_${ix}`, "T" + stat.type)
+        if (stat.variables.some(v => v.filterSql)) {
+            stat.variables.forEach((v, vix) => {
+                params.append(`st_${ix}_v`, v.filterSql ? v.column + " WHERE " + v.filterSql : v.column)
+            })
+        } else {
+            params.append(`st_${ix}_v`, stat.variables.map(v => v.column).join(','))
+        }
+        stat.variables.forEach((v, vix) => {
+            if (v.label) {
+                params.append(`st_${ix}_v${vix}_l`, v.label)
+            }
+        })
+    }
+
+    if (stat.title) {
+        params.append(`st_${ix}_t`, stat.title)
+    }
+}
+
+export function statsToUrl(params: URLSearchParams, stats: StatisticsSettingsModel) {
+    if (!stats.enabled) {
+        return
+    }
+    stats.panels.forEach((p, ix) => {
+        statPanelToStrings(params, ix, p)
+    })
+}
+
+export function parseStatsFromUrl(params: URLSearchParams): StatisticsSettingsModel | null {
+    const keys = Array.from(params.keys()).filter(k => k.startsWith('st_'))
+    if (keys.length == 0) {
+        return null
+    }
+    const panelCount = Math.max(...keys.map(k => {
+        const m = k.match(/^st_(\d+)/)
+        return m ? Number(m[1])+1 : 0
+    }))
+
+    const result: StatisticsSettingsModel = { enabled: true, panels: [] }
+    for (let i = 0; i < panelCount; i++) {
+        const type = params.get(`st_${i}`)
+        const panel = type.startsWith('P') ? _.cloneDeep(statPresets[type.slice(1)]) : { type: type.slice(1), variables: [], title:"" } as StatPanelSettingsModel
+        const variables: VariableModel[] =
+            params.getAll(`st_${i}_v`)
+                .flatMap(v => v.includes(' WHERE ') ? [v] : v.split(','))
+                .map(v => ({ label: "", column: v.split(' WHERE ')[0], filterSql: v.split(' WHERE ')[1] }))
+        if (variables.length) {
+            panel.variables = variables
+        }
+        panel.variables.forEach((v, vix) => {
+            const label = params.get(`st_${i}_v${vix}_l`)
+            if (label) {
+                v.label = label
+            }
+        })
+        const title = params.get(`st_${i}_t`)
+        if (title) {
+            panel.title = title
+        }
+        result.panels.push(panel)
+    }
+    return result
 }
 
 type UnwrapArray<T> = T extends Array<infer U> ? U : T
 
+export function getColumnLabel(column: string, metadata: UnwrapArray<typeof metadataModule> | undefined, opt: { hideBondName?: boolean, hideParameterName?: boolean}={}) {
+    let m
+    if ((m = /hb_(\d)_(\w+)/.exec(column))) {
+        const [_, i, name] = m
+        if (metadata.labels[Number(i)])
+            return [
+                opt.hideBondName ? null : metadata.labels[Number(i)],
+                opt.hideParameterName ? null : {'length': "Length", 'donor_angle': "Donor angle", 'acceptor_angle': "Acceptor angle"}[name]
+            ].filter(x => x != null).join(' ')
+    }
+    if (column == "bogopropeller" || column == "coplanarity") {
+        return "Coplanarity"
+    }
+    return null
+}
+
 export function fillStatsLegends(stats: StatisticsSettingsModel, metadata: UnwrapArray<typeof metadataModule> | undefined): StatisticsSettingsModel {
     if (!stats.enabled || metadata == null) return stats
 
-    const panels = stats.panels.map(p => {
-        const variables: VariableModel[] = p.variables.map(v => {
-            let label = v.label
-            if (!label && v.column.startsWith('hb_')) {
-                const m = /hb_(\d)_(\w+)/.exec(v.column)
-                if (m) {
-                    const [_, i, name] = m
-                    label = metadata.labels[Number(i)]
-                }
-            }
-            return { ...v, label }
-        })
-        if (p.type == 'kde2d') {
-            return {...p, variables: [ variables[0], variables[1] ]} as KDE2DSettingsModel
-        } else if (p.type == 'histogram') {
-            return {...p, variables } as HistogramSettingsModel
-        }
-        return {...(p as object), variables} as HistogramSettingsModel
-    })
+    const panels = stats.panels.map(p => fillStatLegends(p, metadata))
     return {...stats, panels }
 }
 
-export function fillStatLegends(p: HistogramSettingsModel, metadata: UnwrapArray<typeof metadataModule> | undefined): HistogramSettingsModel {
+export function fillStatLegends(p: HistogramSettingsModel, metadata: UnwrapArray<typeof metadataModule> | undefined): HistogramSettingsModel
+export function fillStatLegends(p: KDE2DSettingsModel, metadata: UnwrapArray<typeof metadataModule> | undefined): KDE2DSettingsModel
+export function fillStatLegends(p: StatPanelSettingsModel, metadata: UnwrapArray<typeof metadataModule> | undefined): StatPanelSettingsModel
+export function fillStatLegends(p: StatPanelSettingsModel, metadata: UnwrapArray<typeof metadataModule> | undefined): StatPanelSettingsModel {
+    const hideBondName = p.variables.length > 1 && p.variables.every(v => v.column.startsWith('hb_') && v.column.startsWith(p.variables[0].column.slice(0, 4)))
+    const hideParameterName = p.variables.length > 1 && p.variables.every(v => v.column.startsWith('hb_') && v.column.endsWith(p.variables[0].column.slice(5)))
     const variables: VariableModel[] = p.variables.map(v => {
-        let label = v.label
-        if (!label && v.column.startsWith('hb_')) {
-            const m = /hb_(\d)_(\w+)/.exec(v.column)
-            if (m) {
-                const [_, i, name] = m
-                label = metadata.labels[Number(i)]
-            }
-        }
+        const label = v.label || getColumnLabel(v.column, metadata, { hideBondName, hideParameterName })
         return { ...v, label }
     })
     if (p.type == 'kde2d') {
-        return {...p, variables: [ variables[0], variables[1] ]} as KDE2DSettingsModel
+        return {...p, variables } as KDE2DSettingsModel
     } else if (p.type == 'histogram') {
         return {...p, variables } as HistogramSettingsModel
     }
     return {...(p as object), variables} as HistogramSettingsModel
+}
+
+export const statPresets: { [n: string]: StatPanelSettingsModel } = {
+    "histL": { type: "histogram",
+        title: "H-bond length (Å)",
+        variables: [ { column: "hb_0_length", label: "" }, { column: "hb_1_length", label: "" }, { column: "hb_2_length", label: "" }, {column: "hb_3_length", label:""} ] },
+    "histDA": { type: "histogram",
+        title: "H-bond donor angle (°)",
+        variables: [ { column: "hb_0_donor_angle", label: "" }, { column: "hb_1_donor_angle", label: "" }, { column: "hb_2_donor_angle", label: "" }, {column: "hb_3_donor_angle", label:""} ] },
+    "histAA": { type: "histogram",
+        title: "H-bond acceptor angle (°)",
+        variables: [ { column: "hb_0_acceptor_angle", label: "" }, { column: "hb_1_acceptor_angle", label: "" }, { column: "hb_2_acceptor_angle", label: "" }, {column: "hb_3_acceptor_angle", label:""} ] }
 }

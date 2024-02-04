@@ -3,6 +3,7 @@ import type * as arrow from 'apache-arrow'
 import type { VariableModel } from './dbModels'
 import type { TypedArray } from 'd3'
 import { Lazy } from './lazy'
+import _ from 'lodash'
 
 // export type JsFlatTypeArray = Float64Array | Int32Array | Uint8Array | Uint16Array | Uint32Array | Int8Array | Int16Array | Int32Array
 
@@ -24,7 +25,7 @@ function andBitmap(destination: Uint8Array, source: Uint8Array, destOffset) {
 
 type DataList<T extends arrow.DataType<arrow.Type, any>> = readonly arrow.Data<T>[]
 
-export function filterData(ArrayType: typeof Float64Array, data: DataList<any>, filters: readonly DataList<arrow.Bool>[], nnfilters: readonly DataList<any>[]): [Float64Array, number, Uint8Array] {
+export function filterData(ArrayType: typeof Float64Array | typeof Float32Array, data: DataList<any>, filters: readonly DataList<arrow.Bool>[], nnfilters: readonly DataList<any>[]): [Float64Array | Float32Array, number, Uint8Array] {
     const totalCount = data.reduce((acc, cur) => acc + cur.length, 0)
     const bitmap = new Uint8Array(Math.ceil(totalCount / 8))
     bitmap.fill(0xff)
@@ -71,7 +72,7 @@ export function filterData(ArrayType: typeof Float64Array, data: DataList<any>, 
         const d = data[di]
         for (let i = 0; i < d.length; i++, si++) {
             if ((bitmap[si >> 3] & (1 << (si & 7))) != 0) {
-                result[ri++] = d.values[i]
+                result[ri++] = Number(d.values[i])
             }
         }
     }
@@ -102,13 +103,13 @@ export function getColumnHelper(table: arrow.Table<any>, variable: VariableModel
     const filters = shareFilters.flatMap(v => v.filterId ? [table.getChild(v.filterId).data] : [])
     const nnfilters = shareFilters.filter(v => v != variable).map(v => table.getChild(v.column).data)
     const filter = variable.filterId ? table.getChild(variable.filterId) : null
-    const filtered = new Lazy(() => filterData(column.ArrayType, column.data, filters, nnfilters))
+    const filtered = new Lazy(() => filterData(Float32Array, column.data, filters, nnfilters))
     return {
         arrowColumn: column,
         arrowFilter: filter,
 
         get data() {
-            return filtered.value[0]
+            return filtered.value[0] as Float32Array
         },
         get totalRowCount() {
             if (filtered.isComputed) {

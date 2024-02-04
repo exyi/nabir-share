@@ -4,7 +4,7 @@
   import { base } from '$app/paths';
   import metadata from '$lib/metadata'
 	import FilterEditor from '$lib/components/filterEditor.svelte';
-	import { aggregateBondParameters, aggregatePdbCountQuery, aggregateTypesQuery, defaultFilter, filterToSqlCondition, makeSqlQuery, parseUrl, type NucleotideFilterModel, filterToUrl, type HistogramSettingsModel, type StatisticsSettingsModel, fillStatsLegends } from '$lib/dbModels.js';
+	import { aggregateBondParameters, aggregatePdbCountQuery, aggregateTypesQuery, defaultFilter, filterToSqlCondition, makeSqlQuery, parseUrl, type NucleotideFilterModel, filterToUrl, type HistogramSettingsModel, type StatisticsSettingsModel, fillStatsLegends, statPresets, type StatPanelSettingsModel, statsToUrl } from '$lib/dbModels.js';
 	import { parsePairingType, type NucleotideId, type PairId, type PairingInfo, type HydrogenBondInfo, tryParsePairingType } from '$lib/pairing.js';
 	import { Modal } from 'svelte-simple-modal';
 	import type { AsyncDuckDBConnection } from '@duckdb/duckdb-wasm';
@@ -14,47 +14,25 @@
 	import { AsyncDebouncer } from '$lib/debouncer.js';
   import HistogramPlot from '$lib/components/HistogramPlot.svelte';
 	import StatsPanel from '$lib/components/StatsPanel.svelte';
+  import _ from 'lodash'
 
   let selectedFamily = 'tWW'
   let selectedPairing = 'tWW-A-A'
 
   let filterMode: "ranges" | "sql" = "ranges"
   let filter: NucleotideFilterModel = defaultFilter()
-  let miniStats: HistogramSettingsModel[] = [
-      { type: "histogram",
-        variables: [ { column: "hb_0_length", label: "" }, { column: "hb_1_length", label: "" }, { column: "hb_2_length", label: "" }, {column: "hb_3_length", label:""} ] },
-      { type: "histogram",
-        variables: [ { column: "hb_0_donor_angle", label: "" }, { column: "hb_1_donor_angle", label: "" }, { column: "hb_2_donor_angle", label: "" }, {column: "hb_3_donor_angle", label:""} ] },
-      { type: "histogram",
-        variables: [ { column: "hb_0_acceptor_angle", label: "" }, { column: "hb_1_acceptor_angle", label: "" }, { column: "hb_2_acceptor_angle", label: "" }, {column: "hb_3_acceptor_angle", label:""} ] },
-  ]
+  let miniStats: StatPanelSettingsModel[] = [ statPresets.histL, statPresets.histDA, statPresets.histAA ]
   let testStats: StatisticsSettingsModel = {
     enabled: false,
-    panels: [
-      { type: "histogram",
-        title: "H-bond length (Å)",
-        variables: [ { column: "hb_0_length", label: "" }, { column: "hb_1_length", label: "" }, { column: "hb_2_length", label: "" }, {column: "hb_3_length", label:""} ] },
-      { type: "histogram",
-        title: "H-bond donor angle (°)",
-        variables: [ { column: "hb_0_donor_angle", label: "" }, { column: "hb_1_donor_angle", label: "" }, { column: "hb_2_donor_angle", label: "" }, {column: "hb_3_donor_angle", label:""} ] },
-      { type: "histogram",
-        title: "H-bond acceptor angle (°)",
-        variables: [ { column: "hb_0_acceptor_angle", label: "" }, { column: "hb_1_acceptor_angle", label: "" }, { column: "hb_2_acceptor_angle", label: "" }, {column: "hb_3_acceptor_angle", label:""} ] },
-      // { type: "kde2d",
-      //   variables: [ { column: "hb_0_length", label: "" }, { column: "resolution", label: "" } ] },
-      // { type: "kde2d",
-      //   variables: [ { column: "hb_1_length", label: "" }, { column: "resolution", label: "" } ] },
-      // { type: "kde2d",
-      //   variables: [ { column: "hb_2_length", label: "" }, { column: "resolution", label: "" } ] },
-    ]
+    panels: _.cloneDeep([ statPresets.histL, statPresets.histDA, statPresets.histAA ])
   }
-
 
   const urlUpdateDebouncer = new AsyncDebouncer(700, true)
   let lastUrlUpdate = 0
 
   function updateUrlNow() {
     const params = filterToUrl(filter, filterMode)
+    statsToUrl(params, testStats)
     const url = `${selectedPairing}/${params.toString()}`
     if (window.location.hash.replace(/^#/, '') != url) {
       if (lastUrlUpdate + 1000 < performance.now()) {
@@ -74,6 +52,11 @@
     const x = parseUrl(url)
     filterMode = x.mode
     filter = x.filter
+    if (x.stats != null) {
+      testStats = x.stats
+    } else {
+      testStats.enabled = false
+    }
     if (x.pairType != null) {
       selectedFamily = db.pairFamilies.find(f => f.toLowerCase() == x.pairFamily.toLowerCase()) ?? x.pairFamily
       selectedPairing = db.pairTypes.map(([f, b]) => `${f}-${b}`).find(f => f.toLowerCase() == x.pairType.toLowerCase()) ?? x.pairType
@@ -85,7 +68,7 @@
   window.addEventListener("hashchange", (ev: HashChangeEvent) => setModeFromUrl(window.location.hash))
 
   $: {
-    selectedPairing, filterMode, filter
+    selectedPairing, filterMode, filter, testStats
     updateUrl()
   }
 
@@ -336,7 +319,7 @@
   function formatTitleForPair(family: string, bases: string) {
     const m = metadata.find(m => m.pair_type[0] == family && m.pair_type[1] == bases)
     if (m == null) return ""
-    return `${m.pair_type.join(' ')}, Class ${m.bp_class}, ${m.labels.length} H-bonds, ${m.statistics.map(s => s.count)}`
+    return `${m.pair_type.join(' ')}, Class ${m.bp_class}, ${m.labels.length} H-bonds, ${Math.max(...m.statistics.map(s => s.count))} pairs`
   }
 
   // const imgDir = "http://[2a01:4f8:c2c:bb6c:4::8]:12345/"
@@ -436,7 +419,7 @@
 
   <div style="position: absolute; width: 200px; text-align: center; margin-left: -100px; left:50%">
     {#if testStats.enabled}
-    <a style="text-align: center; :inline-end" href="javascript:" on:click={e => testStats.enabled = false }>▲ hide plots ▲</a>
+    <a style="text-align: center; :inline-end" href="javascript:" on:click={e => testStats.enabled = false }>▲ collapse plots ▲</a>
     {:else}
     <a href="javascript:" on:click={() => testStats.enabled = true}>▽ expand plots ▽</a>
     {/if}
@@ -462,7 +445,7 @@
 </div>
 
 {#if testStats.enabled}
-  <StatsPanel data={resultsTable} settings={fillStatsLegends(testStats, getMetadata(selectedPairing))} />
+  <StatsPanel data={resultsTable} bind:settings={testStats} metadata={getMetadata(selectedPairing)} />
 {/if}
 
 {/if}
