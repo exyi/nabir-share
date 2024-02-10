@@ -449,7 +449,7 @@
 {/if}
 
 {/if}
-<PairImages pairs={results} rootImages={imgDir} imgAttachement=".png" videoAttachement=".mp4" />
+<PairImages pairs={results} rootImages={imgDir} imgAttachement=".png" videoAttachement=".webm" />
 {#if resultsCount != results?.length && resultsCount > 0}
   <Spinner></Spinner>
   <p style="text-align: center">Loading more... than 100 items is not implemented at the moment</p>
