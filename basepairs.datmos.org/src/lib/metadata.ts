@@ -5,10 +5,12 @@ export default [
             "A-C"
         ],
         "count": 7477,
+        "high_quality": 5,
+        "med_quality": 146,
         "score": 6.46,
         "files": [
-            "out/plots-orient2/cWW AC DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/cWW AC RNA \u22643 \u00c5.pdf"
+            "out/plots/cWW AC DNA \u22643 \u00c5.pdf",
+            "out/plots/cWW AC RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 1,
         "statistics": [
@@ -334,10 +336,12 @@ export default [
             "C-C"
         ],
         "count": 1393,
+        "high_quality": 1,
+        "med_quality": 30,
         "score": 1.3,
         "files": [
-            "out/plots-orient2/cWw CC DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/cWw CC RNA \u22643 \u00c5.pdf"
+            "out/plots/cWw CC DNA \u22643 \u00c5.pdf",
+            "out/plots/cWw CC RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 1,
         "statistics": [
@@ -663,10 +667,12 @@ export default [
             "G-C"
         ],
         "count": 1642955,
+        "high_quality": 2976,
+        "med_quality": 52977,
         "score": 3505.77,
         "files": [
-            "out/plots-orient2/cWW GC DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/cWW GC RNA \u22643 \u00c5.pdf"
+            "out/plots/cWW GC DNA \u22643 \u00c5.pdf",
+            "out/plots/cWW GC RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 1,
         "statistics": [
@@ -736,44 +742,44 @@ export default [
                 "resolution_cutoff": "2.5 \u00c5",
                 "count": 13504,
                 "bp_class": 1,
-                "nicest_bp": "('4n5s', 1, 'C', 'DG', 213, None, None, 'B', 'DC', 104, None, None)",
-                "nicest_bp_index": 7096,
+                "nicest_bp": "('7vnv', 1, 'A', 'G', 29, None, None, 'A', 'C', 41, None, None)",
+                "nicest_bp_index": 13412,
                 "hb_0_label": "O6 \u00b7 \u00b7 \u00b7 N4",
                 "hb_1_label": "N1 \u00b7 \u00b7 \u00b7 N3",
                 "hb_2_label": "N2 \u00b7 \u00b7 \u00b7 O2",
-                "hb_0_length_mode": 2.907744884490967,
+                "hb_0_length_mode": 2.9108715057373047,
                 "hb_0_length_median": 2.924762010574341,
                 "hb_0_length_mean": 2.945015510476584,
                 "hb_0_length_std": 0.1864099731016042,
-                "hb_0_donor_angle_mode": 117.81539465403232,
+                "hb_0_donor_angle_mode": 117.85025593955606,
                 "hb_0_donor_angle_median": 117.63902550928427,
                 "hb_0_donor_angle_mean": 117.68214630805228,
                 "hb_0_donor_angle_std": 5.522148835156771,
-                "hb_0_acceptor_angle_mode": 123.26540749846059,
+                "hb_0_acceptor_angle_mode": 123.18201088869475,
                 "hb_0_acceptor_angle_median": 122.8133309376758,
                 "hb_0_acceptor_angle_mean": 122.34956071970356,
                 "hb_0_acceptor_angle_std": 5.758270099678004,
-                "hb_1_length_mode": 2.8889102935791016,
+                "hb_1_length_mode": 2.8933238983154297,
                 "hb_1_length_median": 2.8906251192092896,
                 "hb_1_length_mean": 2.8948965990536304,
                 "hb_1_length_std": 0.12462259711033552,
-                "hb_1_donor_angle_mode": 115.9122034229433,
+                "hb_1_donor_angle_mode": 115.91071444170423,
                 "hb_1_donor_angle_median": 116.05024837625842,
                 "hb_1_donor_angle_mean": 116.39150728911655,
                 "hb_1_donor_angle_std": 5.545249278307337,
-                "hb_1_acceptor_angle_mode": 123.20162719199102,
+                "hb_1_acceptor_angle_mode": 123.1299511868409,
                 "hb_1_acceptor_angle_median": 123.04413669010887,
                 "hb_1_acceptor_angle_mean": 122.86364670468757,
                 "hb_1_acceptor_angle_std": 5.604166683209825,
-                "hb_2_length_mode": 2.7865731716156006,
+                "hb_2_length_mode": 2.7932658195495605,
                 "hb_2_length_median": 2.7797305583953857,
                 "hb_2_length_mean": 2.781228569623136,
                 "hb_2_length_std": 0.15798455544379195,
-                "hb_2_donor_angle_mode": 122.52974148333686,
+                "hb_2_donor_angle_mode": 122.3646421507193,
                 "hb_2_donor_angle_median": 122.60576148879912,
                 "hb_2_donor_angle_mean": 122.82048978771904,
                 "hb_2_donor_angle_std": 5.856410670326177,
-                "hb_2_acceptor_angle_mode": 120.9547545022453,
+                "hb_2_acceptor_angle_mode": 121.1382407041085,
                 "hb_2_acceptor_angle_median": 120.83779434289798,
                 "hb_2_acceptor_angle_mean": 120.53051728419841,
                 "hb_2_acceptor_angle_std": 6.087430681643194,
@@ -796,44 +802,44 @@ export default [
                 "resolution_cutoff": "RNA 3.0 \u00c5",
                 "count": 21700,
                 "bp_class": 1,
-                "nicest_bp": "('7szu', 1, 'R', 'G', 57, None, None, 'R', 'C', 19, None, None)",
-                "nicest_bp_index": 21549,
+                "nicest_bp": "('7szu', 1, 'R', 'G', 49, None, None, 'R', 'C', 27, None, None)",
+                "nicest_bp_index": 21548,
                 "hb_0_label": "O6 \u00b7 \u00b7 \u00b7 N4",
                 "hb_1_label": "N1 \u00b7 \u00b7 \u00b7 N3",
                 "hb_2_label": "N2 \u00b7 \u00b7 \u00b7 O2",
-                "hb_0_length_mode": 2.924356698989868,
+                "hb_0_length_mode": 2.923119068145752,
                 "hb_0_length_median": 2.942206382751465,
                 "hb_0_length_mean": 2.9734305394817713,
                 "hb_0_length_std": 0.23127864807332565,
-                "hb_0_donor_angle_mode": 117.94460817275063,
+                "hb_0_donor_angle_mode": 117.62460014975719,
                 "hb_0_donor_angle_median": 117.57994437296364,
                 "hb_0_donor_angle_mean": 117.59497002074927,
                 "hb_0_donor_angle_std": 7.1901242386275745,
-                "hb_0_acceptor_angle_mode": 122.70063281637059,
+                "hb_0_acceptor_angle_mode": 122.66925492732355,
                 "hb_0_acceptor_angle_median": 122.25563916175508,
                 "hb_0_acceptor_angle_mean": 121.87230586743974,
                 "hb_0_acceptor_angle_std": 7.410673675395017,
-                "hb_1_length_mode": 2.886687755584717,
+                "hb_1_length_mode": 2.888566493988037,
                 "hb_1_length_median": 2.8956120014190674,
                 "hb_1_length_mean": 2.9104422998263537,
                 "hb_1_length_std": 0.14891042790273976,
-                "hb_1_donor_angle_mode": 116.41084821348925,
+                "hb_1_donor_angle_mode": 116.16818525265703,
                 "hb_1_donor_angle_median": 116.45545617895858,
                 "hb_1_donor_angle_mean": 116.64610323015124,
                 "hb_1_donor_angle_std": 7.178931771096112,
-                "hb_1_acceptor_angle_mode": 122.88488399942085,
+                "hb_1_acceptor_angle_mode": 122.98247374228198,
                 "hb_1_acceptor_angle_median": 122.76386670770657,
                 "hb_1_acceptor_angle_mean": 122.50726365434676,
                 "hb_1_acceptor_angle_std": 7.341254100720279,
-                "hb_2_length_mode": 2.760350227355957,
+                "hb_2_length_mode": 2.7593843936920166,
                 "hb_2_length_median": 2.770640015602112,
                 "hb_2_length_mean": 2.7877088850764085,
                 "hb_2_length_std": 0.18382247617686528,
-                "hb_2_donor_angle_mode": 123.36753248693064,
+                "hb_2_donor_angle_mode": 123.02124189601098,
                 "hb_2_donor_angle_median": 123.11928926154651,
                 "hb_2_donor_angle_mean": 123.29015243311224,
                 "hb_2_donor_angle_std": 7.5720220119351955,
-                "hb_2_acceptor_angle_mode": 121.10745021133009,
+                "hb_2_acceptor_angle_mode": 121.24981867438984,
                 "hb_2_acceptor_angle_median": 120.21954610979594,
                 "hb_2_acceptor_angle_mean": 119.69397764962395,
                 "hb_2_acceptor_angle_std": 7.995589912195682,
@@ -856,44 +862,44 @@ export default [
                 "resolution_cutoff": "DNA 3.0",
                 "count": 12746,
                 "bp_class": 1,
-                "nicest_bp": "('5zof', 1, 'B', 'DG', 16, None, None, 'C', 'DC', 4, None, None)",
-                "nicest_bp_index": 9516,
+                "nicest_bp": "('4n5s', 1, 'C', 'DG', 213, None, None, 'B', 'DC', 104, None, None)",
+                "nicest_bp_index": 5982,
                 "hb_0_label": "O6 \u00b7 \u00b7 \u00b7 N4",
                 "hb_1_label": "N1 \u00b7 \u00b7 \u00b7 N3",
                 "hb_2_label": "N2 \u00b7 \u00b7 \u00b7 O2",
-                "hb_0_length_mode": 2.9172117710113525,
+                "hb_0_length_mode": 2.909263849258423,
                 "hb_0_length_median": 2.9334203004837036,
                 "hb_0_length_mean": 2.9651189557652673,
                 "hb_0_length_std": 0.22990131829200613,
-                "hb_0_donor_angle_mode": 117.91189156662627,
+                "hb_0_donor_angle_mode": 117.98491994923205,
                 "hb_0_donor_angle_median": 117.83387714592638,
                 "hb_0_donor_angle_mean": 117.94791679119191,
                 "hb_0_donor_angle_std": 6.4872893018618,
-                "hb_0_acceptor_angle_mode": 123.00715804594242,
+                "hb_0_acceptor_angle_mode": 123.21292432487823,
                 "hb_0_acceptor_angle_median": 122.5937813369949,
                 "hb_0_acceptor_angle_mean": 121.80075012723451,
                 "hb_0_acceptor_angle_std": 6.753491928088681,
-                "hb_1_length_mode": 2.8898375034332275,
+                "hb_1_length_mode": 2.8925106525421143,
                 "hb_1_length_median": 2.8954654932022095,
                 "hb_1_length_mean": 2.9058721562522782,
                 "hb_1_length_std": 0.1479720794575243,
-                "hb_1_donor_angle_mode": 115.9003598749225,
+                "hb_1_donor_angle_mode": 115.9713118800206,
                 "hb_1_donor_angle_median": 116.35389126600052,
                 "hb_1_donor_angle_mean": 116.97992210526203,
                 "hb_1_donor_angle_std": 6.603606881455389,
-                "hb_1_acceptor_angle_mode": 122.99508227148984,
+                "hb_1_acceptor_angle_mode": 123.02686997188708,
                 "hb_1_acceptor_angle_median": 122.83516705245233,
                 "hb_1_acceptor_angle_mean": 122.47861429950461,
                 "hb_1_acceptor_angle_std": 6.613631355362182,
-                "hb_2_length_mode": 2.770484447479248,
+                "hb_2_length_mode": 2.761093854904175,
                 "hb_2_length_median": 2.778649091720581,
                 "hb_2_length_mean": 2.783888112454928,
                 "hb_2_length_std": 0.17895186111890002,
-                "hb_2_donor_angle_mode": 122.73927802669452,
+                "hb_2_donor_angle_mode": 122.95768015559484,
                 "hb_2_donor_angle_median": 122.95264630617655,
                 "hb_2_donor_angle_mean": 123.41000272215274,
                 "hb_2_donor_angle_std": 6.949616072165379,
-                "hb_2_acceptor_angle_mode": 121.15004327099427,
+                "hb_2_acceptor_angle_mode": 121.19132493433784,
                 "hb_2_acceptor_angle_median": 120.73369542975782,
                 "hb_2_acceptor_angle_mean": 120.21596362734805,
                 "hb_2_acceptor_angle_std": 7.075674910198999,
@@ -921,39 +927,39 @@ export default [
                 "hb_0_label": "O6 \u00b7 \u00b7 \u00b7 N4",
                 "hb_1_label": "N1 \u00b7 \u00b7 \u00b7 N3",
                 "hb_2_label": "N2 \u00b7 \u00b7 \u00b7 O2",
-                "hb_0_length_mode": 2.9191787242889404,
+                "hb_0_length_mode": 2.9161276817321777,
                 "hb_0_length_median": 2.9388097524642944,
                 "hb_0_length_mean": 2.9705547711289944,
                 "hb_0_length_std": 0.23160638635715902,
-                "hb_0_donor_angle_mode": 117.686140154179,
+                "hb_0_donor_angle_mode": 117.88488499864802,
                 "hb_0_donor_angle_median": 117.6908324941388,
                 "hb_0_donor_angle_mean": 117.72974699690805,
                 "hb_0_donor_angle_std": 6.966525784735761,
-                "hb_0_acceptor_angle_mode": 123.02473895286603,
+                "hb_0_acceptor_angle_mode": 123.2176917969189,
                 "hb_0_acceptor_angle_median": 122.39257762442466,
                 "hb_0_acceptor_angle_mean": 121.84034848436136,
                 "hb_0_acceptor_angle_std": 7.195118708037284,
-                "hb_1_length_mode": 2.890439987182617,
+                "hb_1_length_mode": 2.8914427757263184,
                 "hb_1_length_median": 2.8958009481430054,
                 "hb_1_length_mean": 2.909096425214102,
                 "hb_1_length_std": 0.1489865024914371,
-                "hb_1_donor_angle_mode": 116.0532604896824,
+                "hb_1_donor_angle_mode": 116.14524947742412,
                 "hb_1_donor_angle_median": 116.41182493054056,
                 "hb_1_donor_angle_mean": 116.7705113478318,
                 "hb_1_donor_angle_std": 6.99416307009779,
-                "hb_1_acceptor_angle_mode": 122.87284920610328,
+                "hb_1_acceptor_angle_mode": 123.04038008606537,
                 "hb_1_acceptor_angle_median": 122.7894799170941,
                 "hb_1_acceptor_angle_mean": 122.48662616987235,
                 "hb_1_acceptor_angle_std": 7.105391784291791,
-                "hb_2_length_mode": 2.7660701274871826,
+                "hb_2_length_mode": 2.776275157928467,
                 "hb_2_length_median": 2.77436900138855,
                 "hb_2_length_mean": 2.7869314478726093,
                 "hb_2_length_std": 0.18236427523383483,
-                "hb_2_donor_angle_mode": 123.01525865029807,
+                "hb_2_donor_angle_mode": 122.80853614487843,
                 "hb_2_donor_angle_median": 123.03975853885089,
                 "hb_2_donor_angle_mean": 123.33468494129465,
                 "hb_2_donor_angle_std": 7.3721733939257605,
-                "hb_2_acceptor_angle_mode": 121.16452327203471,
+                "hb_2_acceptor_angle_mode": 121.17929014102029,
                 "hb_2_acceptor_angle_median": 120.44180729557732,
                 "hb_2_acceptor_angle_mean": 119.87290375380185,
                 "hb_2_acceptor_angle_std": 7.697890850139606,
@@ -1003,10 +1009,12 @@ export default [
             "A-G"
         ],
         "count": 35916,
+        "high_quality": 15,
+        "med_quality": 781,
         "score": 22.81,
         "files": [
-            "out/plots-orient2/cWW AG DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/cWW AG RNA \u22643 \u00c5.pdf"
+            "out/plots/cWW AG DNA \u22643 \u00c5.pdf",
+            "out/plots/cWW AG RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 1,
         "statistics": [
@@ -1332,10 +1340,12 @@ export default [
             "G-G"
         ],
         "count": 977,
+        "high_quality": 0,
+        "med_quality": 23,
         "score": 0.23,
         "files": [
-            "out/plots-orient2/cWw GG DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/cWw GG RNA \u22643 \u00c5.pdf"
+            "out/plots/cWw GG DNA \u22643 \u00c5.pdf",
+            "out/plots/cWw GG RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 1,
         "statistics": [
@@ -1543,10 +1553,12 @@ export default [
             "A-U"
         ],
         "count": 680363,
+        "high_quality": 1979,
+        "med_quality": 25958,
         "score": 2238.58,
         "files": [
-            "out/plots-orient2/cWW AT DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/cWW AU RNA \u22643 \u00c5.pdf"
+            "out/plots/cWW AT DNA \u22643 \u00c5.pdf",
+            "out/plots/cWW AU RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 1,
         "statistics": [
@@ -1616,44 +1628,44 @@ export default [
                 "resolution_cutoff": "2.5 \u00c5",
                 "count": 9924,
                 "bp_class": 1,
-                "nicest_bp": "('5b2p', 1, 'D', 'DA', 3, None, None, 'C', 'DT', 7, None, None)",
-                "nicest_bp_index": 6044,
+                "nicest_bp": "('5dhc', 1, 'C', 'A', 10, None, None, 'D', 'U', 7, None, None)",
+                "nicest_bp_index": 6346,
                 "hb_0_label": "N6 \u00b7 \u00b7 \u00b7 O4",
                 "hb_1_label": "N1 \u00b7 \u00b7 \u00b7 N3",
                 "hb_2_label": "C2 \u00b7 \u00b7 \u00b7 O2",
-                "hb_0_length_mode": 2.9850025177001953,
+                "hb_0_length_mode": 2.985917568206787,
                 "hb_0_length_median": 3.009753465652466,
                 "hb_0_length_mean": 3.0270143203721895,
                 "hb_0_length_std": 0.191426596622661,
-                "hb_0_donor_angle_mode": 114.5937993282124,
+                "hb_0_donor_angle_mode": 114.47959856528979,
                 "hb_0_donor_angle_median": 114.2112609233675,
                 "hb_0_donor_angle_mean": 113.89398136580907,
                 "hb_0_donor_angle_std": 5.78623633661682,
-                "hb_0_acceptor_angle_mode": 121.44626857529774,
+                "hb_0_acceptor_angle_mode": 121.60251598275096,
                 "hb_0_acceptor_angle_median": 121.42736261167515,
                 "hb_0_acceptor_angle_mean": 121.52514686521826,
                 "hb_0_acceptor_angle_std": 5.6619765074408965,
-                "hb_1_length_mode": 2.8191394805908203,
+                "hb_1_length_mode": 2.81414532661438,
                 "hb_1_length_median": 2.8200634717941284,
                 "hb_1_length_mean": 2.8281492304773113,
                 "hb_1_length_std": 0.1302138365615369,
-                "hb_1_donor_angle_mode": 117.1110655468206,
+                "hb_1_donor_angle_mode": 117.13703392604499,
                 "hb_1_donor_angle_median": 116.96619723452466,
                 "hb_1_donor_angle_mean": 116.70039152046485,
                 "hb_1_donor_angle_std": 5.667090578539175,
-                "hb_1_acceptor_angle_mode": 124.47336743431238,
+                "hb_1_acceptor_angle_mode": 124.65031031495072,
                 "hb_1_acceptor_angle_median": 124.74273643479933,
                 "hb_1_acceptor_angle_mean": 124.99334211483747,
                 "hb_1_acceptor_angle_std": 5.988500086126726,
-                "hb_2_length_mode": 3.5426836013793945,
+                "hb_2_length_mode": 3.5375773906707764,
                 "hb_2_length_median": 3.5356647968292236,
                 "hb_2_length_mean": 3.544799474222002,
                 "hb_2_length_std": 0.18871262661523502,
-                "hb_2_donor_angle_mode": 149.08196527797804,
+                "hb_2_donor_angle_mode": 149.3315813713853,
                 "hb_2_donor_angle_median": 148.84743024225813,
                 "hb_2_donor_angle_mean": 148.61444226537895,
                 "hb_2_donor_angle_std": 5.082182477721326,
-                "hb_2_acceptor_angle_mode": 104.44626241040534,
+                "hb_2_acceptor_angle_mode": 104.30037639992302,
                 "hb_2_acceptor_angle_median": 104.04831509879288,
                 "hb_2_acceptor_angle_mean": 103.90508303289195,
                 "hb_2_acceptor_angle_std": 4.533814417890617,
@@ -1676,44 +1688,44 @@ export default [
                 "resolution_cutoff": "RNA 3.0 \u00c5",
                 "count": 8123,
                 "bp_class": 1,
-                "nicest_bp": "('7eni', 1, 'B', 'A', 51, None, None, 'B', 'U', 24, None, None)",
-                "nicest_bp_index": 7726,
+                "nicest_bp": "('4far', 1, 'A', 'A', 56, None, None, 'A', 'U', 200, None, None)",
+                "nicest_bp_index": 3926,
                 "hb_0_label": "N6 \u00b7 \u00b7 \u00b7 O4",
                 "hb_1_label": "N1 \u00b7 \u00b7 \u00b7 N3",
                 "hb_2_label": "C2 \u00b7 \u00b7 \u00b7 O2",
-                "hb_0_length_mode": 2.979731321334839,
+                "hb_0_length_mode": 2.9792709350585938,
                 "hb_0_length_median": 3.004889965057373,
                 "hb_0_length_mean": 3.0320448300440175,
                 "hb_0_length_std": 0.23138635298753787,
-                "hb_0_donor_angle_mode": 114.83900311941586,
+                "hb_0_donor_angle_mode": 114.7956723993213,
                 "hb_0_donor_angle_median": 114.56827491128408,
                 "hb_0_donor_angle_mean": 114.43656240603718,
                 "hb_0_donor_angle_std": 7.009706703299429,
-                "hb_0_acceptor_angle_mode": 122.54644812604671,
+                "hb_0_acceptor_angle_mode": 122.43758857105504,
                 "hb_0_acceptor_angle_median": 122.05899118536125,
                 "hb_0_acceptor_angle_mean": 121.98923266395822,
                 "hb_0_acceptor_angle_std": 6.6916337928787994,
-                "hb_1_length_mode": 2.8224265575408936,
+                "hb_1_length_mode": 2.81966233253479,
                 "hb_1_length_median": 2.8317461013793945,
                 "hb_1_length_mean": 2.8481876316526087,
                 "hb_1_length_std": 0.15110308781881265,
-                "hb_1_donor_angle_mode": 117.38475122686302,
+                "hb_1_donor_angle_mode": 117.46389945896513,
                 "hb_1_donor_angle_median": 117.5130358398542,
                 "hb_1_donor_angle_mean": 117.44443110834592,
                 "hb_1_donor_angle_std": 6.772613123142246,
-                "hb_1_acceptor_angle_mode": 124.27176757077028,
+                "hb_1_acceptor_angle_mode": 124.37234893648788,
                 "hb_1_acceptor_angle_median": 124.3937820701034,
                 "hb_1_acceptor_angle_mean": 124.44476446370061,
                 "hb_1_acceptor_angle_std": 7.352693138465826,
-                "hb_2_length_mode": 3.5301454067230225,
+                "hb_2_length_mode": 3.513608932495117,
                 "hb_2_length_median": 3.5319674015045166,
                 "hb_2_length_mean": 3.548480374728255,
                 "hb_2_length_std": 0.21887998030817363,
-                "hb_2_donor_angle_mode": 149.41777835871088,
+                "hb_2_donor_angle_mode": 148.95489643865912,
                 "hb_2_donor_angle_median": 149.1343391685337,
                 "hb_2_donor_angle_mean": 148.99271434599854,
                 "hb_2_donor_angle_std": 6.1043804204962635,
-                "hb_2_acceptor_angle_mode": 104.2432350373267,
+                "hb_2_acceptor_angle_mode": 104.32243791094217,
                 "hb_2_acceptor_angle_median": 104.29498738066789,
                 "hb_2_acceptor_angle_mean": 104.39237777332112,
                 "hb_2_acceptor_angle_std": 5.508988630170973,
@@ -1736,44 +1748,44 @@ export default [
                 "resolution_cutoff": "DNA 3.0",
                 "count": 12706,
                 "bp_class": 1,
-                "nicest_bp": "('7b0c', 1, 'C', 'DA', 21, None, None, 'D', 'DT', 3, None, None)",
-                "nicest_bp_index": 11776,
+                "nicest_bp": "('6p1a', 1, 'D', 'DA', 19, None, None, 'E', 'DT', 3, None, None)",
+                "nicest_bp_index": 11131,
                 "hb_0_label": "N6 \u00b7 \u00b7 \u00b7 O4",
                 "hb_1_label": "N1 \u00b7 \u00b7 \u00b7 N3",
                 "hb_2_label": "C2 \u00b7 \u00b7 \u00b7 O2",
-                "hb_0_length_mode": 2.9894912242889404,
+                "hb_0_length_mode": 2.977602243423462,
                 "hb_0_length_median": 3.010806083679199,
                 "hb_0_length_mean": 3.0341334190015856,
                 "hb_0_length_std": 0.22599443112292358,
-                "hb_0_donor_angle_mode": 114.59959132862859,
+                "hb_0_donor_angle_mode": 114.6131424239419,
                 "hb_0_donor_angle_median": 114.2112609233675,
                 "hb_0_donor_angle_mean": 113.87795322322202,
                 "hb_0_donor_angle_std": 6.714504192653832,
-                "hb_0_acceptor_angle_mode": 121.00999707225235,
+                "hb_0_acceptor_angle_mode": 121.00083095838619,
                 "hb_0_acceptor_angle_median": 121.09081187051194,
                 "hb_0_acceptor_angle_mean": 121.17205248120402,
                 "hb_0_acceptor_angle_std": 6.627693515582639,
-                "hb_1_length_mode": 2.8176169395446777,
+                "hb_1_length_mode": 2.8186819553375244,
                 "hb_1_length_median": 2.825705885887146,
                 "hb_1_length_mean": 2.836755341814012,
                 "hb_1_length_std": 0.15237046688428135,
-                "hb_1_donor_angle_mode": 117.21043113886594,
+                "hb_1_donor_angle_mode": 116.70077608337795,
                 "hb_1_donor_angle_median": 116.74419559593171,
                 "hb_1_donor_angle_mean": 116.3943550343493,
                 "hb_1_donor_angle_std": 6.692862762257792,
-                "hb_1_acceptor_angle_mode": 124.58724034815482,
+                "hb_1_acceptor_angle_mode": 124.64633514485378,
                 "hb_1_acceptor_angle_median": 124.73039428296912,
                 "hb_1_acceptor_angle_mean": 124.93838367613054,
                 "hb_1_acceptor_angle_std": 6.979212988618938,
-                "hb_2_length_mode": 3.5328261852264404,
+                "hb_2_length_mode": 3.550074338912964,
                 "hb_2_length_median": 3.5482189655303955,
                 "hb_2_length_mean": 3.5605402437733273,
                 "hb_2_length_std": 0.20876945418010603,
-                "hb_2_donor_angle_mode": 149.31268906814105,
+                "hb_2_donor_angle_mode": 149.31706038920987,
                 "hb_2_donor_angle_median": 148.86346752642933,
                 "hb_2_donor_angle_mean": 148.64503980031316,
                 "hb_2_donor_angle_std": 5.825794672951658,
-                "hb_2_acceptor_angle_mode": 104.34849508262576,
+                "hb_2_acceptor_angle_mode": 104.24611737715645,
                 "hb_2_acceptor_angle_median": 103.93591750581115,
                 "hb_2_acceptor_angle_mean": 103.73718421272149,
                 "hb_2_acceptor_angle_std": 5.329159415214336,
@@ -1796,44 +1808,44 @@ export default [
                 "resolution_cutoff": "3.0 \u00c5",
                 "count": 20126,
                 "bp_class": 1,
-                "nicest_bp": "('5ong', 1, 'I', 'DA', -44, None, None, 'J', 'DT', 44, None, None)",
-                "nicest_bp_index": 14587,
+                "nicest_bp": "('6p1a', 1, 'D', 'DA', 19, None, None, 'E', 'DT', 3, None, None)",
+                "nicest_bp_index": 17956,
                 "hb_0_label": "N6 \u00b7 \u00b7 \u00b7 O4",
                 "hb_1_label": "N1 \u00b7 \u00b7 \u00b7 N3",
                 "hb_2_label": "C2 \u00b7 \u00b7 \u00b7 O2",
-                "hb_0_length_mode": 2.987025260925293,
+                "hb_0_length_mode": 2.975360631942749,
                 "hb_0_length_median": 3.0085113048553467,
                 "hb_0_length_mean": 3.033373830262178,
                 "hb_0_length_std": 0.22864959607440005,
-                "hb_0_donor_angle_mode": 114.54516155113276,
+                "hb_0_donor_angle_mode": 114.72480235649324,
                 "hb_0_donor_angle_median": 114.31961504436059,
                 "hb_0_donor_angle_mean": 114.07258024115916,
                 "hb_0_donor_angle_std": 6.87456393191572,
-                "hb_0_acceptor_angle_mode": 121.43715710294495,
+                "hb_0_acceptor_angle_mode": 121.70976361309849,
                 "hb_0_acceptor_angle_median": 121.45245672668577,
                 "hb_0_acceptor_angle_mean": 121.51337282887783,
                 "hb_0_acceptor_angle_std": 6.698961463242799,
-                "hb_1_length_mode": 2.8292672634124756,
+                "hb_1_length_mode": 2.8239939212799072,
                 "hb_1_length_median": 2.828134059906006,
                 "hb_1_length_mean": 2.8416980294125533,
                 "hb_1_length_std": 0.15263116356036904,
-                "hb_1_donor_angle_mode": 117.25418533068907,
+                "hb_1_donor_angle_mode": 117.06796705315783,
                 "hb_1_donor_angle_median": 116.98591599065846,
                 "hb_1_donor_angle_mean": 116.77396185660588,
                 "hb_1_donor_angle_std": 6.77954339911884,
-                "hb_1_acceptor_angle_mode": 124.8443286685141,
+                "hb_1_acceptor_angle_mode": 124.6484934846315,
                 "hb_1_acceptor_angle_median": 124.6056272174005,
                 "hb_1_acceptor_angle_mean": 124.75940388146782,
                 "hb_1_acceptor_angle_std": 7.17072078268041,
-                "hb_2_length_mode": 3.533468246459961,
+                "hb_2_length_mode": 3.5333337783813477,
                 "hb_2_length_median": 3.543196439743042,
                 "hb_2_length_mean": 3.557004652485344,
                 "hb_2_length_std": 0.21363527820578984,
-                "hb_2_donor_angle_mode": 148.7997691822298,
+                "hb_2_donor_angle_mode": 149.48833421283712,
                 "hb_2_donor_angle_median": 148.95071636288708,
                 "hb_2_donor_angle_mean": 148.76766360737398,
                 "hb_2_donor_angle_std": 5.962672722547388,
-                "hb_2_acceptor_angle_mode": 104.215244922108,
+                "hb_2_acceptor_angle_mode": 104.23625458399496,
                 "hb_2_acceptor_angle_median": 104.04244796629584,
                 "hb_2_acceptor_angle_mean": 103.97591226411062,
                 "hb_2_acceptor_angle_std": 5.4351095240440745,
@@ -1883,10 +1895,12 @@ export default [
             "C-U"
         ],
         "count": 10403,
+        "high_quality": 3,
+        "med_quality": 229,
         "score": 5.29,
         "files": [
-            "out/plots-orient2/cWW CT DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/cWW CU RNA \u22643 \u00c5.pdf"
+            "out/plots/cWW CT DNA \u22643 \u00c5.pdf",
+            "out/plots/cWW CU RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 1,
         "statistics": [
@@ -2212,10 +2226,12 @@ export default [
             "G-U"
         ],
         "count": 217669,
+        "high_quality": 93,
+        "med_quality": 5469,
         "score": 147.69,
         "files": [
-            "out/plots-orient2/cWW GT DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/cWW GU RNA \u22643 \u00c5.pdf"
+            "out/plots/cWW GT DNA \u22643 \u00c5.pdf",
+            "out/plots/cWW GU RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 1,
         "statistics": [
@@ -2541,10 +2557,12 @@ export default [
             "G-U"
         ],
         "count": 1578,
+        "high_quality": 0,
+        "med_quality": 50,
         "score": 0.5,
         "files": [
-            "out/plots-orient2/cWWa GT DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/cWWa GU RNA \u22643 \u00c5.pdf"
+            "out/plots/cWWa GT DNA \u22643 \u00c5.pdf",
+            "out/plots/cWWa GU RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 1,
         "statistics": [
@@ -2811,10 +2829,12 @@ export default [
             "U-U"
         ],
         "count": 28673,
+        "high_quality": 17,
+        "med_quality": 710,
         "score": 24.1,
         "files": [
-            "out/plots-orient2/cWw TT DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/cWw UU RNA \u22643 \u00c5.pdf"
+            "out/plots/cWw TT DNA \u22643 \u00c5.pdf",
+            "out/plots/cWw UU RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 1,
         "statistics": [
@@ -3140,10 +3160,12 @@ export default [
             "A-A"
         ],
         "count": 14740,
+        "high_quality": 2,
+        "med_quality": 329,
         "score": 5.29,
         "files": [
-            "out/plots-orient2/tWW AA DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/tWW AA RNA \u22643 \u00c5.pdf"
+            "out/plots/tWW AA DNA \u22643 \u00c5.pdf",
+            "out/plots/tWW AA RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 1,
         "statistics": [
@@ -3469,10 +3491,12 @@ export default [
             "A-C"
         ],
         "count": 1686,
+        "high_quality": 0,
+        "med_quality": 40,
         "score": 0.4,
         "files": [
-            "out/plots-orient2/tWW AC DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/tWW AC RNA \u22643 \u00c5.pdf"
+            "out/plots/tWW AC DNA \u22643 \u00c5.pdf",
+            "out/plots/tWW AC RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 1,
         "statistics": [
@@ -3680,10 +3704,12 @@ export default [
             "C-C"
         ],
         "count": 915,
+        "high_quality": 1,
+        "med_quality": 6,
         "score": 1.06,
         "files": [
-            "out/plots-orient2/tWW CC DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/tWW CC RNA \u22643 \u00c5.pdf"
+            "out/plots/tWW CC DNA \u22643 \u00c5.pdf",
+            "out/plots/tWW CC RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 1,
         "statistics": [
@@ -3950,10 +3976,12 @@ export default [
             "C-C"
         ],
         "count": 571,
+        "high_quality": 0,
+        "med_quality": 18,
         "score": 0.18,
         "files": [
-            "out/plots-orient2/tWWa CC DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/tWWa CC RNA \u22643 \u00c5.pdf"
+            "out/plots/tWWa CC DNA \u22643 \u00c5.pdf",
+            "out/plots/tWWa CC RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 1,
         "statistics": [
@@ -4102,10 +4130,12 @@ export default [
             "G-C"
         ],
         "count": 7186,
+        "high_quality": 0,
+        "med_quality": 110,
         "score": 1.1,
         "files": [
-            "out/plots-orient2/tWW GC DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/tWW GC RNA \u22643 \u00c5.pdf"
+            "out/plots/tWW GC DNA \u22643 \u00c5.pdf",
+            "out/plots/tWW GC RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 1,
         "statistics": [
@@ -4313,10 +4343,12 @@ export default [
             "G-G"
         ],
         "count": 2616,
+        "high_quality": 0,
+        "med_quality": 30,
         "score": 0.3,
         "files": [
-            "out/plots-orient2/tWW GG DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/tWW GG RNA \u22643 \u00c5.pdf"
+            "out/plots/tWW GG DNA \u22643 \u00c5.pdf",
+            "out/plots/tWW GG RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 1,
         "statistics": [
@@ -4583,10 +4615,12 @@ export default [
             "A-U"
         ],
         "count": 13572,
+        "high_quality": 0,
+        "med_quality": 221,
         "score": 2.21,
         "files": [
-            "out/plots-orient2/tWW AT DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/tWW AU RNA \u22643 \u00c5.pdf"
+            "out/plots/tWW AT DNA \u22643 \u00c5.pdf",
+            "out/plots/tWW AU RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 1,
         "statistics": [
@@ -4863,10 +4897,12 @@ export default [
             "C-U"
         ],
         "count": 252,
+        "high_quality": 0,
+        "med_quality": 16,
         "score": 0.16,
         "files": [
-            "out/plots-orient2/tWW CT DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/tWW CU RNA \u22643 \u00c5.pdf"
+            "out/plots/tWW CT DNA \u22643 \u00c5.pdf",
+            "out/plots/tWW CU RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 1,
         "statistics": [
@@ -5074,10 +5110,12 @@ export default [
             "G-U"
         ],
         "count": 717,
+        "high_quality": 0,
+        "med_quality": 16,
         "score": 0.16,
         "files": [
-            "out/plots-orient2/tWW GT DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/tWW GU RNA \u22643 \u00c5.pdf"
+            "out/plots/tWW GT DNA \u22643 \u00c5.pdf",
+            "out/plots/tWW GU RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 1,
         "statistics": [
@@ -5285,10 +5323,12 @@ export default [
             "U-U"
         ],
         "count": 990,
+        "high_quality": 0,
+        "med_quality": 9,
         "score": 0.09,
         "files": [
-            "out/plots-orient2/tWW TT DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/tWW UU RNA \u22643 \u00c5.pdf"
+            "out/plots/tWW TT DNA \u22643 \u00c5.pdf",
+            "out/plots/tWW UU RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 1,
         "statistics": [
@@ -5496,10 +5536,12 @@ export default [
             "U-U"
         ],
         "count": 2974,
+        "high_quality": 0,
+        "med_quality": 82,
         "score": 0.82,
         "files": [
-            "out/plots-orient2/tWWa TT DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/tWWa UU RNA \u22643 \u00c5.pdf"
+            "out/plots/tWWa TT DNA \u22643 \u00c5.pdf",
+            "out/plots/tWWa UU RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 1,
         "statistics": [
@@ -5707,10 +5749,12 @@ export default [
             "G-A"
         ],
         "count": 1732,
+        "high_quality": 2,
+        "med_quality": 18,
         "score": 2.18,
         "files": [
-            "out/plots-orient2/cWH GA DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/cWH GA RNA \u22643 \u00c5.pdf"
+            "out/plots/cWH GA DNA \u22643 \u00c5.pdf",
+            "out/plots/cWH GA RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 1,
         "statistics": [
@@ -6036,10 +6080,12 @@ export default [
             "U-A"
         ],
         "count": 19975,
+        "high_quality": 4,
+        "med_quality": 364,
         "score": 7.640000000000001,
         "files": [
-            "out/plots-orient2/cWH TA DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/cWH UA RNA \u22643 \u00c5.pdf"
+            "out/plots/cWH TA DNA \u22643 \u00c5.pdf",
+            "out/plots/cWH UA RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 1,
         "statistics": [
@@ -6376,10 +6422,12 @@ export default [
             "A-G"
         ],
         "count": 459,
+        "high_quality": 0,
+        "med_quality": 15,
         "score": 0.15,
         "files": [
-            "out/plots-orient2/cWH AG DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/cWH AG RNA \u22643 \u00c5.pdf"
+            "out/plots/cWH AG DNA \u22643 \u00c5.pdf",
+            "out/plots/cWH AG RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 1,
         "statistics": [
@@ -6587,10 +6635,12 @@ export default [
             "C-G"
         ],
         "count": 417,
+        "high_quality": 0,
+        "med_quality": 12,
         "score": 0.12,
         "files": [
-            "out/plots-orient2/cWH CG DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/cWH CG RNA \u22643 \u00c5.pdf"
+            "out/plots/cWH CG DNA \u22643 \u00c5.pdf",
+            "out/plots/cWH CG RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 1,
         "statistics": [
@@ -6857,10 +6907,12 @@ export default [
             "G-G"
         ],
         "count": 46719,
+        "high_quality": 214,
+        "med_quality": 554,
         "score": 219.54,
         "files": [
-            "out/plots-orient2/cWH GG DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/cWH GG RNA \u22643 \u00c5.pdf"
+            "out/plots/cWH GG DNA \u22643 \u00c5.pdf",
+            "out/plots/cWH GG RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 1,
         "statistics": [
@@ -7186,10 +7238,12 @@ export default [
             "A-A"
         ],
         "count": 13768,
+        "high_quality": 11,
+        "med_quality": 299,
         "score": 13.99,
         "files": [
-            "out/plots-orient2/tWH AA DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/tWH AA RNA \u22643 \u00c5.pdf"
+            "out/plots/tWH AA DNA \u22643 \u00c5.pdf",
+            "out/plots/tWH AA RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 1,
         "statistics": [
@@ -7515,10 +7569,12 @@ export default [
             "C-A"
         ],
         "count": 16978,
+        "high_quality": 4,
+        "med_quality": 315,
         "score": 7.15,
         "files": [
-            "out/plots-orient2/tWH CA DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/tWH CA RNA \u22643 \u00c5.pdf"
+            "out/plots/tWH CA DNA \u22643 \u00c5.pdf",
+            "out/plots/tWH CA RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 1,
         "statistics": [
@@ -7844,10 +7900,12 @@ export default [
             "U-A"
         ],
         "count": 86052,
+        "high_quality": 27,
+        "med_quality": 2051,
         "score": 47.510000000000005,
         "files": [
-            "out/plots-orient2/tWH TA DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/tWH UA RNA \u22643 \u00c5.pdf"
+            "out/plots/tWH TA DNA \u22643 \u00c5.pdf",
+            "out/plots/tWH UA RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 1,
         "statistics": [
@@ -8173,10 +8231,12 @@ export default [
             "A-G"
         ],
         "count": 145,
+        "high_quality": 0,
+        "med_quality": 14,
         "score": 0.14,
         "files": [
-            "out/plots-orient2/tWH AG DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/tWH AG RNA \u22643 \u00c5.pdf"
+            "out/plots/tWH AG DNA \u22643 \u00c5.pdf",
+            "out/plots/tWH AG RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 1,
         "statistics": [
@@ -8384,10 +8444,12 @@ export default [
             "C-G"
         ],
         "count": 608,
+        "high_quality": 3,
+        "med_quality": 10,
         "score": 3.1,
         "files": [
-            "out/plots-orient2/tWH CG DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/tWH CG RNA \u22643 \u00c5.pdf"
+            "out/plots/tWH CG DNA \u22643 \u00c5.pdf",
+            "out/plots/tWH CG RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 1,
         "statistics": [
@@ -8654,10 +8716,12 @@ export default [
             "G-G"
         ],
         "count": 3842,
+        "high_quality": 2,
+        "med_quality": 113,
         "score": 3.13,
         "files": [
-            "out/plots-orient2/tWH GG DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/tWH GG RNA \u22643 \u00c5.pdf"
+            "out/plots/tWH GG DNA \u22643 \u00c5.pdf",
+            "out/plots/tWH GG RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 1,
         "statistics": [
@@ -8983,10 +9047,12 @@ export default [
             "U-G"
         ],
         "count": 2586,
+        "high_quality": 0,
+        "med_quality": 62,
         "score": 0.62,
         "files": [
-            "out/plots-orient2/cWS TG DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/cWS UG RNA \u22643 \u00c5.pdf"
+            "out/plots/cWS TG DNA \u22643 \u00c5.pdf",
+            "out/plots/cWS UG RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 1,
         "statistics": [
@@ -9194,10 +9260,12 @@ export default [
             "A-G"
         ],
         "count": 21833,
+        "high_quality": 26,
+        "med_quality": 606,
         "score": 32.06,
         "files": [
-            "out/plots-orient2/tWS AG DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/tWS AG RNA \u22643 \u00c5.pdf"
+            "out/plots/tWS AG DNA \u22643 \u00c5.pdf",
+            "out/plots/tWS AG RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 1,
         "statistics": [
@@ -9523,10 +9591,12 @@ export default [
             "C-G"
         ],
         "count": 2215,
+        "high_quality": 0,
+        "med_quality": 35,
         "score": 0.35,
         "files": [
-            "out/plots-orient2/tWS CG DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/tWS CG RNA \u22643 \u00c5.pdf"
+            "out/plots/tWS CG DNA \u22643 \u00c5.pdf",
+            "out/plots/tWS CG RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 1,
         "statistics": [
@@ -9743,10 +9813,12 @@ export default [
             "A-A"
         ],
         "count": 25502,
+        "high_quality": 12,
+        "med_quality": 660,
         "score": 18.6,
         "files": [
-            "out/plots-orient2/tHH AA DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/tHH AA RNA \u22643 \u00c5.pdf"
+            "out/plots/tHH AA DNA \u22643 \u00c5.pdf",
+            "out/plots/tHH AA RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 1,
         "statistics": [
@@ -10072,10 +10144,12 @@ export default [
             "A-G"
         ],
         "count": 135539,
+        "high_quality": 31,
+        "med_quality": 3003,
         "score": 61.03,
         "files": [
-            "out/plots-orient2/tHS AG DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/tHS AG RNA \u22643 \u00c5.pdf"
+            "out/plots/tHS AG DNA \u22643 \u00c5.pdf",
+            "out/plots/tHS AG RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 1,
         "statistics": [
@@ -10412,10 +10486,12 @@ export default [
             "G-G"
         ],
         "count": 9223,
+        "high_quality": 2,
+        "med_quality": 202,
         "score": 4.02,
         "files": [
-            "out/plots-orient2/tSS GG DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/tSS GG RNA \u22643 \u00c5.pdf"
+            "out/plots/tSS GG DNA \u22643 \u00c5.pdf",
+            "out/plots/tSS GG RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 1,
         "statistics": [
@@ -10763,10 +10839,12 @@ export default [
             "A-A"
         ],
         "count": 9528,
+        "high_quality": 0,
+        "med_quality": 223,
         "score": 2.23,
         "files": [
-            "out/plots-orient2/cWS AA DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/cWS AA RNA \u22643 \u00c5.pdf"
+            "out/plots/cWS AA DNA \u22643 \u00c5.pdf",
+            "out/plots/cWS AA RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 2,
         "statistics": [
@@ -10974,10 +11052,12 @@ export default [
             "C-A"
         ],
         "count": 3549,
+        "high_quality": 3,
+        "med_quality": 87,
         "score": 3.87,
         "files": [
-            "out/plots-orient2/cWS CA DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/cWS CA RNA \u22643 \u00c5.pdf"
+            "out/plots/cWS CA DNA \u22643 \u00c5.pdf",
+            "out/plots/cWS CA RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 2,
         "statistics": [
@@ -11244,10 +11324,12 @@ export default [
             "G-A"
         ],
         "count": 878,
+        "high_quality": 1,
+        "med_quality": 9,
         "score": 1.09,
         "files": [
-            "out/plots-orient2/cWS GA DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/cWS GA RNA \u22643 \u00c5.pdf"
+            "out/plots/cWS GA DNA \u22643 \u00c5.pdf",
+            "out/plots/cWS GA RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 2,
         "statistics": [
@@ -11524,10 +11606,12 @@ export default [
             "U-A"
         ],
         "count": 3433,
+        "high_quality": 11,
+        "med_quality": 87,
         "score": 11.87,
         "files": [
-            "out/plots-orient2/cWS TA DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/cWS UA RNA \u22643 \u00c5.pdf"
+            "out/plots/cWS TA DNA \u22643 \u00c5.pdf",
+            "out/plots/cWS UA RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 2,
         "statistics": [
@@ -11864,10 +11948,12 @@ export default [
             "A-C"
         ],
         "count": 11799,
+        "high_quality": 19,
+        "med_quality": 333,
         "score": 22.33,
         "files": [
-            "out/plots-orient2/cWS AC DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/cWS AC RNA \u22643 \u00c5.pdf"
+            "out/plots/cWS AC DNA \u22643 \u00c5.pdf",
+            "out/plots/cWS AC RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 2,
         "statistics": [
@@ -12134,10 +12220,12 @@ export default [
             "C-C"
         ],
         "count": 3987,
+        "high_quality": 1,
+        "med_quality": 132,
         "score": 2.3200000000000003,
         "files": [
-            "out/plots-orient2/cWS CC DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/cWS CC RNA \u22643 \u00c5.pdf"
+            "out/plots/cWS CC DNA \u22643 \u00c5.pdf",
+            "out/plots/cWS CC RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 2,
         "statistics": [
@@ -12404,10 +12492,12 @@ export default [
             "G-C"
         ],
         "count": 2048,
+        "high_quality": 0,
+        "med_quality": 60,
         "score": 0.6,
         "files": [
-            "out/plots-orient2/cWS GC DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/cWS GC RNA \u22643 \u00c5.pdf"
+            "out/plots/cWS GC DNA \u22643 \u00c5.pdf",
+            "out/plots/cWS GC RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 2,
         "statistics": [
@@ -12674,10 +12764,12 @@ export default [
             "U-C"
         ],
         "count": 186,
+        "high_quality": 0,
+        "med_quality": 2,
         "score": 0.02,
         "files": [
-            "out/plots-orient2/cWS TC DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/cWS UC RNA \u22643 \u00c5.pdf"
+            "out/plots/cWS TC DNA \u22643 \u00c5.pdf",
+            "out/plots/cWS UC RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 2,
         "statistics": [
@@ -12885,10 +12977,12 @@ export default [
             "A-G"
         ],
         "count": 3435,
+        "high_quality": 1,
+        "med_quality": 75,
         "score": 1.75,
         "files": [
-            "out/plots-orient2/cWS AG DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/cWS AG RNA \u22643 \u00c5.pdf"
+            "out/plots/cWS AG DNA \u22643 \u00c5.pdf",
+            "out/plots/cWS AG RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 2,
         "statistics": [
@@ -13155,10 +13249,12 @@ export default [
             "C-G"
         ],
         "count": 813,
+        "high_quality": 0,
+        "med_quality": 32,
         "score": 0.32,
         "files": [
-            "out/plots-orient2/cWS CG DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/cWS CG RNA \u22643 \u00c5.pdf"
+            "out/plots/cWS CG DNA \u22643 \u00c5.pdf",
+            "out/plots/cWS CG RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 2,
         "statistics": [
@@ -13366,10 +13462,12 @@ export default [
             "G-G"
         ],
         "count": 516,
+        "high_quality": 0,
+        "med_quality": 28,
         "score": 0.28,
         "files": [
-            "out/plots-orient2/cWS GG DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/cWS GG RNA \u22643 \u00c5.pdf"
+            "out/plots/cWS GG DNA \u22643 \u00c5.pdf",
+            "out/plots/cWS GG RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 2,
         "statistics": [
@@ -13577,10 +13675,12 @@ export default [
             "A-U"
         ],
         "count": 3788,
+        "high_quality": 0,
+        "med_quality": 96,
         "score": 0.96,
         "files": [
-            "out/plots-orient2/cWS AT DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/cWS AU RNA \u22643 \u00c5.pdf"
+            "out/plots/cWS AT DNA \u22643 \u00c5.pdf",
+            "out/plots/cWS AU RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 2,
         "statistics": [
@@ -13847,10 +13947,12 @@ export default [
             "C-U"
         ],
         "count": 1904,
+        "high_quality": 9,
+        "med_quality": 50,
         "score": 9.5,
         "files": [
-            "out/plots-orient2/cWS CT DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/cWS CU RNA \u22643 \u00c5.pdf"
+            "out/plots/cWS CT DNA \u22643 \u00c5.pdf",
+            "out/plots/cWS CU RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 2,
         "statistics": [
@@ -14176,10 +14278,12 @@ export default [
             "G-U"
         ],
         "count": 2477,
+        "high_quality": 0,
+        "med_quality": 70,
         "score": 0.7,
         "files": [
-            "out/plots-orient2/cWS GT DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/cWS GU RNA \u22643 \u00c5.pdf"
+            "out/plots/cWS GT DNA \u22643 \u00c5.pdf",
+            "out/plots/cWS GU RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 2,
         "statistics": [
@@ -14387,10 +14491,12 @@ export default [
             "U-U"
         ],
         "count": 671,
+        "high_quality": 0,
+        "med_quality": 17,
         "score": 0.17,
         "files": [
-            "out/plots-orient2/cWS TT DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/cWS UU RNA \u22643 \u00c5.pdf"
+            "out/plots/cWS TT DNA \u22643 \u00c5.pdf",
+            "out/plots/cWS UU RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 2,
         "statistics": [
@@ -14598,10 +14704,12 @@ export default [
             "G-C"
         ],
         "count": 1020,
+        "high_quality": 0,
+        "med_quality": 11,
         "score": 0.11,
         "files": [
-            "out/plots-orient2/tWS GC DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/tWS GC RNA \u22643 \u00c5.pdf"
+            "out/plots/tWS GC DNA \u22643 \u00c5.pdf",
+            "out/plots/tWS GC RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 2,
         "statistics": [
@@ -14750,10 +14858,12 @@ export default [
             "U-C"
         ],
         "count": 547,
+        "high_quality": 0,
+        "med_quality": 8,
         "score": 0.08,
         "files": [
-            "out/plots-orient2/tWS TC DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/tWS UC RNA \u22643 \u00c5.pdf"
+            "out/plots/tWS TC DNA \u22643 \u00c5.pdf",
+            "out/plots/tWS UC RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 2,
         "statistics": [
@@ -14961,10 +15071,12 @@ export default [
             "G-U"
         ],
         "count": 6334,
+        "high_quality": 3,
+        "med_quality": 183,
         "score": 4.83,
         "files": [
-            "out/plots-orient2/tWS GT DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/tWS GU RNA \u22643 \u00c5.pdf"
+            "out/plots/tWS GT DNA \u22643 \u00c5.pdf",
+            "out/plots/tWS GU RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 2,
         "statistics": [
@@ -15231,10 +15343,12 @@ export default [
             "U-U"
         ],
         "count": 382,
+        "high_quality": 1,
+        "med_quality": 11,
         "score": 1.11,
         "files": [
-            "out/plots-orient2/tWS TT DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/tWS UU RNA \u22643 \u00c5.pdf"
+            "out/plots/tWS TT DNA \u22643 \u00c5.pdf",
+            "out/plots/tWS UU RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 2,
         "statistics": [
@@ -15560,10 +15674,12 @@ export default [
             "A-G"
         ],
         "count": 17603,
+        "high_quality": 1,
+        "med_quality": 499,
         "score": 5.99,
         "files": [
-            "out/plots-orient2/cSs AG DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/cSs AG RNA \u22643 \u00c5.pdf"
+            "out/plots/cSs AG DNA \u22643 \u00c5.pdf",
+            "out/plots/cSs AG RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 2,
         "statistics": [
@@ -15840,10 +15956,12 @@ export default [
             "C-G"
         ],
         "count": 3936,
+        "high_quality": 2,
+        "med_quality": 110,
         "score": 3.1,
         "files": [
-            "out/plots-orient2/cSs CG DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/cSs CG RNA \u22643 \u00c5.pdf"
+            "out/plots/cSs CG DNA \u22643 \u00c5.pdf",
+            "out/plots/cSs CG RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 2,
         "statistics": [
@@ -16180,10 +16298,12 @@ export default [
             "G-G"
         ],
         "count": 3145,
+        "high_quality": 0,
+        "med_quality": 52,
         "score": 0.52,
         "files": [
-            "out/plots-orient2/cSs GG DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/cSs GG RNA \u22643 \u00c5.pdf"
+            "out/plots/cSs GG DNA \u22643 \u00c5.pdf",
+            "out/plots/cSs GG RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 2,
         "statistics": [
@@ -16400,10 +16520,12 @@ export default [
             "U-G"
         ],
         "count": 3943,
+        "high_quality": 11,
+        "med_quality": 144,
         "score": 12.44,
         "files": [
-            "out/plots-orient2/cSs TG DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/cSs UG RNA \u22643 \u00c5.pdf"
+            "out/plots/cSs TG DNA \u22643 \u00c5.pdf",
+            "out/plots/cSs UG RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 2,
         "statistics": [
@@ -16680,10 +16802,12 @@ export default [
             "A-G"
         ],
         "count": 69970,
+        "high_quality": 4,
+        "med_quality": 2086,
         "score": 24.86,
         "files": [
-            "out/plots-orient2/tSs AG DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/tSs AG RNA \u22643 \u00c5.pdf"
+            "out/plots/tSs AG DNA \u22643 \u00c5.pdf",
+            "out/plots/tSs AG RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 2,
         "statistics": [
@@ -16960,10 +17084,12 @@ export default [
             "A-A"
         ],
         "count": 5564,
+        "high_quality": 2,
+        "med_quality": 107,
         "score": 3.0700000000000003,
         "files": [
-            "out/plots-orient2/cWw AA DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/cWw AA RNA \u22643 \u00c5.pdf"
+            "out/plots/cWw AA DNA \u22643 \u00c5.pdf",
+            "out/plots/cWw AA RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 3,
         "statistics": [
@@ -17289,10 +17415,12 @@ export default [
             "C-C"
         ],
         "count": 193,
+        "high_quality": 0,
+        "med_quality": 8,
         "score": 0.08,
         "files": [
-            "out/plots-orient2/cWH CC DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/cWH CC RNA \u22643 \u00c5.pdf"
+            "out/plots/cWH CC DNA \u22643 \u00c5.pdf",
+            "out/plots/cWH CC RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 3,
         "statistics": [
@@ -17500,10 +17628,12 @@ export default [
             "U-G"
         ],
         "count": 2143,
+        "high_quality": 0,
+        "med_quality": 75,
         "score": 0.75,
         "files": [
-            "out/plots-orient2/cWH TG DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/cWH UG RNA \u22643 \u00c5.pdf"
+            "out/plots/cWH TG DNA \u22643 \u00c5.pdf",
+            "out/plots/cWH UG RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 3,
         "statistics": [
@@ -17708,13 +17838,50 @@ export default [
     {
         "pair_type": [
             "cWH",
+            "A-U"
+        ],
+        "count": 660,
+        "high_quality": 0,
+        "med_quality": 0,
+        "score": 0.0,
+        "files": [
+            "out/plots/cWH AT DNA \u22643 \u00c5.pdf",
+            "out/plots/cWH AU RNA \u22643 \u00c5.pdf"
+        ],
+        "bp_class": 3,
+        "statistics": [],
+        "labels": [
+            "N6 \u00b7 \u00b7 \u00b7 O4",
+            "N1 \u00b7 \u00b7 \u00b7 C5",
+            null
+        ],
+        "atoms": [
+            [
+                "AC6",
+                "AN6",
+                "BO4",
+                "BC4"
+            ],
+            [
+                "BC7",
+                "BC5",
+                "AN1",
+                "AC6"
+            ]
+        ]
+    },
+    {
+        "pair_type": [
+            "cWH",
             "C-U"
         ],
         "count": 55,
+        "high_quality": 0,
+        "med_quality": 1,
         "score": 0.01,
         "files": [
-            "out/plots-orient2/cWH CT DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/cWH CU RNA \u22643 \u00c5.pdf"
+            "out/plots/cWH CT DNA \u22643 \u00c5.pdf",
+            "out/plots/cWH CU RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 3,
         "statistics": [
@@ -17863,10 +18030,12 @@ export default [
             "U-U"
         ],
         "count": 1417,
+        "high_quality": 0,
+        "med_quality": 26,
         "score": 0.26,
         "files": [
-            "out/plots-orient2/cWH TT DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/cWH UU RNA \u22643 \u00c5.pdf"
+            "out/plots/cWH TT DNA \u22643 \u00c5.pdf",
+            "out/plots/cWH UU RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 3,
         "statistics": [
@@ -18074,10 +18243,12 @@ export default [
             "C-C"
         ],
         "count": 185,
+        "high_quality": 0,
+        "med_quality": 9,
         "score": 0.09,
         "files": [
-            "out/plots-orient2/tWH CC DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/tWH CC RNA \u22643 \u00c5.pdf"
+            "out/plots/tWH CC DNA \u22643 \u00c5.pdf",
+            "out/plots/tWH CC RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 3,
         "statistics": [
@@ -18282,13 +18453,50 @@ export default [
     {
         "pair_type": [
             "tWH",
+            "U-G"
+        ],
+        "count": 80,
+        "high_quality": 0,
+        "med_quality": 1,
+        "score": 0.01,
+        "files": [
+            "out/plots/tWH TG DNA \u22643 \u00c5.pdf",
+            "out/plots/tWH UG RNA \u22643 \u00c5.pdf"
+        ],
+        "bp_class": 3,
+        "statistics": [],
+        "labels": [
+            "O4 \u00b7 \u00b7 \u00b7 C8",
+            "N3 \u00b7 \u00b7 \u00b7 N7",
+            null
+        ],
+        "atoms": [
+            [
+                "BN9",
+                "BC8",
+                "AO4",
+                "AC4"
+            ],
+            [
+                "AC4",
+                "AN3",
+                "BN7",
+                "BC8"
+            ]
+        ]
+    },
+    {
+        "pair_type": [
+            "tWH",
             "G-U"
         ],
         "count": 365,
+        "high_quality": 0,
+        "med_quality": 3,
         "score": 0.03,
         "files": [
-            "out/plots-orient2/tWH GT DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/tWH GU RNA \u22643 \u00c5.pdf"
+            "out/plots/tWH GT DNA \u22643 \u00c5.pdf",
+            "out/plots/tWH GU RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 3,
         "statistics": [
@@ -18496,10 +18704,12 @@ export default [
             "U-U"
         ],
         "count": 3275,
+        "high_quality": 3,
+        "med_quality": 62,
         "score": 3.62,
         "files": [
-            "out/plots-orient2/tWH TT DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/tWH UU RNA \u22643 \u00c5.pdf"
+            "out/plots/tWH TT DNA \u22643 \u00c5.pdf",
+            "out/plots/tWH UU RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 3,
         "statistics": [
@@ -18766,10 +18976,12 @@ export default [
             "A-A"
         ],
         "count": 1372,
+        "high_quality": 1,
+        "med_quality": 38,
         "score": 1.38,
         "files": [
-            "out/plots-orient2/tWS AA DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/tWS AA RNA \u22643 \u00c5.pdf"
+            "out/plots/tWS AA DNA \u22643 \u00c5.pdf",
+            "out/plots/tWS AA RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 3,
         "statistics": [
@@ -19036,10 +19248,12 @@ export default [
             "C-A"
         ],
         "count": 484,
+        "high_quality": 0,
+        "med_quality": 27,
         "score": 0.27,
         "files": [
-            "out/plots-orient2/tWS CA DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/tWS CA RNA \u22643 \u00c5.pdf"
+            "out/plots/tWS CA DNA \u22643 \u00c5.pdf",
+            "out/plots/tWS CA RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 3,
         "statistics": [
@@ -19247,10 +19461,12 @@ export default [
             "U-A"
         ],
         "count": 2471,
+        "high_quality": 0,
+        "med_quality": 79,
         "score": 0.79,
         "files": [
-            "out/plots-orient2/tWS TA DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/tWS UA RNA \u22643 \u00c5.pdf"
+            "out/plots/tWS TA DNA \u22643 \u00c5.pdf",
+            "out/plots/tWS UA RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 3,
         "statistics": [
@@ -19458,10 +19674,12 @@ export default [
             "A-C"
         ],
         "count": 543,
+        "high_quality": 0,
+        "med_quality": 6,
         "score": 0.06,
         "files": [
-            "out/plots-orient2/tWS AC DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/tWS AC RNA \u22643 \u00c5.pdf"
+            "out/plots/tWS AC DNA \u22643 \u00c5.pdf",
+            "out/plots/tWS AC RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 3,
         "statistics": [
@@ -19669,10 +19887,12 @@ export default [
             "C-C"
         ],
         "count": 561,
+        "high_quality": 0,
+        "med_quality": 18,
         "score": 0.18,
         "files": [
-            "out/plots-orient2/tWS CC DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/tWS CC RNA \u22643 \u00c5.pdf"
+            "out/plots/tWS CC DNA \u22643 \u00c5.pdf",
+            "out/plots/tWS CC RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 3,
         "statistics": [
@@ -19880,10 +20100,12 @@ export default [
             "U-G"
         ],
         "count": 478,
+        "high_quality": 0,
+        "med_quality": 30,
         "score": 0.3,
         "files": [
-            "out/plots-orient2/tWS TG DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/tWS UG RNA \u22643 \u00c5.pdf"
+            "out/plots/tWS TG DNA \u22643 \u00c5.pdf",
+            "out/plots/tWS UG RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 3,
         "statistics": [
@@ -20079,13 +20301,50 @@ export default [
     {
         "pair_type": [
             "tWS",
+            "A-U"
+        ],
+        "count": 138,
+        "high_quality": 0,
+        "med_quality": 0,
+        "score": 0.0,
+        "files": [
+            "out/plots/tWS AT DNA \u22643 \u00c5.pdf",
+            "out/plots/tWS AU RNA \u22643 \u00c5.pdf"
+        ],
+        "bp_class": 3,
+        "statistics": [],
+        "labels": [
+            "N6 \u00b7 \u00b7 \u00b7 O2'",
+            "N6 \u00b7 \u00b7 \u00b7 O2",
+            null
+        ],
+        "atoms": [
+            [
+                "AC6",
+                "AN6",
+                "BO2'",
+                "BC2'"
+            ],
+            [
+                "AC6",
+                "AN6",
+                "BO2",
+                "BC2"
+            ]
+        ]
+    },
+    {
+        "pair_type": [
+            "tWS",
             "C-U"
         ],
         "count": 318,
+        "high_quality": 0,
+        "med_quality": 2,
         "score": 0.02,
         "files": [
-            "out/plots-orient2/tWS CT DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/tWS CU RNA \u22643 \u00c5.pdf"
+            "out/plots/tWS CT DNA \u22643 \u00c5.pdf",
+            "out/plots/tWS CU RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 3,
         "statistics": [
@@ -20234,10 +20493,12 @@ export default [
             "G-C"
         ],
         "count": 71,
+        "high_quality": 0,
+        "med_quality": 15,
         "score": 0.15,
         "files": [
-            "out/plots-orient2/cHH GC DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/cHH GC RNA \u22643 \u00c5.pdf"
+            "out/plots/cHH GC DNA \u22643 \u00c5.pdf",
+            "out/plots/cHH GC RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 3,
         "statistics": [
@@ -20432,14 +20693,51 @@ export default [
     },
     {
         "pair_type": [
+            "cHHa",
+            "G-C"
+        ],
+        "count": 171,
+        "high_quality": 0,
+        "med_quality": 2,
+        "score": 0.02,
+        "files": [
+            "out/plots/cHHa GC DNA \u22643 \u00c5.pdf",
+            "out/plots/cHHa GC RNA \u22643 \u00c5.pdf"
+        ],
+        "bp_class": 3,
+        "statistics": [],
+        "labels": [
+            "O6 \u00b7 \u00b7 \u00b7 N4",
+            "N7 \u00b7 \u00b7 \u00b7 C5",
+            null
+        ],
+        "atoms": [
+            [
+                "BC4",
+                "BN4",
+                "AO6",
+                "AC6"
+            ],
+            [
+                "BC7",
+                "BC5",
+                "AN7",
+                "AC8"
+            ]
+        ]
+    },
+    {
+        "pair_type": [
             "cHH",
             "A-G"
         ],
         "count": 1865,
+        "high_quality": 1,
+        "med_quality": 44,
         "score": 1.44,
         "files": [
-            "out/plots-orient2/cHH AG DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/cHH AG RNA \u22643 \u00c5.pdf"
+            "out/plots/cHH AG DNA \u22643 \u00c5.pdf",
+            "out/plots/cHH AG RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 3,
         "statistics": [
@@ -20696,10 +20994,12 @@ export default [
             "G-G"
         ],
         "count": 793,
+        "high_quality": 0,
+        "med_quality": 13,
         "score": 0.13,
         "files": [
-            "out/plots-orient2/cHh GG DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/cHh GG RNA \u22643 \u00c5.pdf"
+            "out/plots/cHh GG DNA \u22643 \u00c5.pdf",
+            "out/plots/cHh GG RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 3,
         "statistics": [
@@ -20898,10 +21198,12 @@ export default [
             "A-C"
         ],
         "count": 668,
+        "high_quality": 0,
+        "med_quality": 31,
         "score": 0.31,
         "files": [
-            "out/plots-orient2/tHH AC DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/tHH AC RNA \u22643 \u00c5.pdf"
+            "out/plots/tHH AC DNA \u22643 \u00c5.pdf",
+            "out/plots/tHH AC RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 3,
         "statistics": [
@@ -21100,10 +21402,12 @@ export default [
             "G-C"
         ],
         "count": 1835,
+        "high_quality": 0,
+        "med_quality": 67,
         "score": 0.67,
         "files": [
-            "out/plots-orient2/tHH GC DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/tHH GC RNA \u22643 \u00c5.pdf"
+            "out/plots/tHH GC DNA \u22643 \u00c5.pdf",
+            "out/plots/tHH GC RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 3,
         "statistics": [
@@ -21311,10 +21615,12 @@ export default [
             "A-G"
         ],
         "count": 1052,
+        "high_quality": 0,
+        "med_quality": 42,
         "score": 0.42,
         "files": [
-            "out/plots-orient2/tHH AG DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/tHH AG RNA \u22643 \u00c5.pdf"
+            "out/plots/tHH AG DNA \u22643 \u00c5.pdf",
+            "out/plots/tHH AG RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 3,
         "statistics": [
@@ -21513,10 +21819,12 @@ export default [
             "G-G"
         ],
         "count": 1143,
+        "high_quality": 0,
+        "med_quality": 35,
         "score": 0.35,
         "files": [
-            "out/plots-orient2/tHh GG DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/tHh GG RNA \u22643 \u00c5.pdf"
+            "out/plots/tHh GG DNA \u22643 \u00c5.pdf",
+            "out/plots/tHh GG RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 3,
         "statistics": [
@@ -21715,10 +22023,12 @@ export default [
             "A-U"
         ],
         "count": 2050,
+        "high_quality": 0,
+        "med_quality": 66,
         "score": 0.66,
         "files": [
-            "out/plots-orient2/tHH AT DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/tHH AU RNA \u22643 \u00c5.pdf"
+            "out/plots/tHH AT DNA \u22643 \u00c5.pdf",
+            "out/plots/tHH AU RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 3,
         "statistics": [
@@ -21917,10 +22227,12 @@ export default [
             "C-U"
         ],
         "count": 985,
+        "high_quality": 0,
+        "med_quality": 38,
         "score": 0.38,
         "files": [
-            "out/plots-orient2/tHH CT DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/tHH CU RNA \u22643 \u00c5.pdf"
+            "out/plots/tHH CT DNA \u22643 \u00c5.pdf",
+            "out/plots/tHH CU RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 3,
         "statistics": [
@@ -22119,10 +22431,12 @@ export default [
             "A-A"
         ],
         "count": 5433,
+        "high_quality": 0,
+        "med_quality": 95,
         "score": 0.95,
         "files": [
-            "out/plots-orient2/cHS AA DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/cHS AA RNA \u22643 \u00c5.pdf"
+            "out/plots/cHS AA DNA \u22643 \u00c5.pdf",
+            "out/plots/cHS AA RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 3,
         "statistics": [
@@ -22321,10 +22635,12 @@ export default [
             "C-A"
         ],
         "count": 2835,
+        "high_quality": 2,
+        "med_quality": 67,
         "score": 2.67,
         "files": [
-            "out/plots-orient2/cHS CA DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/cHS CA RNA \u22643 \u00c5.pdf"
+            "out/plots/cHS CA DNA \u22643 \u00c5.pdf",
+            "out/plots/cHS CA RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 3,
         "statistics": [
@@ -22639,10 +22955,12 @@ export default [
             "G-A"
         ],
         "count": 623,
+        "high_quality": 0,
+        "med_quality": 17,
         "score": 0.17,
         "files": [
-            "out/plots-orient2/cHS GA DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/cHS GA RNA \u22643 \u00c5.pdf"
+            "out/plots/cHS GA DNA \u22643 \u00c5.pdf",
+            "out/plots/cHS GA RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 3,
         "statistics": [
@@ -22780,13 +23098,44 @@ export default [
     {
         "pair_type": [
             "cHS",
+            "U-A"
+        ],
+        "count": 134,
+        "high_quality": 0,
+        "med_quality": 0,
+        "score": 0.0,
+        "files": [
+            "out/plots/cHS TA DNA \u22643 \u00c5.pdf",
+            "out/plots/cHS UA RNA \u22643 \u00c5.pdf"
+        ],
+        "bp_class": 3,
+        "statistics": [],
+        "labels": [
+            "O4 \u00b7 \u00b7 \u00b7 C2",
+            null,
+            null
+        ],
+        "atoms": [
+            [
+                "BN3",
+                "BC2",
+                "AO4",
+                "AC4"
+            ]
+        ]
+    },
+    {
+        "pair_type": [
+            "cHS",
             "A-C"
         ],
         "count": 2146,
+        "high_quality": 0,
+        "med_quality": 51,
         "score": 0.51,
         "files": [
-            "out/plots-orient2/cHS AC DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/cHS AC RNA \u22643 \u00c5.pdf"
+            "out/plots/cHS AC DNA \u22643 \u00c5.pdf",
+            "out/plots/cHS AC RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 3,
         "statistics": [
@@ -22985,10 +23334,12 @@ export default [
             "C-C"
         ],
         "count": 2293,
+        "high_quality": 1,
+        "med_quality": 96,
         "score": 1.96,
         "files": [
-            "out/plots-orient2/cHS CC DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/cHS CC RNA \u22643 \u00c5.pdf"
+            "out/plots/cHS CC DNA \u22643 \u00c5.pdf",
+            "out/plots/cHS CC RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 3,
         "statistics": [
@@ -23300,13 +23651,44 @@ export default [
     {
         "pair_type": [
             "cHS",
+            "U-C"
+        ],
+        "count": 234,
+        "high_quality": 0,
+        "med_quality": 1,
+        "score": 0.01,
+        "files": [
+            "out/plots/cHS TC DNA \u22643 \u00c5.pdf",
+            "out/plots/cHS UC RNA \u22643 \u00c5.pdf"
+        ],
+        "bp_class": 3,
+        "statistics": [],
+        "labels": [
+            "C5 \u00b7 \u00b7 \u00b7 O2",
+            null,
+            null
+        ],
+        "atoms": [
+            [
+                "AC7",
+                "AC5",
+                "BO2",
+                "BC2"
+            ]
+        ]
+    },
+    {
+        "pair_type": [
+            "cHS",
             "A-G"
         ],
         "count": 1226,
+        "high_quality": 0,
+        "med_quality": 19,
         "score": 0.19,
         "files": [
-            "out/plots-orient2/cHS AG DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/cHS AG RNA \u22643 \u00c5.pdf"
+            "out/plots/cHS AG DNA \u22643 \u00c5.pdf",
+            "out/plots/cHS AG RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 3,
         "statistics": [
@@ -23505,10 +23887,12 @@ export default [
             "C-G"
         ],
         "count": 470,
+        "high_quality": 0,
+        "med_quality": 14,
         "score": 0.14,
         "files": [
-            "out/plots-orient2/cHS CG DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/cHS CG RNA \u22643 \u00c5.pdf"
+            "out/plots/cHS CG DNA \u22643 \u00c5.pdf",
+            "out/plots/cHS CG RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 3,
         "statistics": [
@@ -23707,10 +24091,12 @@ export default [
             "G-G"
         ],
         "count": 928,
+        "high_quality": 2,
+        "med_quality": 34,
         "score": 2.34,
         "files": [
-            "out/plots-orient2/cHS GG DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/cHS GG RNA \u22643 \u00c5.pdf"
+            "out/plots/cHS GG DNA \u22643 \u00c5.pdf",
+            "out/plots/cHS GG RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 3,
         "statistics": [
@@ -24025,10 +24411,12 @@ export default [
             "U-G"
         ],
         "count": 22333,
+        "high_quality": 17,
+        "med_quality": 500,
         "score": 22.0,
         "files": [
-            "out/plots-orient2/cHS TG DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/cHS UG RNA \u22643 \u00c5.pdf"
+            "out/plots/cHS TG DNA \u22643 \u00c5.pdf",
+            "out/plots/cHS UG RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 3,
         "statistics": [
@@ -24285,10 +24673,12 @@ export default [
             "A-U"
         ],
         "count": 2559,
+        "high_quality": 0,
+        "med_quality": 65,
         "score": 0.65,
         "files": [
-            "out/plots-orient2/cHS AT DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/cHS AU RNA \u22643 \u00c5.pdf"
+            "out/plots/cHS AT DNA \u22643 \u00c5.pdf",
+            "out/plots/cHS AU RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 3,
         "statistics": [
@@ -24545,10 +24935,12 @@ export default [
             "C-U"
         ],
         "count": 7607,
+        "high_quality": 2,
+        "med_quality": 198,
         "score": 3.98,
         "files": [
-            "out/plots-orient2/cHS CT DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/cHS CU RNA \u22643 \u00c5.pdf"
+            "out/plots/cHS CT DNA \u22643 \u00c5.pdf",
+            "out/plots/cHS CU RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 3,
         "statistics": [
@@ -24801,14 +25193,45 @@ export default [
     },
     {
         "pair_type": [
+            "cHS",
+            "U-U"
+        ],
+        "count": 639,
+        "high_quality": 1,
+        "med_quality": 12,
+        "score": 1.12,
+        "files": [
+            "out/plots/cHS TT DNA \u22643 \u00c5.pdf",
+            "out/plots/cHS UU RNA \u22643 \u00c5.pdf"
+        ],
+        "bp_class": 3,
+        "statistics": [],
+        "labels": [
+            "C5 \u00b7 \u00b7 \u00b7 O2",
+            null,
+            null
+        ],
+        "atoms": [
+            [
+                "AC7",
+                "AC5",
+                "BO2",
+                "BC2"
+            ]
+        ]
+    },
+    {
+        "pair_type": [
             "tHS",
             "A-A"
         ],
         "count": 12220,
+        "high_quality": 8,
+        "med_quality": 244,
         "score": 10.44,
         "files": [
-            "out/plots-orient2/tHS AA DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/tHS AA RNA \u22643 \u00c5.pdf"
+            "out/plots/tHS AA DNA \u22643 \u00c5.pdf",
+            "out/plots/tHS AA RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 3,
         "statistics": [
@@ -25145,10 +25568,12 @@ export default [
             "C-A"
         ],
         "count": 2121,
+        "high_quality": 1,
+        "med_quality": 50,
         "score": 1.5,
         "files": [
-            "out/plots-orient2/tHS CA DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/tHS CA RNA \u22643 \u00c5.pdf"
+            "out/plots/tHS CA DNA \u22643 \u00c5.pdf",
+            "out/plots/tHS CA RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 3,
         "statistics": [
@@ -25415,10 +25840,12 @@ export default [
             "U-A"
         ],
         "count": 2936,
+        "high_quality": 1,
+        "med_quality": 69,
         "score": 1.69,
         "files": [
-            "out/plots-orient2/tHS TA DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/tHS UA RNA \u22643 \u00c5.pdf"
+            "out/plots/tHS TA DNA \u22643 \u00c5.pdf",
+            "out/plots/tHS UA RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 3,
         "statistics": [
@@ -25675,10 +26102,12 @@ export default [
             "A-C"
         ],
         "count": 3399,
+        "high_quality": 4,
+        "med_quality": 117,
         "score": 5.17,
         "files": [
-            "out/plots-orient2/tHS AC DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/tHS AC RNA \u22643 \u00c5.pdf"
+            "out/plots/tHS AC DNA \u22643 \u00c5.pdf",
+            "out/plots/tHS AC RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 3,
         "statistics": [
@@ -25945,10 +26374,12 @@ export default [
             "C-C"
         ],
         "count": 1801,
+        "high_quality": 1,
+        "med_quality": 59,
         "score": 1.5899999999999999,
         "files": [
-            "out/plots-orient2/tHS CC DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/tHS CC RNA \u22643 \u00c5.pdf"
+            "out/plots/tHS CC DNA \u22643 \u00c5.pdf",
+            "out/plots/tHS CC RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 3,
         "statistics": [
@@ -26215,10 +26646,12 @@ export default [
             "G-G"
         ],
         "count": 7847,
+        "high_quality": 1,
+        "med_quality": 186,
         "score": 2.8600000000000003,
         "files": [
-            "out/plots-orient2/tHS GG DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/tHS GG RNA \u22643 \u00c5.pdf"
+            "out/plots/tHS GG DNA \u22643 \u00c5.pdf",
+            "out/plots/tHS GG RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 3,
         "statistics": [
@@ -26475,10 +26908,12 @@ export default [
             "U-G"
         ],
         "count": 5726,
+        "high_quality": 3,
+        "med_quality": 120,
         "score": 4.2,
         "files": [
-            "out/plots-orient2/tHS TG DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/tHS UG RNA \u22643 \u00c5.pdf"
+            "out/plots/tHS TG DNA \u22643 \u00c5.pdf",
+            "out/plots/tHS UG RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 3,
         "statistics": [
@@ -26793,10 +27228,12 @@ export default [
             "A-U"
         ],
         "count": 3052,
+        "high_quality": 0,
+        "med_quality": 49,
         "score": 0.49,
         "files": [
-            "out/plots-orient2/tHS AT DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/tHS AU RNA \u22643 \u00c5.pdf"
+            "out/plots/tHS AT DNA \u22643 \u00c5.pdf",
+            "out/plots/tHS AU RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 3,
         "statistics": [
@@ -27004,10 +27441,12 @@ export default [
             "C-U"
         ],
         "count": 1040,
+        "high_quality": 1,
+        "med_quality": 64,
         "score": 1.6400000000000001,
         "files": [
-            "out/plots-orient2/tHS CT DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/tHS CU RNA \u22643 \u00c5.pdf"
+            "out/plots/tHS CT DNA \u22643 \u00c5.pdf",
+            "out/plots/tHS CU RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 3,
         "statistics": [
@@ -27274,10 +27713,12 @@ export default [
             "A-A"
         ],
         "count": 4175,
+        "high_quality": 0,
+        "med_quality": 104,
         "score": 1.04,
         "files": [
-            "out/plots-orient2/cSs AA DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/cSs AA RNA \u22643 \u00c5.pdf"
+            "out/plots/cSs AA DNA \u22643 \u00c5.pdf",
+            "out/plots/cSs AA RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 3,
         "statistics": [
@@ -27494,10 +27935,12 @@ export default [
             "C-A"
         ],
         "count": 26296,
+        "high_quality": 0,
+        "med_quality": 804,
         "score": 8.04,
         "files": [
-            "out/plots-orient2/cSs CA DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/cSs CA RNA \u22643 \u00c5.pdf"
+            "out/plots/cSs CA DNA \u22643 \u00c5.pdf",
+            "out/plots/cSs CA RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 3,
         "statistics": [
@@ -27714,10 +28157,12 @@ export default [
             "G-A"
         ],
         "count": 11347,
+        "high_quality": 3,
+        "med_quality": 328,
         "score": 6.279999999999999,
         "files": [
-            "out/plots-orient2/cSs GA DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/cSs GA RNA \u22643 \u00c5.pdf"
+            "out/plots/cSs GA DNA \u22643 \u00c5.pdf",
+            "out/plots/cSs GA RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 3,
         "statistics": [
@@ -27994,10 +28439,12 @@ export default [
             "U-A"
         ],
         "count": 11711,
+        "high_quality": 0,
+        "med_quality": 342,
         "score": 3.42,
         "files": [
-            "out/plots-orient2/cSs TA DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/cSs UA RNA \u22643 \u00c5.pdf"
+            "out/plots/cSs TA DNA \u22643 \u00c5.pdf",
+            "out/plots/cSs UA RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 3,
         "statistics": [
@@ -28214,10 +28661,12 @@ export default [
             "A-C"
         ],
         "count": 22975,
+        "high_quality": 0,
+        "med_quality": 721,
         "score": 7.21,
         "files": [
-            "out/plots-orient2/cSs AC DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/cSs AC RNA \u22643 \u00c5.pdf"
+            "out/plots/cSs AC DNA \u22643 \u00c5.pdf",
+            "out/plots/cSs AC RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 3,
         "statistics": [
@@ -28422,13 +28871,50 @@ export default [
     {
         "pair_type": [
             "cSs",
+            "C-C"
+        ],
+        "count": 245,
+        "high_quality": 0,
+        "med_quality": 0,
+        "score": 0.0,
+        "files": [
+            "out/plots/cSs CC DNA \u22643 \u00c5.pdf",
+            "out/plots/cSs CC RNA \u22643 \u00c5.pdf"
+        ],
+        "bp_class": 3,
+        "statistics": [],
+        "labels": [
+            "O2' \u00b7 \u00b7 \u00b7 O2'",
+            "O2' \u00b7 \u00b7 \u00b7 O2",
+            null
+        ],
+        "atoms": [
+            [
+                "BC2'",
+                "BO2'",
+                "AO2'",
+                "AC2'"
+            ],
+            [
+                "AC2'",
+                "AO2'",
+                "BO2",
+                "BC2"
+            ]
+        ]
+    },
+    {
+        "pair_type": [
+            "cSs",
             "G-C"
         ],
         "count": 213,
+        "high_quality": 0,
+        "med_quality": 6,
         "score": 0.06,
         "files": [
-            "out/plots-orient2/cSs GC DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/cSs GC RNA \u22643 \u00c5.pdf"
+            "out/plots/cSs GC DNA \u22643 \u00c5.pdf",
+            "out/plots/cSs GC RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 3,
         "statistics": [
@@ -28577,10 +29063,12 @@ export default [
             "U-C"
         ],
         "count": 229,
+        "high_quality": 0,
+        "med_quality": 3,
         "score": 0.03,
         "files": [
-            "out/plots-orient2/cSs TC DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/cSs UC RNA \u22643 \u00c5.pdf"
+            "out/plots/cSs TC DNA \u22643 \u00c5.pdf",
+            "out/plots/cSs UC RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 3,
         "statistics": [
@@ -28729,10 +29217,12 @@ export default [
             "A-U"
         ],
         "count": 469,
+        "high_quality": 0,
+        "med_quality": 16,
         "score": 0.16,
         "files": [
-            "out/plots-orient2/cSs AT DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/cSs AU RNA \u22643 \u00c5.pdf"
+            "out/plots/cSs AT DNA \u22643 \u00c5.pdf",
+            "out/plots/cSs AU RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 3,
         "statistics": [
@@ -28937,13 +29427,50 @@ export default [
     {
         "pair_type": [
             "cSs",
+            "C-U"
+        ],
+        "count": 149,
+        "high_quality": 0,
+        "med_quality": 1,
+        "score": 0.01,
+        "files": [
+            "out/plots/cSs CT DNA \u22643 \u00c5.pdf",
+            "out/plots/cSs CU RNA \u22643 \u00c5.pdf"
+        ],
+        "bp_class": 3,
+        "statistics": [],
+        "labels": [
+            "O2' \u00b7 \u00b7 \u00b7 O2'",
+            "O2' \u00b7 \u00b7 \u00b7 O2",
+            null
+        ],
+        "atoms": [
+            [
+                "BC2'",
+                "BO2'",
+                "AO2'",
+                "AC2'"
+            ],
+            [
+                "AC2'",
+                "AO2'",
+                "BO2",
+                "BC2"
+            ]
+        ]
+    },
+    {
+        "pair_type": [
+            "cSs",
             "G-U"
         ],
         "count": 1530,
+        "high_quality": 0,
+        "med_quality": 42,
         "score": 0.42,
         "files": [
-            "out/plots-orient2/cSs GT DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/cSs GU RNA \u22643 \u00c5.pdf"
+            "out/plots/cSs GT DNA \u22643 \u00c5.pdf",
+            "out/plots/cSs GU RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 3,
         "statistics": [
@@ -29151,10 +29678,12 @@ export default [
             "U-U"
         ],
         "count": 160,
+        "high_quality": 0,
+        "med_quality": 4,
         "score": 0.04,
         "files": [
-            "out/plots-orient2/cSs TT DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/cSs UU RNA \u22643 \u00c5.pdf"
+            "out/plots/cSs TT DNA \u22643 \u00c5.pdf",
+            "out/plots/cSs UU RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 3,
         "statistics": [
@@ -29303,10 +29832,12 @@ export default [
             "A-A"
         ],
         "count": 3384,
+        "high_quality": 0,
+        "med_quality": 76,
         "score": 0.76,
         "files": [
-            "out/plots-orient2/tSs AA DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/tSs AA RNA \u22643 \u00c5.pdf"
+            "out/plots/tSs AA DNA \u22643 \u00c5.pdf",
+            "out/plots/tSs AA RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 3,
         "statistics": [
@@ -29523,10 +30054,12 @@ export default [
             "G-A"
         ],
         "count": 6118,
+        "high_quality": 1,
+        "med_quality": 210,
         "score": 3.1,
         "files": [
-            "out/plots-orient2/tSs GA DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/tSs GA RNA \u22643 \u00c5.pdf"
+            "out/plots/tSs GA DNA \u22643 \u00c5.pdf",
+            "out/plots/tSs GA RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 3,
         "statistics": [
@@ -29863,10 +30396,12 @@ export default [
             "A-C"
         ],
         "count": 17247,
+        "high_quality": 1,
+        "med_quality": 471,
         "score": 5.71,
         "files": [
-            "out/plots-orient2/tSs AC DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/tSs AC RNA \u22643 \u00c5.pdf"
+            "out/plots/tSs AC DNA \u22643 \u00c5.pdf",
+            "out/plots/tSs AC RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 3,
         "statistics": [
@@ -30133,10 +30668,12 @@ export default [
             "G-C"
         ],
         "count": 1497,
+        "high_quality": 0,
+        "med_quality": 28,
         "score": 0.28,
         "files": [
-            "out/plots-orient2/tSs GC DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/tSs GC RNA \u22643 \u00c5.pdf"
+            "out/plots/tSs GC DNA \u22643 \u00c5.pdf",
+            "out/plots/tSs GC RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 3,
         "statistics": [
@@ -30285,10 +30822,12 @@ export default [
             "A-U"
         ],
         "count": 5800,
+        "high_quality": 0,
+        "med_quality": 178,
         "score": 1.78,
         "files": [
-            "out/plots-orient2/tSs AT DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/tSs AU RNA \u22643 \u00c5.pdf"
+            "out/plots/tSs AT DNA \u22643 \u00c5.pdf",
+            "out/plots/tSs AU RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 3,
         "statistics": [
@@ -30496,10 +31035,12 @@ export default [
             "G-U"
         ],
         "count": 931,
+        "high_quality": 0,
+        "med_quality": 31,
         "score": 0.31,
         "files": [
-            "out/plots-orient2/tSs GT DNA \u22643 \u00c5.pdf",
-            "out/plots-orient2/tSs GU RNA \u22643 \u00c5.pdf"
+            "out/plots/tSs GT DNA \u22643 \u00c5.pdf",
+            "out/plots/tSs GU RNA \u22643 \u00c5.pdf"
         ],
         "bp_class": 3,
         "statistics": [
@@ -30700,5 +31241,24 @@ export default [
                 "BC2"
             ]
         ]
+    },
+    {
+        "pair_type": [
+            "tHSa",
+            "C-U"
+        ],
+        "count": 277,
+        "high_quality": 0,
+        "med_quality": 8,
+        "score": 0.08,
+        "files": [],
+        "bp_class": null,
+        "statistics": [],
+        "labels": [
+            null,
+            null,
+            null
+        ],
+        "atoms": []
     }
 ]

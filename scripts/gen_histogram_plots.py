@@ -127,8 +127,11 @@ def is_symmetric_pair_type(pair_type: PairType):
         for hb in hbonds
     )
 
-def get_label(col: str, pair_type: PairType):
-    hbonds = pair_defs.get_hbonds(pair_type)
+def get_label(col: str, pair_type: PairType, throw=True):
+    hbonds = pair_defs.get_hbonds(pair_type, throw=throw)
+    if not hbonds:
+        assert not throw
+        return None
     swap = is_swapped(pair_type)
     
     if (m := re.match("^hb_(\\d+)_donor_angle", col)):
@@ -474,14 +477,16 @@ def sample_for_kde(x: np.ndarray, threshold = 5_000):
     else:
         return np.random.choice(x, threshold, replace=False)
 
-def determine_bp_class(df: pl.DataFrame, pair_type: PairType, is_rna = None):
+def determine_bp_class(df: pl.DataFrame, pair_type: PairType, is_rna = None, throw=True):
     if is_rna is None:
         if len(df) == 0:
             is_rna = True
         else:
             is_rna = df['res1'].str.starts_with("D").not_().any() or df['res2'].str.starts_with("D").not_().any()
     assert isinstance(is_rna, bool)
-    hbonds = pair_defs.get_hbonds(pair_type)
+    hbonds = pair_defs.get_hbonds(pair_type, throw=throw)
+    if not hbonds:
+        return None
     non_c_bonds = [ b for b in hbonds if not pair_defs.is_ch_bond(pair_type, b) ]
     good_base_bonds = [ b for b in hbonds if not pair_defs.is_bond_to_sugar(pair_type, b) and not pair_defs.is_ch_bond(pair_type, b) ]
 
@@ -544,7 +549,7 @@ def calculate_stats(df: pl.DataFrame, pair_type):
 
     result_stats = {
         "count": len(df),
-        "bp_class": determine_bp_class(df, pair_type),
+        "bp_class": determine_bp_class(df, pair_type, throw=False),
         "nicest_bp": str(next(df[nicest_basepair, ["pdbid", "model", "chain1", "res1", "nr1", "ins1", "alt1", "chain2", "res2", "nr2", "ins2", "alt2"]].iter_rows())),
         "nicest_bp_index": nicest_basepair,
         "nicest_bp_indices": nicest_basepairs,
@@ -723,7 +728,11 @@ def main(argv):
         #     for i in good_bonds
         # ]))
 
-        dff, stat_columns = None, None
+        dff = None
+        stat_columns = {
+            "mode_deviations": lambda df: [ None ] * len(df),
+            "log_likelihood": lambda df: [ None ] * len(df),
+        }
         nicest_bps: Optional[list[int]] = None
         statistics = []
         for resolution_label, resolution_filter in {
@@ -751,46 +760,52 @@ def main(argv):
             print(f"{pair_type} {resolution_label}: {len(dff)}/{len(df)} ")
         if dff is None or stat_columns is None:
             print(f"WARNING: No data in {pair_type} ({len(df)=}, len(filtered)={len(df.filter(is_some_quality))}")
-            continue
+            output_files = []
+        elif not pair_defs.get_hbonds(pair_type, throw=False):
+            print(f"WARNING: No hbonds for {pair_type}")
+            output_files = []
+        else:
 
-        print("nicest_bps:", nicest_bps, "out of", len(dff) if dff is not None else 0)
-        # output_files = [
-        #     f
-        #     for h in histogram_defs
-        #     for f in make_resolution_comparison_page(df, args.output_dir, pair_type, h, images= [ create_pair_image(df[nicest_bp], args.output_dir, pair_type) ] if nicest_bp is not None else [])
-        # ]
-        dna_rna_images = [ create_pair_image(dff[bp], args.output_dir, pair_type) if bp >= 0 else None for bp in nicest_bps ] * len(resolutions) if nicest_bps is not None else []
-        dna_rna_highlights = [ dff[bp] if bp >= 0 else None for bp in nicest_bps ] if nicest_bps is not None else []
-        output_files = [
-            f for f in make_bond_pages(df, args.output_dir, pair_type, histogram_defs, images=dna_rna_images, highlights=dna_rna_highlights
-            )
-        ]
-        # output_files = [
-        #     f
-        #     for column in [0, 1, 2]
-        #     for f in make_bond_pages(df, args.output_dir, pair_type, [ h.select_columns(column) for h in histogram_defs], images=dna_rna_images, highlights=dna_rna_highlights, title_suffix=f" #{column}")
-        # ]
-        all_statistics.extend(statistics)
+            print("nicest_bps:", nicest_bps, "out of", len(dff) if dff is not None else 0)
+            # output_files = [
+            #     f
+            #     for h in histogram_defs
+            #     for f in make_resolution_comparison_page(df, args.output_dir, pair_type, h, images= [ create_pair_image(df[nicest_bp], args.output_dir, pair_type) ] if nicest_bp is not None else [])
+            # ]
+            dna_rna_images = [ create_pair_image(dff[bp], args.output_dir, pair_type) if bp >= 0 else None for bp in nicest_bps ] * len(resolutions) if nicest_bps is not None else []
+            dna_rna_highlights = [ dff[bp] if bp >= 0 else None for bp in nicest_bps ] if nicest_bps is not None else []
+            output_files = [
+                f for f in make_bond_pages(df, args.output_dir, pair_type, histogram_defs, images=dna_rna_images, highlights=dna_rna_highlights
+                )
+            ]
+            # output_files = [
+            #     f
+            #     for column in [0, 1, 2]
+            #     for f in make_bond_pages(df, args.output_dir, pair_type, [ h.select_columns(column) for h in histogram_defs], images=dna_rna_images, highlights=dna_rna_highlights, title_suffix=f" #{column}")
+            # ]
+            all_statistics.extend(statistics)
         if args.reexport == "partitioned":
-            reexport_df(df, stat_columns).write_parquet(os.path.join(args.output_dir, f"{pair_type}.parquet"))
-            reexport_df(df.filter(is_some_quality), stat_columns).write_parquet(os.path.join(args.output_dir, f"{pair_type}-filtered.parquet"))
+            reexport_df(df, stat_columns or []).write_parquet(os.path.join(args.output_dir, f"{pair_type}.parquet"))
+            reexport_df(df.filter(is_some_quality), stat_columns or []).write_parquet(os.path.join(args.output_dir, f"{pair_type}-filtered.parquet"))
         results.append({
             # "input_file": file,
             "pair_type": pair_type.to_tuple(),
             "count": len(df),
+            "high_quality": len(df.filter(is_high_quality)),
+            "med_quality": len(df.filter(is_med_quality)),
             "score": len(df.filter(is_high_quality)) + len(df.filter(is_med_quality)) / 100,
             "files": output_files,
-            "bp_class": statistics[-1]["bp_class"],
+            "bp_class": statistics[-1]["bp_class"] if len(statistics) > 0 else determine_bp_class(df, pair_type, throw=False),
             "statistics": statistics,
             "labels": [
-                get_label(f"hb_{i}_length", pair_type) for i in range(3)
+                get_label(f"hb_{i}_length", pair_type, throw=False) for i in range(3)
             ],
-            "atoms": pair_defs.get_hbonds(pair_type),
+            "atoms": pair_defs.get_hbonds(pair_type, throw=False),
         })
 
     # results.sort(key=lambda r: r["score"], reverse=True)
     # results.sort(key=lambda r: r["pair_type"])
-    results.sort(key=lambda r: (r["bp_class"], pair_defs.PairType.from_tuple(r["pair_type"])))
+    results.sort(key=lambda r: (r["bp_class"] or 5, pair_defs.PairType.from_tuple(r["pair_type"])))
     output_files = [ f for r in results for f in r["files"] ]
 
     subprocess.run(["gs", "-dBATCH", "-dNOPAUSE", "-q", "-sDEVICE=pdfwrite", "-dPDFSETTINGS=/prepress", f"-sOutputFile={os.path.join(args.output_dir, 'hbonds-merged.pdf')}", *output_files])
