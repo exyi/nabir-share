@@ -309,17 +309,38 @@
     }
   }
 
-  function getPairTypeList(selectedFamily) {
-    const list = db.pairTypes.filter(p => p[0].toLowerCase() == selectedFamily.toLowerCase() || selectedFamily == null)
+  function getPairTypeList(selectedFamily: string | null) {
+    const isSymetrical = !!selectedFamily && selectedFamily[1] == selectedFamily[2]
+    const allPairTypes = new Set(
+      selectedFamily == null ? [] :
+      isSymetrical ? [ 'A-A', 'A-C', 'A-G', 'A-U', 'C-C', 'C-U', 'G-C', 'G-G', 'G-U', 'U-U' ]
+                   : [ 'A-A', 'A-C', 'A-G', 'A-U', 'C-A', 'C-C', 'C-G', 'C-U', 'G-A', 'G-C', 'G-G', 'G-U', 'U-A', 'U-C', 'U-G', 'U-U' ]);
+    const pairs =
+      db.pairTypes.filter(p => p[0].toLowerCase() == selectedFamily.toLowerCase() || selectedFamily == null)
+                  .map(p => ({ family: p[0], bases: p[1], real: true, conventional: allPairTypes.has(p[1].toUpperCase()) }))
+    const existingPairs = new Set(pairs.map(p => p.bases.toUpperCase()))
+    for (const p of allPairTypes) {
+      if (!existingPairs.has(p.toUpperCase())) {
+        pairs.push({ bases: p, family: selectedFamily, real: false, conventional: true })
+      }
+    }
 
-    list.sort((a, b) => a[0].toLowerCase().localeCompare(b[0].toLowerCase()) || a[1].localeCompare(b[1]))
-    return list
+    pairs.sort((a, b) => a.family.toLowerCase().localeCompare(b.family.toLowerCase()) || a.bases.localeCompare(b.bases))
+    return pairs
   }
 
-  function formatTitleForPair(family: string, bases: string) {
+  function formatTitleForPair(family: string, bases: string, real: boolean, conventional: boolean) {
+    if (!real) {
+      return 'No examples of this basepair type were found'
+    }
     const m = metadata.find(m => m.pair_type[0] == family && m.pair_type[1] == bases)
-    if (m == null) return ""
-    return `${m.pair_type.join(' ')}, Class ${m.bp_class}, ${m.labels.length} H-bonds, ${Math.max(...m.statistics.map(s => s.count))} pairs`
+    if (m == null) return "Does not exist"
+    return [`${m.pair_type.join(' ')}`,
+            `Class ${m.bp_class}`,
+            `${m.labels.length} H-bonds`,
+            `${m.med_quality + m.high_quality} pairs`,
+            conventional ? "" : `${bases} is NOT symmetrical to ${bases[2]}-${bases[0]}!`
+      ].join(', ')
   }
 
   // const imgDir = "http://[2a01:4f8:c2c:bb6c:4::8]:12345/"
@@ -347,17 +368,24 @@
   {/each}
 </div>
 
-<div class="selector buttons has-addons is-centered are-small">
-  {#each getPairTypeList(selectedFamily) as [family, bases]}
+<div class="selector buttons has-addons is-centered are-small" style="margin-bottom: 0px">
+  {#each getPairTypeList(selectedFamily) as p}
+  <!-- class:is-light={selectedPairing.toLowerCase() != `${p.family}-${p.bases}`.toLowerCase()} -->
     <button
       class="button"
-      class:is-success={selectedPairing.toLowerCase() == `${family}-${bases}`.toLowerCase()}
-      class:is-selected={selectedPairing.toLowerCase() == `${family}-${bases}`.toLowerCase()}
-      title={formatTitleForPair(family, bases)}
-
-      on:click={() => {selectedPairing = `${family}-${bases}`}}>{selectedFamily == null ? family + "-" : ""}{bases}</button>
+      class:is-light-warning={!p.conventional && selectedPairing.toLowerCase() != `${p.family}-${p.bases}`.toLowerCase()}
+      class:is-success={selectedPairing.toLowerCase() == `${p.family}-${p.bases}`.toLowerCase()}
+      class:is-selected={selectedPairing.toLowerCase() == `${p.family}-${p.bases}`.toLowerCase()}
+      class:is-static={!p.real}
+      disabled={!p.real}
+      title={formatTitleForPair(p.family, p.bases, p.real, p.conventional)}
+      on:click={() => {selectedPairing = `${p.family}-${p.bases}`}}>{selectedFamily == null ? p.family + "-" : ""}{p.bases}</button>
   {/each}
 </div>
+{#if selectedPairing && selectedPairing[1] == selectedPairing[2]}
+  <div class="buttons-help">The {selectedFamily} family is symmetrical, for example <b>C-A</b> is equivalent to <b>A-C</b></div>
+{/if}
+<div style="margin-bottom: 1rem"></div>
 <div class="filters">
   <FilterEditor bind:filter={filter}
     selectingFromTable={filter && queryFromTable(filter)}
@@ -449,19 +477,35 @@
 {/if}
 
 {/if}
+{#await resultsPromise}
+  <Spinner></Spinner>
+{:then _} 
+  {#if resultsCount == 0}
+    <h5 class="title is-5" style="text-align: center">Sorry, no results matched your query</h5>
+    <p class="subtitle is-6" style="text-align: center">You can try to loosen the filters {#if filter.mode != 'sql' && filter.filtered}(untick the Representative set, for example){/if}</p>
+  {/if}
+{/await}
 <PairImages pairs={results} rootImages={imgDir} imgAttachement=".png" videoAttachement=".webm" />
 {#if resultsCount != results?.length && resultsCount > 0}
-  <Spinner></Spinner>
   <p style="text-align: center">Loading more... than 100 items is not implemented at the moment</p>
 {/if}
 
 </Modal>
 <style>
+  .buttons-help {
+    text-align: center;
+    font-size: 0.75rem;
+    margin-top: -0.5rem;
+  }
   .stats-row {
     margin-left: 1rem;
     margin-right: 1rem;
     border-top: 1px solid #ccc;
     border-bottom: 1px solid #ccc;
+  }
+  .is-light-warning {
+    color: rgba(0, 0, 0, 0.7);
+    background-color: #fffaeb;
   }
 
 /*
