@@ -12,14 +12,15 @@ export const pairTypes = metadata.map(m => m.pair_type)
 export const pairFamilies = [...new Set(pairTypes.map(t => normalizePairFamily(t[0])))]
 
 pairFamilies.sort(compareFamilies)
+const cacheBuster = '?v=2'
 
 for (const [family, bases] of pairTypes) {
-  parquetFiles[`${family}-${bases}`] = `${family}-${bases}.parquet`
-  parquetFiles[`${normalizePairFamily(family)}-${bases}`] = `${family}-${bases}.parquet`
-  parquetFiles[`${family}-${bases}-filtered`] = `${family}-${bases}-filtered.parquet`
-  parquetFiles[`${normalizePairFamily(family)}-${bases}-filtered`] = `${family}-${bases}-filtered.parquet`
-  parquetFiles[`n${family}-${bases}`] = `n${family}-${bases}.parquet`
-  parquetFiles[`${family}-${bases}_n`] = `n${family}-${bases}.parquet`
+  parquetFiles[`${family}-${bases}`] = `${family}-${bases}.parquet${cacheBuster}`
+  parquetFiles[`${normalizePairFamily(family)}-${bases}`] = `${family}-${bases}.parquet${cacheBuster}`
+  parquetFiles[`${family}-${bases}-filtered`] = `${family}-${bases}-filtered.parquet${cacheBuster}`
+  parquetFiles[`${normalizePairFamily(family)}-${bases}-filtered`] = `${family}-${bases}-filtered.parquet${cacheBuster}`
+  parquetFiles[`n${family}-${bases}`] = `n${family}-${bases}.parquet${cacheBuster}`
+  parquetFiles[`${family}-${bases}_n`] = `n${family}-${bases}.parquet${cacheBuster}`
 }
 export const host = window.location.hostname.match(/(^|[.])localhost$/) ? 'localhost' : window.location.hostname
 export const fileBase = (new URL('tables/', host == 'localhost' ? 'https://pairs.exyi.cz/' : document.baseURI)).href
