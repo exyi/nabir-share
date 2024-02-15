@@ -12,6 +12,7 @@ export type NucleotideFilterModel = {
     bond_donor_angle: (Range)[]
     bond_acceptor_angle: (Range)[]
     coplanarity?: Range
+    resolution?: Range
     dna?: true | false | undefined
     orderBy?: string
     filtered: boolean
@@ -45,7 +46,8 @@ export function defaultFilter(): NucleotideFilterModel {
     return { bond_acceptor_angle: [], bond_donor_angle: [], bond_length: [], filtered: true, includeNears: false }
 }
 
-function rangeToCondition(col: string, range: Range): string[] {
+function rangeToCondition(col: string, range: Range | undefined | null): string[] {
+    if (range == null) return []
     const r = []
     if (range.min != null) {
         r.push(`${col} >= ${range.min}`)
@@ -62,16 +64,11 @@ export function filterToSqlCondition(filter: NucleotideFilterModel) {
         conditions.push(`jirka_approves`)
     }
     for (let i = 0; i < 3; i++) {
-        if (filter.bond_length[i]) {
-            conditions.push(...rangeToCondition(`hb_${i}_length`, filter.bond_length[i]))
-        }
-        if (filter.bond_donor_angle[i]) {
-            conditions.push(...rangeToCondition(`hb_${i}_donor_angle`, filter.bond_donor_angle[i]))
-        }
-        if (filter.bond_acceptor_angle[i]) {
-            conditions.push(...rangeToCondition(`hb_${i}_acceptor_angle`, filter.bond_acceptor_angle[i]))
-        }
+        conditions.push(...rangeToCondition(`hb_${i}_length`, filter.bond_length[i]))
+        conditions.push(...rangeToCondition(`hb_${i}_donor_angle`, filter.bond_donor_angle[i]))
+        conditions.push(...rangeToCondition(`hb_${i}_acceptor_angle`, filter.bond_acceptor_angle[i]))
     }
+    conditions.push(...rangeToCondition(`resolution`, filter.resolution))
     if (filter.coplanarity) {
         conditions.push(...rangeToCondition(`bogopropeller`, filter.coplanarity))
     }
@@ -171,6 +168,7 @@ export function filterToUrl(filter: NucleotideFilterModel, mode = 'ranges') {
         addMaybe(`hb${i}_AA`, range(filter.bond_acceptor_angle[i]))
     }
     addMaybe(`coplanar`, range(filter.coplanarity))
+    addMaybe(`resol`, range(filter.resolution))
     if (filter.orderBy) {
         addMaybe(`order`, filter.orderBy)
     }
@@ -234,6 +232,7 @@ export function parseUrl(url: string): UrlParseResult {
     trimArray(filter.bond_acceptor_angle)
 
     filter.coplanarity = parseRange(f.get(`coplanar`))
+    filter.resolution = parseRange(f.get(`resolution`) || f.get(`resol`))
     filter.orderBy = f.get(`order`)
 
     const stats = parseStatsFromUrl(f)

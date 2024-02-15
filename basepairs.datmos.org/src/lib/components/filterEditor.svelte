@@ -200,7 +200,39 @@
               Both
             </label>
           </div>
+          <div class="field has-addons">
+            {#if filter.resolution.min != null}
+              <div class="control">
+                <input class="input is-small num-input" style="max-width:4rem" type="number" step="0.1" min=0 max={filter.filtered ? 3.5 : 20} placeholder="Min" value={filter.resolution?.min ?? 0} on:change={ev => { filter.resolution ??= {}; filter.resolution.min = tryParseNum(ev.currentTarget.value)} }>
+              </div>
+            {/if}
+            <label class="label" for="ntfilter-resolution">{#if filter.resolution.min != null}&nbsp;≤ {/if}Resolution ≤&nbsp;</label>
+            <div class="control">
+              <input class="input is-small num-input" style="max-width:4rem" type="number" step="0.1" min=0 max={filter.filtered ? 3.5 : 20} placeholder={filter.filtered ? '3.5' : ''} value={filter.resolution?.max ?? ''} on:change={ev => { filter.resolution ??= {}; filter.resolution.max = tryParseNum(ev.currentTarget.value)}}>
+            </div>
+            &nbsp;Å
+          </div>
 
+
+          <div class="control">
+            <label class="checkbox" title="Filter out redundant nucleotides or nucleoties with bad something TODO">
+              <input type="checkbox" checked={filter.filtered} on:change={e => filter = {...filter, filtered: e.currentTarget.checked }}>
+              Representative set
+            </label>
+
+          {#if filter.filtered && filter.resolution.max && filter.resolution.max > 3.5}
+            <p class="help is-danger">Representative set only<br> contains structures ≤3.5 Å</p>
+          {/if}
+          </div>
+          <div class="control">
+            <label class="checkbox" title="Include 'nearly pairs' as reported by fr3d basepair_detailed function">
+              <input type="checkbox" checked={filter.includeNears} on:change={e => filter = {...filter, includeNears: e.currentTarget.checked }}>
+              Include near-pairs
+            </label>
+          </div>
+        </div>
+
+        <div class="column">
           <div class="field">
             <label class="label" for="ntfilter-order-by">Order by</label>
             <div class="control">
@@ -214,18 +246,6 @@
                 </select>
               </div>
             </div>
-          </div>
-          <div class="control">
-            <label class="checkbox" title="Filter out redundant nucleotides or nucleoties with bad something TODO">
-              <input type="checkbox" checked={filter.filtered} on:change={e => filter = {...filter, filtered: e.currentTarget.checked }}>
-              Representative set
-            </label>
-          </div>
-          <div class="control">
-            <label class="checkbox" title="Include 'nearly pairs' as reported by fr3d basepair_detailed function">
-              <input type="checkbox" checked={filter.includeNears} on:change={e => filter = {...filter, includeNears: e.currentTarget.checked }}>
-              Include near-pairs
-            </label>
           </div>
         </div>
 
