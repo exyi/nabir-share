@@ -54,6 +54,14 @@ class PairType:
             self.variant,
             self.n,
         )
+    @property
+    def edge1_name(self) -> str:
+        assert len(self.type) == 3
+        return self.type[1].upper()
+    @property
+    def edge2_name(self) -> str:
+        assert len(self.type) == 3
+        return self.type[2].upper()
     
     def __lt__(self, other: 'PairType') -> bool:
         return self.order_key() < other.order_key()
@@ -204,12 +212,40 @@ atom_connectivity = {
         ("C4", "N4"),
         ("C5", "C7") # 5-methyl cytosine
     ],
-    "T": [
+    "U": [
         *pyrimidine_atom_connectivity,
         ("C2", "O2"),
-        ("C4", "O4"),
-        ("C5", "C7")
+        ("C4", "O4")
     ]
+}
+atom_connectivity["T"] = [ *atom_connectivity["U"], ("C5", "C7") ]
+
+base_edges = {
+    "A": {
+        "H": [ "C8", "N7", "N6" ], # C5
+        "W": [ "N6", "N1", "C2" ],
+        "S": [ "C2", "N3", "O2'" ]
+    },
+    "G": {
+        "H": [ "C8", "N7", "O6" ],
+        "W": [ "O6", "N1", "N2" ],
+        "S": [ "N2", "N3", "O2'" ]
+    },
+    "T": {
+        "H": [ "C7", "O4" ],
+        "W": [ "O4", "N3", "O2" ],
+        "S": [ "O2", "O2'" ]
+    },
+    "U": {
+        "H": [ "C5", "O4" ],
+        "W": [ "O4", "N3", "O2" ],
+        "S": [ "O2", "O2'" ]
+    },
+    "C": {
+        "H": [ "C5", "N4" ],
+        "W": [ "N4", "N3", "O2" ],
+        "S": [ "O2", "O2'" ]
+    }
 }
 
 my_hbonding_atoms: dict[tuple[str, str], list[tuple[str, str, str, str]]] = {

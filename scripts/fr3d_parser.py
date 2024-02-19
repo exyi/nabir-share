@@ -10,6 +10,8 @@ import polars as pl
 
 import numpy as np
 
+from async_utils import MockPool
+
 @dataclass(frozen=True)
 class UnitID:
     """
@@ -262,8 +264,7 @@ def _load_frame(file, filter):
         return None
     return pl.DataFrame(bps).filter(filter)
 
-def read_fr3d_files_df(pool: Optional[Pool], files: Sequence[str], filter=pl.lit(True)) -> pl.DataFrame:
-
+def read_fr3d_files_df(pool: Union[Pool, MockPool], files: Sequence[str], filter=pl.lit(True)) -> pl.DataFrame:
     if pool is None:
         frames = []
         for f in files:

@@ -207,7 +207,7 @@
           })
         }
       }
-      const coplanarity = r.bogopropeller ?? r.coplanarity
+      const coplanarity = r.bogopropeller ?? r.coplanarity_angle
       yield { id, hbonds, coplanarity, originalRow: r }
       c++
     }

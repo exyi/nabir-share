@@ -332,8 +332,8 @@ export function getColumnLabel(column: string, metadata: UnwrapArray<typeof meta
                 opt.hideParameterName ? null : {'length': "Length", 'donor_angle': "Donor angle", 'acceptor_angle': "Acceptor angle"}[name]
             ].filter(x => x != null).join(' ')
     }
-    if (column == "bogopropeller" || column == "coplanarity") {
-        return "Coplanarity"
+    if (column == "bogopropeller" || column == "coplanarity_angle") {
+        return "Coplanarity °"
     }
     return null
 }

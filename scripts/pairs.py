@@ -1,7 +1,7 @@
 import functools
 import itertools
 from multiprocessing.pool import Pool
-from typing import Any, List, Optional, Tuple
+from typing import Any, List, Optional, Tuple, Union
 import Bio.PDB, Bio.PDB.Structure, Bio.PDB.Model, Bio.PDB.Residue, Bio.PDB.Atom, Bio.PDB.Chain, Bio.PDB.Entity
 import os, sys, io, gzip, math, numpy as np
 import polars as pl
@@ -12,9 +12,11 @@ import multiprocessing
 from pair_csv_parse import scan_pair_csvs
 import pdb_utils
 import pair_defs as pair_defs
+from async_utils import MockPool
 pdef = pair_defs
 
 _sentinel = object()
+
 
 @dataclass
 class AltResidue:
@@ -110,6 +112,33 @@ class ResiduePosition:
     plane_basis: np.ndarray
     plane_normal_vector: np.ndarray
 
+    def __post_init__(self):
+        assert self.rotation.shape == (3, 3)
+        assert self.plane_basis.shape == (3, 2)
+
+    def plane_projection(self, point: np.ndarray) -> np.ndarray:
+        assert point.shape[-1] == 3
+        tpoint = point + self.translation
+        return np.dot(tpoint, self.plane_basis[:, 0]) * self.plane_basis[:, 0] + np.dot(tpoint, self.plane_basis[:, 1]) * self.plane_basis[:, 1] - self.translation
+
+    def plane_get_deviation(self, point: np.ndarray) -> float:
+        """
+        Returns the absolute distance of the point from the plane (in Å).
+        """
+        assert point.shape == (3,)
+        return _linalg_norm(point - self.plane_projection(point))
+    
+    def get_projection_squish_angle(self, point1: np.ndarray, point2: np.ndarray) -> float:
+        """
+        Returns the ratio of the distance between the projections and the distance between the points.
+        """
+        assert point1.shape == (3,) == point2.shape
+        proj1 = self.plane_projection(point1)
+        proj2 = self.plane_projection(point2)
+        dist_cmp = _linalg_norm(proj1 - proj2) / _linalg_norm(point1 - point2)
+        return min(1, max(0, dist_cmp))
+
+
 def get_residue_posinfo(res: AltResidue) -> ResiduePosition:
     """
     Returns a tuple of (translation, rotation) that moves the C1' atom to the origin and the C1'-N bond to the x-axis and all planar atoms with (near) 0 z-coordinate.
@@ -190,28 +219,61 @@ def transform_residue(r: Bio.PDB.Residue.Residue, translation: np.ndarray, rotat
 @dataclass
 class PairStats:
     # buckle: float
-    bogopropeller: float
+    coplanarity_angle: Optional[float]
+    coplanarity_shift1: Optional[float]
+    coplanarity_shift2: Optional[float]
+    coplanarity_edge_angle1: Optional[float]
+    coplanarity_edge_angle2: Optional[float]
     # opening: float
     # nearest_distance: float
 
-def calc_pair_stats(res1: AltResidue, res2: AltResidue) -> Optional[PairStats]:
+def _linalg_norm(v) -> float:
+    return float(np.linalg.norm(v)) # typechecker se asi posral nebo fakt nevím z jakých halucinací usoudil, že výsledek np.linalg.norm nejde násobit, porovnávat nebo nic
+
+def maybe_min(array):
+    if len(array) == 0:
+        return None
+    return min(array)
+
+def get_edge_atoms(res: AltResidue, edge_name: str) -> List[Bio.PDB.Atom.Atom]:
+    edge = pair_defs.base_edges.get(resname_map.get(res.resname, res.resname), {}).get(edge_name, [])
+    return [ a for aname in edge if (a:=res.get_atom(aname, None)) is not None ]
+
+def get_edge_edges(edge: List[Bio.PDB.Atom.Atom]) -> Optional[Tuple[Bio.PDB.Atom.Atom, Bio.PDB.Atom.Atom]]:
+    if not edge or len(edge) < 2:
+        return None
+    polar_atoms = [ a for a in edge if a.element not in ("H", "C") ]
+    if len(polar_atoms) < 2:
+        return (edge[0], edge[-1])
+    return (polar_atoms[0], polar_atoms[-1])
+
+def calc_pair_stats(pair_type: pair_defs.PairType, res1: AltResidue, res2: AltResidue) -> Optional[PairStats]:
     p1 = try_get_residue_posinfo(res1)
     p2 = try_get_residue_posinfo(res2)
     if p1 is None or p2 is None:
         return None
     res1_ = AltResidue(transform_residue(res1.res, p1.translation, p1.rotation), res1.alt)
     res2_ = AltResidue(transform_residue(res2.res, p1.translation, p1.rotation), res2.alt)
+    edge1 = get_edge_atoms(res1, pair_type.edge1_name)
+    edge1_edges = get_edge_edges(edge1)
+    edge2 = get_edge_atoms(res2, pair_type.edge2_name)
+    edge2_edges = get_edge_edges(edge2)
 
-    bogopropeller = np.arccos(np.dot(p1.plane_normal_vector, p2.plane_normal_vector))
-    return PairStats(bogopropeller)
+    copl_angle = math.degrees(np.arccos(np.dot(p1.plane_normal_vector, p2.plane_normal_vector)))
+    
+    copl_shift1 = maybe_min([p2.plane_get_deviation(a.coord) for a in edge1])
+    copl_shift2 = maybe_min([p1.plane_get_deviation(a.coord) for a in edge2])
+    copl_edge_a1 = math.degrees(math.acos(p2.get_projection_squish_angle(*(a.coord for a in edge1_edges)))) if edge1_edges is not None else None
+    copl_edge_a2 = math.degrees(math.acos(p1.get_projection_squish_angle(*(a.coord for a in edge2_edges)))) if edge2_edges is not None else None
+    return PairStats(copl_angle, copl_shift1, copl_shift2, copl_edge_a1, copl_edge_a2)
 
 def get_angle(atom1: Bio.PDB.Atom.Atom, atom2: Bio.PDB.Atom.Atom, atom3: Bio.PDB.Atom.Atom) -> float:
     v1 = atom1.coord - atom2.coord
     v2 = atom3.coord - atom2.coord
-    return np.arccos(np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2)))
+    return math.degrees(np.arccos(np.dot(v1, v2) / (_linalg_norm(v1) * _linalg_norm(v2))))
 
 def get_distance(atom1: Bio.PDB.Atom.Atom, atom2: Bio.PDB.Atom.Atom) -> float:
-    return float(np.linalg.norm(atom1.coord - atom2.coord))
+    return _linalg_norm(atom1.coord - atom2.coord)
 
 
 @dataclass
@@ -221,10 +283,10 @@ class HBondStats:
     acceptor_angle: float
 
 def hbond_stats(atom0: Bio.PDB.Atom.Atom, atom1: Bio.PDB.Atom.Atom, atom2: Bio.PDB.Atom.Atom, atom3: Bio.PDB.Atom.Atom) -> HBondStats:
-    assert np.linalg.norm(atom0.coord - atom1.coord) <= 1.6, f"atoms 0,1 not bonded: {atom0.full_id} {atom1.full_id} ({np.linalg.norm(atom0.coord - atom1.coord)} > 1.6, {atom0.coord} {atom1.coord})"
-    assert np.linalg.norm(atom2.coord - atom3.coord) <= 1.6, f"atoms 2,3 not bonded: {atom2.full_id} {atom3.full_id} ({np.linalg.norm(atom0.coord - atom1.coord)} > 1.6, {atom0.coord} {atom1.coord})"
-    assert np.linalg.norm(atom1.coord - atom2.coord) > 1.3, f"atoms too close for h-bond: {atom1.full_id} {atom2.full_id} ({np.linalg.norm(atom1.coord - atom2.coord)} < 2, {atom1.coord} {atom2.coord})"
-    assert np.linalg.norm(atom1.coord - atom2.coord) < 10, f"atoms too far for h-bond: ({np.linalg.norm(atom1.coord - atom2.coord)} > 6, {atom1.coord} {atom2.coord})"
+    assert _linalg_norm(atom0.coord - atom1.coord) <= 1.6, f"atoms 0,1 not bonded: {atom0.full_id} {atom1.full_id} ({np.linalg.norm(atom0.coord - atom1.coord)} > 1.6, {atom0.coord} {atom1.coord})"
+    assert _linalg_norm(atom2.coord - atom3.coord) <= 1.6, f"atoms 2,3 not bonded: {atom2.full_id} {atom3.full_id} ({np.linalg.norm(atom0.coord - atom1.coord)} > 1.6, {atom0.coord} {atom1.coord})"
+    assert _linalg_norm(atom1.coord - atom2.coord) > 1.3, f"atoms too close for h-bond: {atom1.full_id} {atom2.full_id} ({np.linalg.norm(atom1.coord - atom2.coord)} < 2, {atom1.coord} {atom2.coord})"
+    assert _linalg_norm(atom1.coord - atom2.coord) < 10, f"atoms too far for h-bond: ({np.linalg.norm(atom1.coord - atom2.coord)} > 6, {atom1.coord} {atom2.coord})"
     return HBondStats(
         length=get_distance(atom1, atom2),
         donor_angle=get_angle(atom0, atom1, atom2),
@@ -240,11 +302,10 @@ resname_map = {
     'T': 'U',
 }
 
-def get_hbond_stats(pair_type: str, r1: AltResidue, r2: AltResidue) -> Optional[List[Optional[HBondStats]]]:
+def get_hbond_stats(pair_type: pair_defs.PairType, r1: AltResidue, r2: AltResidue) -> Optional[List[Optional[HBondStats]]]:
     # if r1.resname > r2.resname:
     #     r1, r2 = r2, r1
-    pair_name = resname_map.get(r1.resname, r1.resname) + '-' + resname_map.get(r2.resname, r2.resname)
-    hbonds = pdef.get_hbonds((pair_type, pair_name), throw=False)
+    hbonds = pdef.get_hbonds(pair_type, throw=False)
     if len(hbonds) == 0:
         return None
     # print(pair_type, pair_name, hbonds)
@@ -305,10 +366,10 @@ def to_csv_row(df: pl.DataFrame, i: int = 0, max_len = None) -> str:
     return ','.join(str(x) for x in row)
 
 
-def get_stats_for_csv(df_: pl.DataFrame, structure: Bio.PDB.Structure.Structure, pair_type: Optional[str]):
+def get_stats_for_csv(df_: pl.DataFrame, structure: Bio.PDB.Structure.Structure, global_pair_type: Optional[str]):
     df = df_.with_row_count()
-    pair_type_col = df["type"] if pair_type is None else itertools.repeat(pair_type)
-    for (type, i, pdbid, model, chain1, res1, ins1, alt1, chain2, res2, ins2, alt2) in zip(pair_type_col, df["row_nr"], df["pdbid"], df["model"], df["chain1"], df["nr1"], df["ins1"], df["alt1"], df["chain2"], df["nr2"], df["ins2"], df["alt2"]):
+    pair_type_col = df["type"] if global_pair_type is None else itertools.repeat(global_pair_type)
+    for (pair_family, i, pdbid, model, chain1, res1, ins1, alt1, chain2, res2, ins2, alt2) in zip(pair_type_col, df["row_nr"], df["pdbid"], df["model"], df["chain1"], df["nr1"], df["ins1"], df["alt1"], df["chain2"], df["nr2"], df["ins2"], df["alt2"]):
         if (chain1, res1, ins1, alt1) == (chain2, res2, ins2, alt2):
             continue
         try:
@@ -328,9 +389,10 @@ def get_stats_for_csv(df_: pl.DataFrame, structure: Bio.PDB.Structure.Structure,
             except KeyError:
                 print(f"Could not find residue2 {chain2}.{str(res2)+ins2} in {pdbid}")
                 continue
-            hbonds = get_hbond_stats(type, r1, r2)
+            pair_type = pair_defs.PairType.create(pair_family, r1.resname, r2.resname, name_map=resname_map)
+            hbonds = get_hbond_stats(pair_type, r1, r2)
             stats = None
-            # stats = calc_pair_stats(r1, r2)
+            stats = calc_pair_stats(pair_type, r1, r2)
             if hbonds is not None:
                 yield i, hbonds, stats
         except AssertionError as e:
@@ -360,7 +422,7 @@ def remove_duplicate_pairs(df: pl.DataFrame):
             score += pl.col(col).fill_null(100)
         if col.startswith("dssr_"):
             score += pl.col(col).is_null().cast(pl.Float64) * 0.03
-        if col == "bogopropeller":
+        if col == "coplanarity_angle":
             score += pl.col(col).is_null().cast(pl.Float64)
 
     df = df.sort([score, "chain1", "nr1", "ins1", "alt1", "chain2", "nr2", "ins2", "alt2"])
@@ -379,7 +441,7 @@ def export_stats_csv(pdbid, df: pl.DataFrame, add_metadata_columns: bool, pair_t
     bond_params = [ x.name for x in dataclasses.fields(HBondStats) ]
     valid = np.zeros(len(df), dtype=np.bool_)
     columns: list[list[Optional[float]]] = [ [ None ] * len(df) for _ in range(max_bond_count * len(bond_params)) ]
-    bogopropeller: list[Optional[float]] = [ None ] * len(df)
+    pair_stats: list[Optional[PairStats]] = [ None ] * len(df)
 
     structure = None
     try:
@@ -403,13 +465,19 @@ def export_stats_csv(pdbid, df: pl.DataFrame, add_metadata_columns: bool, pair_t
                 for param_i, param in enumerate(bond_params):
                     columns[j * len(bond_params) + param_i][i] = getattr(s, param)
 
-            if stats:
-                bogopropeller[i] = stats.bogopropeller
+            pair_stats[i] = stats
 
     result_cols = {
-        f"hb_{i}_{p}": pl.Series(c, dtype=pl.Float64) for i in range(max_bond_count) for p, c in zip(bond_params, columns[i * len(bond_params):])
+        f"hb_{i}_{p}": pl.Series(c, dtype=pl.Float64)
+        for i in range(max_bond_count)
+        for p, c in zip(bond_params, columns[i * len(bond_params):])
     }
-    result_cols["bogopropeller"] = pl.Series(bogopropeller, dtype=pl.Float64)
+    result_cols.update(
+        pl.DataFrame([
+            p or PairStats(None, None, None, None, None)
+            for p in pair_stats
+        ]).to_dict()
+    )
     result_df = pl.DataFrame(result_cols)
     if add_metadata_columns:
         h = structure.header if structure is not None else dict()
@@ -426,7 +494,7 @@ def export_stats_csv(pdbid, df: pl.DataFrame, add_metadata_columns: bool, pair_t
 def df_hstack(columns: list[pl.DataFrame]) -> pl.DataFrame:
     return functools.reduce(pl.DataFrame.hstack, columns)
 
-def load_inputs(pool: Pool, args) -> pl.DataFrame:
+def load_inputs(pool: Union[Pool, MockPool], args) -> pl.DataFrame:
     inputs: list[str] = args.inputs
     if len(inputs) == 0:
         raise ValueError("No input files specified")
@@ -446,7 +514,7 @@ def load_inputs(pool: Pool, args) -> pl.DataFrame:
         df = df.select(pl.lit(args.pair_type).alias("type"), pl.col("*"))
     return df
 
-def main(pool: Pool, args):
+def main(pool: Union[Pool, MockPool], args):
     df = load_inputs(pool, args)
     max_bond_count = get_max_bond_count(df)
     groups = list(df.groupby(pl.col("pdbid")))
@@ -455,18 +523,18 @@ def main(pool: Pool, args):
 
     processes.append([
         pool.apply_async(export_stats_csv, args=[pdbid, group, args.metadata, args.pair_type, max_bond_count])
-        for pdbid, group in groups
+        for (pdbid,), group in groups
         # for chunk in group.iter_slices(n_rows=100)
     ])
     if args.dssr_binary is not None:
         import dssr_wrapper
         processes.append([
             pool.apply_async(dssr_wrapper.add_dssr_info, args=[pdbid, group, args.dssr_binary])
-            for (pdbid, group) in groups
+            for ((pdbid,), group) in groups
         ])
 
     result_chunks = []
-    for (_pdbid, group), p in zip(groups, zip(*processes)):
+    for ((_pdbid,), group), p in zip(groups, zip(*processes)):
         p = [ x.get() for x in p ]
         pdbids = [ x[0] for x in p ]
         assert pdbids == [ _pdbid ] * len(pdbids), f"pdbid mismatch: {_pdbid} x {pdbids}"
@@ -486,7 +554,8 @@ def main(pool: Pool, args):
         df = remove_duplicate_pairs(df)
     df = df.sort('pdbid', 'model', 'nr1', 'nr2')
     df.write_csv(args.output)
-    df.write_parquet(args.output + ".parquet")
+    if not args.output.startswith("/dev/"):
+        df.write_parquet(args.output + ".parquet")
     return df
 
 if __name__ == "__main__":
@@ -495,7 +564,7 @@ if __name__ == "__main__":
         Adds geometric information to the specified pairing CSV files.
         Added columns:
             * hb_0_length, hb_0_heavy_a_angle, hb_1_length, hb_1_heavy_a_angle, hb_2_length, hb_2_heavy_a_angle - hydrogen bond lengths and angles between heavy atoms
-            * bogopropeller - angle between planes of the two nucleotides
+            * coplanarity_angle - angle between planes of the two nucleotides
         When --dssr-binary is specified, DSSR --analyze is executed to gain additional information:
             * dssr_pairing_type - pairing type according to DSSR (e.g. WC, Platform, ~rHoogsteen)
             * pairing_type, shear, stretch, stagger, buckle, propeller, opening, shift, slide, rise, tilt, roll, twist
@@ -517,5 +586,8 @@ if __name__ == "__main__":
     os.environ["PDB_CACHE_DIR"] = ';'.join(pdb_utils.pdb_cache_dirs)
 
     multiprocessing.set_start_method("spawn")
-    with multiprocessing.Pool(processes=args.threads) as pool:
-        main(pool, args)
+    if args.threads == 1:
+        main(MockPool(), args)
+    else:
+        with multiprocessing.Pool(processes=args.threads) as pool:
+            main(pool, args)

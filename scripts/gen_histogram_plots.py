@@ -450,10 +450,12 @@ def load_pair_table(file: str):
     df = pl.read_parquet(file) if file.endswith(".parquet") else pl.read_csv(file)
     df = pair_csv_parse.normalize_columns(df)
 
-    df = df.with_columns(
-        pl.col("^hb_\\d+_donor_angle$") / np.pi * 180,
-        pl.col("^hb_\\d+_acceptor_angle$") / np.pi * 180,
-    )
+    if "coplanarity_angle" not in df.columns:
+        # older file version
+        df = df.with_columns(
+            pl.col("^hb_\\d+_donor_angle$") / np.pi * 180,
+            pl.col("^hb_\\d+_acceptor_angle$") / np.pi * 180,
+        )
     return df
 
 def infer_pair_type(filename: str):

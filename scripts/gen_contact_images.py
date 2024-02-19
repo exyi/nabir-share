@@ -268,6 +268,14 @@ def orient_pair(pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2,
     cmd.set_bond("stick_radius", 0.25, "%pair")
     cmd.set_bond("stick_transparency", 0.0, "%pair")
 
+"""
+util.cba("gray70")
+h_add
+label (%pair and (elem N or elem O)), name
+
+hide labels, measure*
+"""
+
 @dataclass
 class BPArgs:
     # label_atoms: list[str]
