@@ -149,6 +149,16 @@ class ResiduePosition:
         proj2 = self.plane_projection(point2)
         dist_cmp = _linalg_norm(proj1 - proj2) / _linalg_norm(point1 - point2)
         return min(1, max(0, dist_cmp))
+    
+    def get_relative_line_rotation(self, point1: np.ndarray, point2: np.ndarray) -> float:
+        """
+        Returns the angle between the line and the plane.
+        Negative if the line points in the opposite direction than the normal vector.
+        """
+        assert point1.shape == (3,) == point2.shape
+        line = point2 - point1
+        normal_angle = math.degrees(math.acos(np.dot(normalize(line), self.plane_normal_vector)))
+        return 90 - normal_angle
 
 def fit_plane_magic_svd(atoms: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """
@@ -307,6 +317,11 @@ def transform_residue(r: Bio.PDB.Residue.Residue, translation: np.ndarray, rotat
     r.transform(rotation, np.zeros(3))
     return r
 
+def to_float32_df(df: pl.DataFrame) -> pl.DataFrame:
+    return df.with_columns([
+            pl.col(c).cast(pl.Float32).alias(c) for c in df.columns if df[c].dtype == pl.Float64
+        ])
+
 @dataclass
 class PairStats:
     # buckle: float
@@ -346,14 +361,14 @@ def get_edge_edges(edge: List[Bio.PDB.Atom.Atom]) -> Optional[Tuple[Bio.PDB.Atom
         return (edge[0], edge[-1])
     return (polar_atoms[0], polar_atoms[-1])
 
-def calc_pair_stats(pair_type: pair_defs.PairType, res1: AltResidue, res2: AltResidue) -> Optional[PairStats]:
+def calc_pair_stats(pair_type: pair_defs.PairType, res1: AltResidue, res2: AltResidue) -> tuple[Optional[PairStats], Optional[ResiduePosition], Optional[ResiduePosition]]:
     p1 = try_get_residue_posinfo(res1)
     p2 = try_get_residue_posinfo(res2)
     rot_trans1 = try_x(get_residue_posinfo_C1_N, res1)
     rot_trans2 = try_x(get_residue_posinfo_C1_N, res2)
 
     if p1 is None or p2 is None:
-        return None
+        return None, p1, p2
     res1_ = AltResidue(transform_residue(res1.res, -p1.origin, p1.rotation), res1.alt)
     res2_ = AltResidue(transform_residue(res2.res, -p1.origin, p1.rotation), res2.alt)
     edge1 = get_edge_atoms(res1, pair_type.edge1_name)
@@ -367,8 +382,8 @@ def calc_pair_stats(pair_type: pair_defs.PairType, res1: AltResidue, res2: AltRe
     
     out.coplanarity_shift1 = maybe_min([p2.plane_get_deviation(a.coord) for a in edge1])
     out.coplanarity_shift2 = maybe_min([p1.plane_get_deviation(a.coord) for a in edge2])
-    out.coplanarity_edge_angle1 = math.degrees(math.acos(p2.get_projection_squish_angle(*(a.coord for a in edge1_edges)))) if edge1_edges is not None else None
-    out.coplanarity_edge_angle2 = math.degrees(math.acos(p1.get_projection_squish_angle(*(a.coord for a in edge2_edges)))) if edge2_edges is not None else None
+    out.coplanarity_edge_angle1 = p2.get_relative_line_rotation(*(a.coord for a in edge1_edges)) if edge1_edges is not None else None
+    out.coplanarity_edge_angle2 = p1.get_relative_line_rotation(*(a.coord for a in edge2_edges)) if edge2_edges is not None else None
 
     out.C1_C1_distance = _linalg_norm(res1.get_atom("C1'").coord - res2.get_atom("C1'").coord)
     if p1.n_pos is not None and p2.n_pos is not None and p1.c1_pos is not None and p2.c1_pos is not None:
@@ -377,7 +392,7 @@ def calc_pair_stats(pair_type: pair_defs.PairType, res1: AltResidue, res2: AltRe
     if rot_trans1 and rot_trans2:
         out.C1_C1_yaw, out.C1_C1_pitch, out.C1_C1_roll = get_C1_N_angles(rot_trans1, rot_trans2)
 
-    return out
+    return out, p1, p2
 
 def get_angle(atom1: Bio.PDB.Atom.Atom, atom2: Bio.PDB.Atom.Atom, atom3: Bio.PDB.Atom.Atom) -> float:
     v1 = atom1.coord - atom2.coord
@@ -393,17 +408,32 @@ class HBondStats:
     length: float
     donor_angle: float
     acceptor_angle: float
+    donor_OOPA: Optional[float] = None
+    acceptor_OOPA: Optional[float] = None
 
-def hbond_stats(atom0: Bio.PDB.Atom.Atom, atom1: Bio.PDB.Atom.Atom, atom2: Bio.PDB.Atom.Atom, atom3: Bio.PDB.Atom.Atom) -> HBondStats:
+def hbond_stats(
+    atom0: Bio.PDB.Atom.Atom, atom1: Bio.PDB.Atom.Atom, atom2: Bio.PDB.Atom.Atom, atom3: Bio.PDB.Atom.Atom,
+    donor_plane: Optional[ResiduePosition],
+    acceptor_plane: Optional[ResiduePosition]
+) -> HBondStats:
     assert _linalg_norm(atom0.coord - atom1.coord) <= 1.6, f"atoms 0,1 not bonded: {atom0.full_id} {atom1.full_id} ({np.linalg.norm(atom0.coord - atom1.coord)} > 1.6, {atom0.coord} {atom1.coord})"
     assert _linalg_norm(atom2.coord - atom3.coord) <= 1.6, f"atoms 2,3 not bonded: {atom2.full_id} {atom3.full_id} ({np.linalg.norm(atom0.coord - atom1.coord)} > 1.6, {atom0.coord} {atom1.coord})"
     assert _linalg_norm(atom1.coord - atom2.coord) > 1.55, f"atoms too close for h-bond: {atom1.full_id} {atom2.full_id} ({np.linalg.norm(atom1.coord - atom2.coord)} < 2, {atom1.coord} {atom2.coord})"
     assert _linalg_norm(atom1.coord - atom2.coord) < 10, f"atoms too far for h-bond: ({np.linalg.norm(atom1.coord - atom2.coord)} > 6, {atom1.coord} {atom2.coord})"
-    return HBondStats(
+
+
+    result = HBondStats(
         length=get_distance(atom1, atom2),
         donor_angle=get_angle(atom0, atom1, atom2),
         acceptor_angle=get_angle(atom3, atom2, atom1)
     )
+
+    if donor_plane is not None:
+        result.donor_OOPA = donor_plane.get_relative_line_rotation(atom1.coord, atom2.coord)
+    if acceptor_plane is not None:
+        result.acceptor_OOPA = acceptor_plane.get_relative_line_rotation(atom2.coord, atom1.coord)
+
+    return result
 
 resname_map = {
     'DT': 'U',
@@ -414,7 +444,7 @@ resname_map = {
     'T': 'U',
 }
 
-def get_hbond_stats(pair_type: pair_defs.PairType, r1: AltResidue, r2: AltResidue) -> Optional[List[Optional[HBondStats]]]:
+def get_hbond_stats(pair_type: pair_defs.PairType, r1: AltResidue, r2: AltResidue, rp1: Optional[ResiduePosition], rp2: Optional[ResiduePosition]) -> Optional[List[Optional[HBondStats]]]:
     # if r1.resname > r2.resname:
     #     r1, r2 = r2, r1
     hbonds = pdef.get_hbonds(pair_type, throw=False)
@@ -435,8 +465,8 @@ def get_hbond_stats(pair_type: pair_defs.PairType, r1: AltResidue, r2: AltResidu
     ]
 
     return [
-        hbond_stats(*atoms) if None not in atoms else None
-        for atoms in bonds_atoms
+        hbond_stats(atoms[0], atoms[1], atoms[2], atoms[3], rp1 if hb[1][0] == 'A' else rp2, rp1 if hb[2][0] == 'A' else rp2) if None not in atoms else None
+        for atoms, hb in zip(bonds_atoms, hbonds)
     ]
 
 def get_atom_df(model: Bio.PDB.Model.Model):
@@ -511,9 +541,9 @@ def get_stats_for_csv(df_: pl.DataFrame, structure: Bio.PDB.Structure.Structure,
                 print(f"Could not find residue2 {chain2}.{str(res2)+ins2} in {pdbid} ({keyerror=})")
                 continue
             pair_type = pair_defs.PairType.create(pair_family, r1.resname, r2.resname, name_map=resname_map)
-            hbonds = get_hbond_stats(pair_type, r1, r2)
-            stats = None
-            stats = calc_pair_stats(pair_type, r1, r2)
+            stats, rp1, rp2 = None, None, None
+            stats, rp1, rp2 = calc_pair_stats(pair_type, r1, r2)
+            hbonds = get_hbond_stats(pair_type, r1, r2, rp1, rp2)
             if hbonds is not None:
                 yield i, hbonds, stats
         except AssertionError as e:
@@ -558,10 +588,57 @@ def get_max_bond_count(df: pl.DataFrame):
     print("Analyzing pair types:", *pair_types, "with bond count =", bond_count)
     return max(3, bond_count)
 
+def backbone_columns(df: pl.DataFrame, structure: Bio.PDB.Structure.Structure) -> list[pl.Series]:
+    is_dinucleotide = pl.Series("is_dinucleotide", [ False ] * len(df), dtype=pl.Boolean)
+    is_parallel = pl.Series("is_parallel", [ None ] * len(df), dtype=pl.Boolean)
+
+    chain_index = {
+        (model.serial_num, chain.id): {
+            (res.id[1], res.id[2]): i
+            for i, res in enumerate(chain.get_residues())
+            if res.resname != 'HOH'
+        }
+        for model in structure.get_models()
+        for chain in model.get_chains()
+    }
+
+    pair_set = set(
+        (model, chain1, chain_index[(model, chain1)][(nr1, ins1 or ' ')], chain2, chain_index[(model, chain2)][(nr2, ins2 or ' ')])
+        for model, chain1, nr1, ins1, chain2, nr2, ins2 in zip(df["model"], df["chain1"], df["nr1"], df["ins1"], df["chain2"], df["nr2"], df["ins2"])
+        if (nr1, ins1 or ' ') in chain_index[(model, chain1)] and (nr2, ins2 or ' ') in chain_index[(model, chain2)]
+    )
+
+    for i, (model, chain1, nr1, ins1, alt1, chain2, nr2, ins2, alt2) in enumerate(zip(df["model"], df["chain1"], df["nr1"], df["ins1"], df["alt1"], df["chain2"], df["nr2"], df["ins2"], df["alt2"])):
+
+        res_ix1 = chain_index[(model, chain1)].get((nr1, ins1 or ' '), None)
+        res_ix2 = chain_index[(model, chain2)].get((nr2, ins2 or ' '), None)
+        if res_ix1 is None or res_ix2 is None:
+            continue
+        is_dinucleotide[i] = abs(res_ix2 - res_ix1) == 1
+
+        par = (model, chain1, res_ix1 + 1, chain2, res_ix2 + 1) in pair_set or \
+           (model, chain1, res_ix1 - 1, chain2, res_ix2 - 1) in pair_set
+        antipar = (model, chain1, res_ix1 + 1, chain2, res_ix2 - 1) in pair_set or \
+           (model, chain1, res_ix1 - 1, chain2, res_ix2 + 1) in pair_set
+
+        if antipar and not par:
+            is_parallel[i] = False
+        elif par and not antipar:
+            is_parallel[i] = True
+
+        if antipar and par:
+            print("Interesting pair:", model, chain1, nr1, ins1, chain2, nr2, ins2, "both parallel and antiparallel")
+    return [ is_dinucleotide, is_parallel ]
+
+
+
 def export_stats_csv(pdbid, df: pl.DataFrame, add_metadata_columns: bool, pair_type: Optional[str], max_bond_count: int) -> Tuple[str, pl.DataFrame, np.ndarray]:
     bond_params = [ x.name for x in dataclasses.fields(HBondStats) ]
     valid = np.zeros(len(df), dtype=np.bool_)
-    columns: list[list[Optional[float]]] = [ [ None ] * len(df) for _ in range(max_bond_count * len(bond_params)) ]
+    columns: list[pl.Series] = [
+        pl.Series(f"hb_{i}_{p}", [ None ] * len(df), dtype=pl.Float32)
+        for i in range(max_bond_count)
+        for p in bond_params ]
     pair_stats: list[Optional[PairStats]] = [ None ] * len(df)
 
     structure = None
@@ -588,18 +665,10 @@ def export_stats_csv(pdbid, df: pl.DataFrame, add_metadata_columns: bool, pair_t
 
             pair_stats[i] = stats
 
-    result_cols = {
-        f"hb_{i}_{p}": pl.Series(c, dtype=pl.Float64)
-        for i in range(max_bond_count)
-        for p, c in zip(bond_params, columns[i * len(bond_params):])
-    }
-    result_cols.update(
-        pl.DataFrame([
-            p or PairStats()
-            for p in pair_stats
-        ]).to_dict()
-    )
-    result_df = pl.DataFrame(result_cols)
+    result_df = pl.DataFrame(columns).hstack(pl.DataFrame([
+            p or PairStats() for p in pair_stats
+        ]))
+    result_df = to_float32_df(result_df)
     if add_metadata_columns:
         h = structure.header if structure is not None else dict()
         result_df = result_df.with_columns(
@@ -608,6 +677,9 @@ def export_stats_csv(pdbid, df: pl.DataFrame, add_metadata_columns: bool, pair_t
             pl.lit(h.get('structure_method', None), dtype=pl.Utf8).alias("structure_method"),
             pl.lit(h.get('resolution', None), dtype=pl.Float32).alias("resolution")
         )
+    
+    if structure is not None:
+        result_df = result_df.with_columns(backbone_columns(df, structure))
     assert len(result_df) == len(df)
     return pdbid, result_df, valid
 
@@ -702,7 +774,7 @@ if __name__ == "__main__":
     parser.add_argument("--pair-type", type=str, required=False)
     args = parser.parse_args()
 
-    for x in args.pdbcache:
+    for x in args.pdbcache or []:
         pdb_utils.pdb_cache_dirs.append(os.path.abspath(x))
     os.environ["PDB_CACHE_DIR"] = ';'.join(pdb_utils.pdb_cache_dirs)
 
