@@ -588,9 +588,12 @@ def get_max_bond_count(df: pl.DataFrame):
     print("Analyzing pair types:", *pair_types, "with bond count =", bond_count)
     return max(3, bond_count)
 
-def backbone_columns(df: pl.DataFrame, structure: Bio.PDB.Structure.Structure) -> list[pl.Series]:
+def backbone_columns(df: pl.DataFrame, structure: Optional[Bio.PDB.Structure.Structure]) -> list[pl.Series]:
     is_dinucleotide = pl.Series("is_dinucleotide", [ False ] * len(df), dtype=pl.Boolean)
     is_parallel = pl.Series("is_parallel", [ None ] * len(df), dtype=pl.Boolean)
+
+    if structure is None:
+        return [ is_dinucleotide, is_parallel ]
 
     chain_index = {
         (model.serial_num, chain.id): {
@@ -678,8 +681,7 @@ def export_stats_csv(pdbid, df: pl.DataFrame, add_metadata_columns: bool, pair_t
             pl.lit(h.get('resolution', None), dtype=pl.Float32).alias("resolution")
         )
     
-    if structure is not None:
-        result_df = result_df.with_columns(backbone_columns(df, structure))
+    result_df = result_df.with_columns(backbone_columns(df, structure))
     assert len(result_df) == len(df)
     return pdbid, result_df, valid
 
