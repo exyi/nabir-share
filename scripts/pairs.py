@@ -29,8 +29,9 @@ class AltResidue:
 
     def transform_atom(self, a: Bio.PDB.Atom.DisorderedAtom) -> Any:
         if a.is_disordered():
-            # if self.alt == '':
-            #     return a.disordered_get('A')
+            if self.alt == '' and a.id in ['P', 'OP1', 'OP2', "O5'", "C5'", "C4'", "O4'", "C3'", "O3'", "C2'"]:
+                # don't crash on uninteresting atoms
+                return a.disordered_get('A')
             if not a.disordered_has_id(self.alt):
                 raise KeyError(f"Atom {self.res.full_id}:{a.id} is disordered, but alt='{self.alt}' must be one of {a.disordered_get_id_list()}")
             return a.disordered_get(self.alt)
@@ -476,6 +477,17 @@ def to_csv_row(df: pl.DataFrame, i: int = 0, max_len = None) -> str:
         row = row[:max_len]
     return ','.join(str(x) for x in row)
 
+def get_residue(structure: Bio.PDB.Structure.Structure, model, chain, res, ins, alt) -> AltResidue:
+    res = int(res)
+    ins = ins or ' '
+    ch: Bio.PDB.Chain.Chain = structure[model-1][chain]
+    found = ch.child_dict.get((' ', res, ins), None)
+    if found is None:
+        found = next((r for r in ch.get_residues() if r.id[1] == res and r[2] == ins), None)
+    if found is None:
+        raise KeyError(f"{chain}.{res}{ins}")
+    return AltResidue(found, alt)
+
 
 def get_stats_for_csv(df_: pl.DataFrame, structure: Bio.PDB.Structure.Structure, global_pair_type: Optional[str]):
     df = df_.with_row_count()
@@ -489,16 +501,14 @@ def get_stats_for_csv(df_: pl.DataFrame, structure: Bio.PDB.Structure.Structure,
             ins2 = ins2.strip()
 
             try:
-                r1 = structure[model-1][chain1][(' ', res1, ins1 or ' ')]
-                r1 = AltResidue(r1, alt1)
-            except KeyError:
-                print(f"Could not find residue1 {chain1}.{str(res1)+ins1} in {pdbid}")
+                r1 = get_residue(structure, model, chain1, res1, ins1, alt1)
+            except KeyError as keyerror:
+                print(f"Could not find residue1 {chain1}.{str(res1)+ins1} in {pdbid} ({keyerror=})")
                 continue
             try:
-                r2 = structure[model-1][chain2][(' ', res2, ins2 or ' ')]
-                r2 = AltResidue(r2, alt2)
-            except KeyError:
-                print(f"Could not find residue2 {chain2}.{str(res2)+ins2} in {pdbid}")
+                r2 = get_residue(structure, model, chain2, res2, ins2, alt2)
+            except KeyError as keyerror:
+                print(f"Could not find residue2 {chain2}.{str(res2)+ins2} in {pdbid} ({keyerror=})")
                 continue
             pair_type = pair_defs.PairType.create(pair_family, r1.resname, r2.resname, name_map=resname_map)
             hbonds = get_hbond_stats(pair_type, r1, r2)
@@ -506,14 +516,13 @@ def get_stats_for_csv(df_: pl.DataFrame, structure: Bio.PDB.Structure.Structure,
             stats = calc_pair_stats(pair_type, r1, r2)
             if hbonds is not None:
                 yield i, hbonds, stats
-        # except AssertionError as e:
-        #     print(f"Assertion error {e} on row:\n{to_csv_row(df_, i, 15)}")
-
-        #     continue
-        except Exception as e:
+        except AssertionError as e:
+            print(f"Assertion error {e} on row:\n{to_csv_row(df_, i, 15)}")
+            continue
+        except Exception as keyerror:
             print(f"Error on row:\n{to_csv_row(df_, i, 15)}")
             import traceback
-            print(e)
+            print(keyerror)
             print(traceback.format_exc())
             print("Continuing...")
             continue
