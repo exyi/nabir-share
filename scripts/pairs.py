@@ -29,7 +29,7 @@ class AltResidue:
 
     def transform_atom(self, a: Bio.PDB.Atom.DisorderedAtom) -> Any:
         if a.is_disordered():
-            if self.alt == '' and a.id in ['P', 'OP1', 'OP2', "O5'", "C5'", "C4'", "O4'", "C3'", "O3'", "C2'"]:
+            if self.alt == '' and (a.id.startswith('H') or a.id in ['P', 'OP1', 'OP2', "O5'", "C5'", "C4'", "O4'", "C3'", "O3'", "C2'"]):
                 # don't crash on uninteresting atoms
                 return a.disordered_get('A')
             if not a.disordered_has_id(self.alt):
@@ -319,8 +319,8 @@ def transform_residue(r: Bio.PDB.Residue.Residue, translation: np.ndarray, rotat
 
 def to_float32_df(df: pl.DataFrame) -> pl.DataFrame:
     return df.with_columns([
-            pl.col(c).cast(pl.Float32).alias(c) for c in df.columns if df[c].dtype == pl.Float64
-        ])
+        pl.col(c).cast(pl.Float32).alias(c) for c in df.columns if df[c].dtype == pl.Float64
+    ])
 
 @dataclass
 class PairStats:
@@ -533,12 +533,12 @@ def get_stats_for_csv(df_: pl.DataFrame, structure: Bio.PDB.Structure.Structure,
             try:
                 r1 = get_residue(structure, model, chain1, res1, ins1, alt1)
             except KeyError as keyerror:
-                print(f"Could not find residue1 {chain1}.{str(res1)+ins1} in {pdbid} ({keyerror=})")
+                print(f"Could not find residue1 {pdbid}.{model}.{chain1}.{str(res1)+ins1} ({keyerror=})")
                 continue
             try:
                 r2 = get_residue(structure, model, chain2, res2, ins2, alt2)
             except KeyError as keyerror:
-                print(f"Could not find residue2 {chain2}.{str(res2)+ins2} in {pdbid} ({keyerror=})")
+                print(f"Could not find residue2 {pdbid}.{model}.{chain2}.{str(res2)+ins2} in {pdbid} ({keyerror=})")
                 continue
             pair_type = pair_defs.PairType.create(pair_family, r1.resname, r2.resname, name_map=resname_map)
             stats, rp1, rp2 = None, None, None
@@ -608,7 +608,7 @@ def backbone_columns(df: pl.DataFrame, structure: Bio.PDB.Structure.Structure) -
         if (nr1, ins1 or ' ') in chain_index[(model, chain1)] and (nr2, ins2 or ' ') in chain_index[(model, chain2)]
     )
 
-    for i, (model, chain1, nr1, ins1, alt1, chain2, nr2, ins2, alt2) in enumerate(zip(df["model"], df["chain1"], df["nr1"], df["ins1"], df["alt1"], df["chain2"], df["nr2"], df["ins2"], df["alt2"])):
+    for i, (pdbid, model, chain1, nr1, ins1, alt1, chain2, nr2, ins2, alt2) in enumerate(zip(df["pdbid"], df["model"], df["chain1"], df["nr1"], df["ins1"], df["alt1"], df["chain2"], df["nr2"], df["ins2"], df["alt2"])):
 
         res_ix1 = chain_index[(model, chain1)].get((nr1, ins1 or ' '), None)
         res_ix2 = chain_index[(model, chain2)].get((nr2, ins2 or ' '), None)
@@ -627,7 +627,7 @@ def backbone_columns(df: pl.DataFrame, structure: Bio.PDB.Structure.Structure) -
             is_parallel[i] = True
 
         if antipar and par:
-            print("Interesting pair:", model, chain1, nr1, ins1, chain2, nr2, ins2, "both parallel and antiparallel")
+            print("Interesting pair:", pdbid, model, chain1, nr1, ins1, chain2, nr2, ins2, "both parallel and antiparallel")
     return [ is_dinucleotide, is_parallel ]
 
 
@@ -707,6 +707,12 @@ def load_inputs(pool: Union[Pool, MockPool], args) -> pl.DataFrame:
         df = df.select(pl.lit(args.pair_type).alias("type"), pl.col("*"))
     return df
 
+def validate_missing_columns(chunks: list[pl.DataFrame]):
+    all_columns = set(col for chunk in chunks for col in chunk.columns)
+    for c in chunks:
+        if not all_columns.issubset(c.columns):
+            print(f"Chunk with {set(c['pdbid'].to_numpy())} is missing columns: {all_columns.difference(set(c.columns))}")
+
 def main(pool: Union[Pool, MockPool], args):
     df = load_inputs(pool, args)
     max_bond_count = get_max_bond_count(df)
@@ -742,6 +748,7 @@ def main(pool: Union[Pool, MockPool], args):
         if len(chunk) > 0:
             result_chunks.append(chunk)
 
+    validate_missing_columns(result_chunks)
     df = pl.concat(result_chunks)
     if args.dedupe:
         df = remove_duplicate_pairs(df)
