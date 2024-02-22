@@ -1,7 +1,7 @@
 import functools
 import itertools
 from multiprocessing.pool import Pool
-from typing import Any, List, Optional, Tuple, Union
+from typing import Any, Callable, List, Optional, Tuple, TypeVar, Union
 import Bio.PDB, Bio.PDB.Structure, Bio.PDB.Model, Bio.PDB.Residue, Bio.PDB.Atom, Bio.PDB.Chain, Bio.PDB.Entity
 import os, sys, io, gzip, math, numpy as np
 import polars as pl
@@ -104,13 +104,24 @@ def get_reasonable_nucleotides(model: Bio.PDB.Model.Model) -> List[Bio.PDB.Resid
     return nucleotides
 
 @dataclass
+class TranslationThenRotation:
+    translation: np.ndarray
+    rotation: np.ndarray
+    def __post_init__(self):
+        assert self.rotation.shape == (3, 3)
+        assert self.translation.shape == (3,)
+
+@dataclass
 class ResiduePosition:
     # translation of C1 to origin
-    translation: np.ndarray
+    origin: np.ndarray
     # rotation around C1 to align C1'-N bond to x-axis and the plane to X/Y axes
     rotation: np.ndarray
     plane_basis: np.ndarray
     plane_normal_vector: np.ndarray
+    projection_matrix: np.ndarray
+    c1_pos: Optional[np.ndarray] = None
+    n_pos: Optional[np.ndarray] = None
 
     def __post_init__(self):
         assert self.rotation.shape == (3, 3)
@@ -118,8 +129,8 @@ class ResiduePosition:
 
     def plane_projection(self, point: np.ndarray) -> np.ndarray:
         assert point.shape[-1] == 3
-        tpoint = point + self.translation
-        return np.dot(tpoint, self.plane_basis[:, 0]) * self.plane_basis[:, 0] + np.dot(tpoint, self.plane_basis[:, 1]) * self.plane_basis[:, 1] - self.translation
+        tpoint = point - self.origin
+        return np.matmul(tpoint, self.projection_matrix) + self.origin
 
     def plane_get_deviation(self, point: np.ndarray) -> float:
         """
@@ -138,6 +149,16 @@ class ResiduePosition:
         dist_cmp = _linalg_norm(proj1 - proj2) / _linalg_norm(point1 - point2)
         return min(1, max(0, dist_cmp))
 
+def fit_plane_magic_svd(atoms: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Returns centroid + S (= basis1, basis2, normal)
+    https://math.stackexchange.com/a/99317
+    """
+    assert atoms.shape[1] == 3
+    svd = np.linalg.svd((atoms - np.mean(atoms, axis=0, keepdims=True)).T)
+    left_singular_vectors = svd[0]
+    assert left_singular_vectors.shape == (3, 3)
+    return np.mean(atoms, axis=0), left_singular_vectors
 
 def get_residue_posinfo(res: AltResidue) -> ResiduePosition:
     """
@@ -147,68 +168,137 @@ def get_residue_posinfo(res: AltResidue) -> ResiduePosition:
     if x is None:
         raise ResideTransformError(f"No C1' atom found at {res.res.full_id}")
     c1, planar_atoms = x
+    nX = res.get_atom("N1", None) or res.get_atom("N9", None)
     planar_atoms = filter_atoms(c1, planar_atoms)
     
-    translation: np.ndarray = -c1.coord
     atom_names = np.array([ a.name for a in planar_atoms ])
     atom_elements = np.array([ a.element for a in planar_atoms ])
-    atoms = np.array([ a.coord for a in planar_atoms ]) + translation
+    atoms = np.array([ a.coord for a in planar_atoms ])
 
     # dist_matrix = np.linalg.norm(atoms[:, None, :] - atoms[None, :, :], axis=2)
     # dist_matrix[np.arange(len(atoms)), np.arange(len(atoms))] = 1000_000
 
-    # find the bonding N atom (i.e. distance <= 1.6Å)
-    if np.any(np.linalg.norm(atoms, axis=1) < 1.3):
-        raise ResideTransformError(f"Atoms too close to origin at {res.res.full_id}")
+    # check enough distance from C1'
+    # if np.any(np.linalg.norm(atoms, axis=1) < 1.3):
+    #     raise ResideTransformError(f"Atoms too close to origin at {res.res.full_id}")
     
     # * fit a plane through the atoms
-    # fitted_plane, sum_error, _, _ = np.linalg.lstsq(np.concatenate([atoms[:, :2], np.ones((len(planar_atoms), 1))], axis=1), atoms[:, 2], rcond=None)
-    fitted_plane, sum_error, _, _ = np.linalg.lstsq(atoms[:, :2], -atoms[:, 2], rcond=None)
+    # fitted_plane, sum_error, _, _ = np.linalg.lstsq(np.concatenate([atoms[:, 1:], np.ones((len(planar_atoms), 1))], axis=1), -atoms[:, 0], rcond=None) # x + ay + bz + c = 0
+    # fitted_plane, sum_error, _, _ = np.linalg.lstsq(np.concatenate([atoms, np.ones((atoms.shape[0], 1))], axis=1), np.zeros(atoms.shape[0]), rcond=None) # ax + by + cz + d = 0
+    # fitted_plane, sum_error, _, _ = np.linalg.lstsq(atoms[:, :2], -atoms[:, 2], rcond=None)
+    # fitted_plane, sum_error, _, _ = np.linalg.lstsq(np.concatenate([atoms, np.ones, np.zeros(len(planar_atoms)), rcond=None) # ax + by + cz = 0
+
+    centroid, rot_matrix1 = fit_plane_magic_svd(atoms)
+    plane_basis = rot_matrix1[:, :2]
+    normal_v = rot_matrix1[:, 2]
+    atoms_c = atoms - centroid
+    sum_error = np.sum(np.dot(atoms_c, normal_v) ** 2)
     if sum_error > 0.5 * len(planar_atoms): # TODO: reasonable threshold?
         raise ResideTransformError(f"Residue really doesn't seem planar: {res.res.full_id}, plane RMSE = {np.sqrt(sum_error / len(planar_atoms))}, planar atoms = {list(atom_names)}")
-
-    # rotate to align the fitted_plane to x, y
-    plane_basis = orthonormal_basis(np.array([
-        [1, 0, -fitted_plane[0]],
-        [0, 1, -fitted_plane[1]]
-    ]).T)
-    # rotation matrix is an orthonormal matrix with det=1. Cross product gives us the remaining vector orthogonal to the plane.
-    rot_matrix1 = np.concatenate([plane_basis, np.cross(plane_basis[:, 0], plane_basis[:, 1]).reshape(3, 1)], axis=1)
     
-    assert np.allclose(rot_matrix1 @ rot_matrix1.T, np.eye(3))
-    assert np.allclose(np.linalg.det(rot_matrix1), 1)
+    # project N onto the plane, this will be the origin
+    assert plane_basis.shape == (3, 2)
+    projection = plane_basis @ plane_basis.T
+    if nX is None:
+        origin = centroid
+        print(f"WARNING: No N1/N9 atom found in {res.res.full_id}.")
+        rot = rot_matrix1
+    else:
+        origin = ((nX.coord - centroid) @ projection) + centroid
 
-    atoms2 = atoms @ rot_matrix1
 
-    assert np.allclose(np.linalg.norm(atoms, axis=1), np.linalg.norm(atoms2, axis=1))
+        # rotate to align the fitted_plane to x, y
+        # rotation matrix is an orthonormal matrix with det=1. Cross product gives us the remaining vector orthogonal to the plane.
+        # rot_matrix1 = np.concatenate([plane_basis, normal_v.reshape(3, 1)], axis=1)
+        assert np.sum((atoms_c @ rot_matrix1)[:, 2] ** 2) < 1.3 * sum_error
+        
+        assert np.allclose(rot_matrix1 @ rot_matrix1.T, np.eye(3), atol=1e-5)
+        assert np.allclose(np.linalg.det(rot_matrix1), 1, atol=1e-5)
 
-    # orient C1'-N bond to x-axis (using 2D rotation on X,Y)
-    c1_bonded = np.linalg.norm(atoms, axis=1) <= 1.6
-    c1_bonded_atom = (list(atoms2[c1_bonded & (atom_elements == "N")]) or list(atoms2[c1_bonded]))[0]
-    x_vector = normalize(c1_bonded_atom[0:2])
-    rot_matrix2 = np.array([
-        [x_vector[0], -x_vector[1], 0],
-        [x_vector[1], x_vector[0],  0],
-        [ 0,          0,            1]
-    ])
-    atoms3 = atoms2 @ rot_matrix2
+        atoms_c_rot1 = atoms_c @ rot_matrix1
+
+        assert np.allclose(np.linalg.norm(atoms_c, axis=1), np.linalg.norm(atoms_c_rot1, axis=1), atol=1e-5)
+
+        # orient C1'-N bond to x-axis (using 2D rotation on X,Y)
+        c1_c_rot = (c1.coord - origin) @ rot_matrix1
+        x_vector = -normalize(c1_c_rot)
+        rot_matrix2 = np.array([
+            [x_vector[0], -x_vector[1], 0],
+            [x_vector[1], x_vector[0],  0],
+            [ 0,          0,            1]
+        ])
+        rot = rot_matrix1 @ rot_matrix2
+
+        left_c = res.get_atom("C8", None) if nX.name == "N9" else res.get_atom("C6", None)
+        if left_c is not None and ((left_c.coord - origin) @ rot)[1] > 0:
+            # flip the Y axis
+            rot = rot @ np.array([ [1, 0, 0], [0, -1, 0], [0, 0, 1] ])
+            normal_v = -normal_v
+
 
     return ResiduePosition(
-        translation,
-        rot_matrix1 @ rot_matrix2,
+        origin,
+        rot,
         plane_basis,
-        np.cross(plane_basis[:, 0], plane_basis[:, 1])
+        normal_v,
+        projection,
+        c1.coord,
+        nX.coord if nX is not None else None
     )
 
-def try_get_residue_posinfo(res: AltResidue, warning = None) -> Optional[ResiduePosition]:
+def get_residue_posinfo_C1_N(res: AltResidue) -> TranslationThenRotation:
+    """
+    Orients residue so that the C1-N bond is aligned with the x-axis, the N1-C2 or N9-C8 bond is towards Y axis and remaining is Z
+    """
+    c1 = res.get_atom("C1'", None)
+    if res.get_atom("N9", None) is not None:
+        n = res.get_atom("N9", None)
+        c2 = res.get_atom("C8", None)
+    else:
+        n = res.get_atom("N1", None)
+        c2 = res.get_atom("C2", None)
+    if c1 is None or n is None or c2 is None:
+        raise ResideTransformError(f"Missing atoms in residue {res.res.full_id}")
+    translation = -n.coord # tvl copilot toto dal asi, cool priklad do appendix AI
+    x = -(c1.coord - n.coord)
+    x /= np.linalg.norm(x)
+    y = c2.coord - n.coord
+    y -= np.dot(y, x) * x
+    y /= np.linalg.norm(y)
+    z = np.cross(x, y)
+    z /= np.linalg.norm(z)
+    rotation = np.array([x, y, z]).T
+
+    test = AltResidue(transform_residue(res.res, translation, rotation), res.alt)
+    assert np.all(test.get_atom(n.name).coord < 0.001)
+    assert np.all(test.get_atom(c1.name).coord[1:] < 0.001)
+    assert -1.9 < test.get_atom(c1.name).coord[0] < -1.2, f"Unexpected C1' coordinates (x is bad): {test.get_atom(c1.name).coord}"
+    assert np.all(test.get_atom(c2.name).coord[2] < 0.001)
+
+    return TranslationThenRotation(translation, rotation)
+
+def get_C1_N_angles(res1: TranslationThenRotation, res2: TranslationThenRotation) -> Tuple[float, float, float]:
+    matrix = res1.rotation.T @ res2.rotation
+    # https://stackoverflow.com/a/37558238
+    yaw = math.degrees(math.atan2(matrix[1, 0], matrix[0, 0]))
+    pitch = math.degrees(math.atan2(-matrix[2, 0], math.sqrt(matrix[2, 1]**2 + matrix[2, 2]**2)))
+    roll = math.degrees(math.atan2(matrix[2, 1], matrix[2, 2]))
+    return yaw, pitch, roll
+
+T = TypeVar('T')
+def try_x(f: Callable[[AltResidue], T], res: AltResidue, warning = None) -> Optional[T]:
     try:
-        return get_residue_posinfo(res)
+        return f(res)
     except ResideTransformError as e:
         if warning is not None:
             warning(str(e))
         else:
             print(f"WARNING(residue = {res.res.full_id} {res.alt}): {e}")
         return None
+
+
+def try_get_residue_posinfo(res: AltResidue, warning = None) -> Optional[ResiduePosition]:
+    return try_x(get_residue_posinfo, res, warning)
 
 def transform_residue(r: Bio.PDB.Residue.Residue, translation: np.ndarray, rotation: np.ndarray):
     r = r.copy()
@@ -219,16 +309,24 @@ def transform_residue(r: Bio.PDB.Residue.Residue, translation: np.ndarray, rotat
 @dataclass
 class PairStats:
     # buckle: float
-    coplanarity_angle: Optional[float]
-    coplanarity_shift1: Optional[float]
-    coplanarity_shift2: Optional[float]
-    coplanarity_edge_angle1: Optional[float]
-    coplanarity_edge_angle2: Optional[float]
+    coplanarity_angle: Optional[float] = None
+    coplanarity_shift1: Optional[float] = None
+    coplanarity_shift2: Optional[float] = None
+    coplanarity_edge_angle1: Optional[float] = None
+    coplanarity_edge_angle2: Optional[float] = None
+    C1_C1_distance: Optional[float] = None
+    C1_C1_total_angle: Optional[float] = None
+    C1_C1_yaw: Optional[float] = None
+    C1_C1_pitch: Optional[float] = None
+    C1_C1_roll: Optional[float] = None
     # opening: float
     # nearest_distance: float
 
 def _linalg_norm(v) -> float:
     return float(np.linalg.norm(v)) # typechecker se asi posral nebo fakt nevím z jakých halucinací usoudil, že výsledek np.linalg.norm nejde násobit, porovnávat nebo nic
+
+def _linalg_normalize(v) -> np.ndarray:
+    return v / np.linalg.norm(v)
 
 def maybe_min(array):
     if len(array) == 0:
@@ -250,22 +348,35 @@ def get_edge_edges(edge: List[Bio.PDB.Atom.Atom]) -> Optional[Tuple[Bio.PDB.Atom
 def calc_pair_stats(pair_type: pair_defs.PairType, res1: AltResidue, res2: AltResidue) -> Optional[PairStats]:
     p1 = try_get_residue_posinfo(res1)
     p2 = try_get_residue_posinfo(res2)
+    rot_trans1 = try_x(get_residue_posinfo_C1_N, res1)
+    rot_trans2 = try_x(get_residue_posinfo_C1_N, res2)
+
     if p1 is None or p2 is None:
         return None
-    res1_ = AltResidue(transform_residue(res1.res, p1.translation, p1.rotation), res1.alt)
-    res2_ = AltResidue(transform_residue(res2.res, p1.translation, p1.rotation), res2.alt)
+    res1_ = AltResidue(transform_residue(res1.res, -p1.origin, p1.rotation), res1.alt)
+    res2_ = AltResidue(transform_residue(res2.res, -p1.origin, p1.rotation), res2.alt)
     edge1 = get_edge_atoms(res1, pair_type.edge1_name)
     edge1_edges = get_edge_edges(edge1)
     edge2 = get_edge_atoms(res2, pair_type.edge2_name)
     edge2_edges = get_edge_edges(edge2)
 
-    copl_angle = math.degrees(np.arccos(np.dot(p1.plane_normal_vector, p2.plane_normal_vector)))
+    out = PairStats()
+
+    out.coplanarity_angle = math.degrees(np.arccos(np.dot(p1.plane_normal_vector, p2.plane_normal_vector)))
     
-    copl_shift1 = maybe_min([p2.plane_get_deviation(a.coord) for a in edge1])
-    copl_shift2 = maybe_min([p1.plane_get_deviation(a.coord) for a in edge2])
-    copl_edge_a1 = math.degrees(math.acos(p2.get_projection_squish_angle(*(a.coord for a in edge1_edges)))) if edge1_edges is not None else None
-    copl_edge_a2 = math.degrees(math.acos(p1.get_projection_squish_angle(*(a.coord for a in edge2_edges)))) if edge2_edges is not None else None
-    return PairStats(copl_angle, copl_shift1, copl_shift2, copl_edge_a1, copl_edge_a2)
+    out.coplanarity_shift1 = maybe_min([p2.plane_get_deviation(a.coord) for a in edge1])
+    out.coplanarity_shift2 = maybe_min([p1.plane_get_deviation(a.coord) for a in edge2])
+    out.coplanarity_edge_angle1 = math.degrees(math.acos(p2.get_projection_squish_angle(*(a.coord for a in edge1_edges)))) if edge1_edges is not None else None
+    out.coplanarity_edge_angle2 = math.degrees(math.acos(p1.get_projection_squish_angle(*(a.coord for a in edge2_edges)))) if edge2_edges is not None else None
+
+    out.C1_C1_distance = _linalg_norm(res1.get_atom("C1'").coord - res2.get_atom("C1'").coord)
+    if p1.n_pos is not None and p2.n_pos is not None and p1.c1_pos is not None and p2.c1_pos is not None:
+        out.C1_C1_total_angle = math.degrees(np.arccos(np.dot(_linalg_normalize(p1.n_pos - p1.c1_pos), _linalg_normalize(p2.n_pos - p2.c1_pos))))
+    
+    if rot_trans1 and rot_trans2:
+        out.C1_C1_yaw, out.C1_C1_pitch, out.C1_C1_roll = get_C1_N_angles(rot_trans1, rot_trans2)
+
+    return out
 
 def get_angle(atom1: Bio.PDB.Atom.Atom, atom2: Bio.PDB.Atom.Atom, atom3: Bio.PDB.Atom.Atom) -> float:
     v1 = atom1.coord - atom2.coord
@@ -285,7 +396,7 @@ class HBondStats:
 def hbond_stats(atom0: Bio.PDB.Atom.Atom, atom1: Bio.PDB.Atom.Atom, atom2: Bio.PDB.Atom.Atom, atom3: Bio.PDB.Atom.Atom) -> HBondStats:
     assert _linalg_norm(atom0.coord - atom1.coord) <= 1.6, f"atoms 0,1 not bonded: {atom0.full_id} {atom1.full_id} ({np.linalg.norm(atom0.coord - atom1.coord)} > 1.6, {atom0.coord} {atom1.coord})"
     assert _linalg_norm(atom2.coord - atom3.coord) <= 1.6, f"atoms 2,3 not bonded: {atom2.full_id} {atom3.full_id} ({np.linalg.norm(atom0.coord - atom1.coord)} > 1.6, {atom0.coord} {atom1.coord})"
-    assert _linalg_norm(atom1.coord - atom2.coord) > 1.3, f"atoms too close for h-bond: {atom1.full_id} {atom2.full_id} ({np.linalg.norm(atom1.coord - atom2.coord)} < 2, {atom1.coord} {atom2.coord})"
+    assert _linalg_norm(atom1.coord - atom2.coord) > 1.55, f"atoms too close for h-bond: {atom1.full_id} {atom2.full_id} ({np.linalg.norm(atom1.coord - atom2.coord)} < 2, {atom1.coord} {atom2.coord})"
     assert _linalg_norm(atom1.coord - atom2.coord) < 10, f"atoms too far for h-bond: ({np.linalg.norm(atom1.coord - atom2.coord)} > 6, {atom1.coord} {atom2.coord})"
     return HBondStats(
         length=get_distance(atom1, atom2),
@@ -395,9 +506,10 @@ def get_stats_for_csv(df_: pl.DataFrame, structure: Bio.PDB.Structure.Structure,
             stats = calc_pair_stats(pair_type, r1, r2)
             if hbonds is not None:
                 yield i, hbonds, stats
-        except AssertionError as e:
-            print(f"{e} on row:\n{to_csv_row(df_, i, 15)}")
-            continue
+        # except AssertionError as e:
+        #     print(f"Assertion error {e} on row:\n{to_csv_row(df_, i, 15)}")
+
+        #     continue
         except Exception as e:
             print(f"Error on row:\n{to_csv_row(df_, i, 15)}")
             import traceback
@@ -474,7 +586,7 @@ def export_stats_csv(pdbid, df: pl.DataFrame, add_metadata_columns: bool, pair_t
     }
     result_cols.update(
         pl.DataFrame([
-            p or PairStats(None, None, None, None, None)
+            p or PairStats()
             for p in pair_stats
         ]).to_dict()
     )
@@ -517,20 +629,20 @@ def load_inputs(pool: Union[Pool, MockPool], args) -> pl.DataFrame:
 def main(pool: Union[Pool, MockPool], args):
     df = load_inputs(pool, args)
     max_bond_count = get_max_bond_count(df)
-    groups = list(df.groupby(pl.col("pdbid")))
+    groups = list(df.group_by(pl.col("pdbid")))
 
     processes = []
 
     processes.append([
         pool.apply_async(export_stats_csv, args=[pdbid, group, args.metadata, args.pair_type, max_bond_count])
-        for (pdbid,), group in groups
+        for (pdbid,), group in groups # type: ignore
         # for chunk in group.iter_slices(n_rows=100)
     ])
     if args.dssr_binary is not None:
         import dssr_wrapper
         processes.append([
             pool.apply_async(dssr_wrapper.add_dssr_info, args=[pdbid, group, args.dssr_binary])
-            for ((pdbid,), group) in groups
+            for ((pdbid,), group) in groups # type: ignore
         ])
 
     result_chunks = []
