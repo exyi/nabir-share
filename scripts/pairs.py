@@ -29,9 +29,12 @@ class AltResidue:
 
     def transform_atom(self, a: Bio.PDB.Atom.DisorderedAtom) -> Any:
         if a.is_disordered():
-            if self.alt == '' and (a.id.startswith('H') or a.id in ['P', 'OP1', 'OP2', "O5'", "C5'", "C4'", "O4'", "C3'", "O3'", "C2'"]):
+            if self.alt == '':
                 # don't crash on uninteresting atoms
-                return a.disordered_get('A')
+                if (a.id.startswith('H') or a.id in ['P', 'OP1', 'OP2', 'OP3', "O5'", "C5'", "C4'", "O4'", "C3'", "O3'", "O2'", "C2'", "C1'"]):
+                    return a.disordered_get('A')
+                elif np.allclose(a.disordered_get('A').coord, a.disordered_get('B').coord, atol=0.05):
+                    return a.disordered_get('A')
             if not a.disordered_has_id(self.alt):
                 raise KeyError(f"Atom {self.res.full_id}:{a.id} is disordered, but alt='{self.alt}' must be one of {a.disordered_get_id_list()}")
             return a.disordered_get(self.alt)
@@ -135,10 +138,12 @@ class ResiduePosition:
 
     def plane_get_deviation(self, point: np.ndarray) -> float:
         """
-        Returns the absolute distance of the point from the plane (in Å).
+        Returns the distance of the point from the plane (in Å), negative if it's on opposite direction of the normal vector
         """
         assert point.shape == (3,)
-        return _linalg_norm(point - self.plane_projection(point))
+        distance = _linalg_norm(point - self.plane_projection(point))
+        sign = np.sign(np.dot(point - self.origin, self.plane_normal_vector))
+        return sign * distance
     
     def get_projection_squish_angle(self, point1: np.ndarray, point2: np.ndarray) -> float:
         """
@@ -288,8 +293,8 @@ def get_residue_posinfo_C1_N(res: AltResidue) -> TranslationThenRotation:
 
     return TranslationThenRotation(translation, rotation)
 
-def get_C1_N_angles(res1: TranslationThenRotation, res2: TranslationThenRotation) -> Tuple[float, float, float]:
-    matrix = res1.rotation.T @ res2.rotation
+def get_C1_N_angles(rot1: np.ndarray, rot2: np.ndarray) -> Tuple[float, float, float]:
+    matrix = rot1.T @ rot2
     # https://stackoverflow.com/a/37558238
     yaw = math.degrees(math.atan2(matrix[1, 0], matrix[0, 0]))
     pitch = math.degrees(math.atan2(-matrix[2, 0], math.sqrt(matrix[2, 1]**2 + matrix[2, 2]**2)))
@@ -332,9 +337,12 @@ class PairStats:
     coplanarity_edge_angle2: Optional[float] = None
     C1_C1_distance: Optional[float] = None
     C1_C1_total_angle: Optional[float] = None
-    C1_C1_yaw: Optional[float] = None
-    C1_C1_pitch: Optional[float] = None
-    C1_C1_roll: Optional[float] = None
+    C1_C1_yaw1: Optional[float] = None
+    C1_C1_pitch1: Optional[float] = None
+    C1_C1_roll1: Optional[float] = None
+    C1_C1_yaw2: Optional[float] = None
+    C1_C1_pitch2: Optional[float] = None
+    C1_C1_roll2: Optional[float] = None
     # opening: float
     # nearest_distance: float
 
@@ -344,10 +352,14 @@ def _linalg_norm(v) -> float:
 def _linalg_normalize(v) -> np.ndarray:
     return v / np.linalg.norm(v)
 
-def maybe_min(array):
+def maybe_agg(agg, array):
     if len(array) == 0:
         return None
-    return min(array)
+    return agg(array)
+
+def abs_min(array):
+    ix = np.argmin(np.abs(array))
+    return array[ix]
 
 def get_edge_atoms(res: AltResidue, edge_name: str) -> List[Bio.PDB.Atom.Atom]:
     edge = pair_defs.base_edges.get(resname_map.get(res.resname, res.resname), {}).get(edge_name, [])
@@ -380,17 +392,18 @@ def calc_pair_stats(pair_type: pair_defs.PairType, res1: AltResidue, res2: AltRe
 
     out.coplanarity_angle = math.degrees(np.arccos(np.dot(p1.plane_normal_vector, p2.plane_normal_vector)))
     
-    out.coplanarity_shift1 = maybe_min([p2.plane_get_deviation(a.coord) for a in edge1])
-    out.coplanarity_shift2 = maybe_min([p1.plane_get_deviation(a.coord) for a in edge2])
+    out.coplanarity_shift1 = maybe_agg(abs_min, [p2.plane_get_deviation(a.coord) for a in edge1])
+    out.coplanarity_shift2 = maybe_agg(abs_min, [p1.plane_get_deviation(a.coord) for a in edge2])
     out.coplanarity_edge_angle1 = p2.get_relative_line_rotation(*(a.coord for a in edge1_edges)) if edge1_edges is not None else None
     out.coplanarity_edge_angle2 = p1.get_relative_line_rotation(*(a.coord for a in edge2_edges)) if edge2_edges is not None else None
 
     out.C1_C1_distance = _linalg_norm(res1.get_atom("C1'").coord - res2.get_atom("C1'").coord)
     if p1.n_pos is not None and p2.n_pos is not None and p1.c1_pos is not None and p2.c1_pos is not None:
-        out.C1_C1_total_angle = math.degrees(np.arccos(np.dot(_linalg_normalize(p1.n_pos - p1.c1_pos), _linalg_normalize(p2.n_pos - p2.c1_pos))))
+        out.C1_C1_total_angle = math.degrees(np.arccos(np.dot(_linalg_normalize(p1.n_pos - p1.c1_pos), _linalg_normalize(p2.c1_pos - p2.n_pos))))
     
     if rot_trans1 and rot_trans2:
-        out.C1_C1_yaw, out.C1_C1_pitch, out.C1_C1_roll = get_C1_N_angles(rot_trans1, rot_trans2)
+        out.C1_C1_yaw1, out.C1_C1_pitch1, out.C1_C1_roll1 = get_C1_N_angles(rot_trans1.rotation, -rot_trans2.rotation)
+        out.C1_C1_yaw2, out.C1_C1_pitch2, out.C1_C1_roll2 = get_C1_N_angles(rot_trans2.rotation, -rot_trans1.rotation)
 
     return out, p1, p2
 
@@ -513,7 +526,7 @@ def get_residue(structure: Bio.PDB.Structure.Structure, model, chain, res, ins, 
     ch: Bio.PDB.Chain.Chain = structure[model-1][chain]
     found = ch.child_dict.get((' ', res, ins), None)
     if found is None:
-        found = next((r for r in ch.get_residues() if r.id[1] == res and r[2] == ins), None)
+        found = next((r for r in ch.get_residues() if r.id[1] == res and r.id[2] == ins), None)
     if found is None:
         raise KeyError(f"{chain}.{res}{ins}")
     return AltResidue(found, alt)
