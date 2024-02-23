@@ -1,10 +1,12 @@
 <script lang="ts">
+	import { getColumnLabel, hideColumn, longNucleotideNames } from "$lib/dbModels";
+	import metadata from "$lib/metadata";
 	import type { NucleotideId, PairId, PairingInfo } from "$lib/pairing";
+	import _ from "lodash";
 
     export let imageUrl: string
     export let videoUrl: string
     export let pair: PairingInfo
-
 
     function resSele(r: NucleotideId) {
         let nt = String(r.resnum).replace("-", "\\-")
@@ -29,6 +31,18 @@
         script.push(`hide everything, not %pair`)
 
         return script
+    }
+
+    const columnBlacklist = [ "pdbid", "model", "chain1", "chain2", "res1", "res2", "nr1", "nr2", "alt1", "alt2", "ins1", "ins2" ]
+
+    function getTableRows(tuple: object | null) {
+        if (!tuple)  return []
+        const meta = metadata.find(m => m.pair_type[0].toUpperCase() == pair.id.pairingType[0].toUpperCase() && m.pair_type[1] == pair.id.pairingType[1])
+
+        return Object.entries(tuple).filter(([colName, _]) => !hideColumn(colName, meta) && !columnBlacklist.includes(colName)).map(([colName, value]) => {
+            const [ label, tooltip ] = getColumnLabel(colName, meta) ?? [ null, null ]
+            return { colName, label, tooltip, value }
+        })
     }
 </script>
 
@@ -93,7 +107,12 @@
     {/if}
     {#if pair.id.nt1.pdbid}
     <div>
-        <!-- <h4>From structure</h4> -->
+        <p>
+            {_.capitalize(longNucleotideNames[pair.id.nt1.resname] ?? pair.id.nt1.resname)} <strong>{pair.id.nt1.resnum}{pair.id.nt1.inscode ? '.' + pair.id.nt1.inscode : ''}</strong> in chain <strong>{pair.id.nt1.chain}</strong>
+            forms {pair.id.pairingType[0]} basepair with
+            {_.capitalize(longNucleotideNames[pair.id.nt2.resname] ?? pair.id.nt2.resname)} <strong>{pair.id.nt2.resnum}{pair.id.nt2.inscode ? '.' + pair.id.nt2.inscode : ''}</strong> in chain <strong>{pair.id.nt2.chain}</strong>
+        </p>
+        <h5 style="margin-bottom: 0px">From structure{[null, undefined, '', 0, 1, '1', '0'].includes(pair.id.nt1.model) ? '' : ` (model ${pair.id.nt1.model}`}</h5>
         <div class='media' style="max-width: 600px">
             <div class="media-left">
                 <a href="https://www.rcsb.org/structure/{pair.id.nt1.pdbid}">
@@ -138,12 +157,16 @@
     <div>
         <table class="table is-narrow is-striped" style="width: fit-content">
             
-        {#each Object.entries(pair?.originalRow ?? {}) as [k, v]}
+        <tbody>
+        {#each getTableRows(pair?.originalRow) as r}
             <tr>
-                <td><b><code>{k}</code></b></td>
-                <td>{typeof v == "number" ? v.toPrecision(7) : v == null ? "" : "" + v}</td>
+                <td><b><code>{r.colName}</code></b></td>
+                <td>{r.label ?? ''}</td>
+                <td colspan={r.colName == 'structure_name' ? '2' : '1'}><strong>{typeof r.value == "number" ? r.value.toPrecision(5) : r.value == null ? "" : "" + r.value}</strong></td>
+                <td><i>{r.tooltip ?? ''}</i></td>
             </tr>
         {/each}
+        </tbody>
         </table>
         <!-- <pre>{JSON.stringify(pair, null, 2)}</pre> -->
     </div>

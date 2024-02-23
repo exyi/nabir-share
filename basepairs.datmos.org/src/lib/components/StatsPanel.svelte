@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { fillStatsLegends, getColumnLabel, type HistogramSettingsModel, type KDE2DSettingsModel, type StatisticsSettingsModel } from "$lib/dbModels";
+    import { fillStatsLegends, getColumnLabel, hideColumn, type HistogramSettingsModel, type KDE2DSettingsModel, type StatisticsSettingsModel } from "$lib/dbModels";
     import type * as arrow from 'apache-arrow'
     import HistogramPlot from "./HistogramPlot.svelte";
     import Density2DPlot from "./Density2DPlot.svelte";
@@ -23,7 +23,10 @@
     let optionsAllowFilters = true
     $: optionsAllowFilters = !!options?.variables?.some(v => !!v.filterSql)
     let availableColumns
-    $: availableColumns = data && metadata ? data.schema.fields.map(f => ({ column: f.name, label: getColumnLabel(f.name, metadata) ?? f.name, type: ""+f.type, isNumber: String(f.type).startsWith("Float") /* || String(f.type).startsWith("Int") */ })) : []
+    $: availableColumns = data && metadata ? data.schema.fields.filter(f => !hideColumn(f.name, metadata)).map(f => {
+      const [label, tooltip] = getColumnLabel(f.name, metadata) ?? [f.name, null]
+      return { column: f.name, label, tooltip: `${f.name}: ${f.type}${tooltip ? ' - ' + tooltip : ''}`, type: ""+f.type, isNumber: String(f.type).startsWith("Float") /* || String(f.type).startsWith("Int") */ }
+    }) : []
 
     function editPanel(panelIndex: number) {
       modalDialog.showModal()
@@ -202,7 +205,7 @@
             <div class="select">
               <select bind:value={v.column} on:change={e => v.label = ""}>
                 {#each availableColumns.filter(c => c.isNumber) as col}
-                  <option value={col.column} title="{col.column}: {col.type}">{col.label}</option>
+                  <option value={col.column} title="{col.tooltip}">{col.label}</option>
                 {/each}
               </select>
             </div>
@@ -239,7 +242,7 @@
           <div class="select">
             <select bind:value={v.column} id="input_statpanel_variable_{vi}" on:change={e => v.label = ""}>
               {#each availableColumns.filter(c => c.isNumber) as col}
-                <option value={col.column} title="{col.column}: {col.type}">{col.label}</option>
+                <option value={col.column} title="{col.tooltip}">{col.label}</option>
               {/each}
             </select>
           </div>

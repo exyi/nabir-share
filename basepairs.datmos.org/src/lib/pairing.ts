@@ -33,6 +33,8 @@ export function normalizePairFamily(f: string) {
 }
 
 export function tryParsePairingType(s: string | [ PairingFamily, string ]): [ PairingFamily, string ] | undefined {
+    if (!s)
+        return undefined
     if (Array.isArray(s))
         return s as [ PairingFamily, string ]
 

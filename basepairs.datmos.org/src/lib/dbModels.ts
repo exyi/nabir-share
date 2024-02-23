@@ -38,6 +38,7 @@ export type KDE2DSettingsModel = {
 export type VariableModel = {
     column: string
     label: string
+    tooltip?: string
     filterSql?: string
     filterId?: string
 }
@@ -322,20 +323,156 @@ export function parseStatsFromUrl(params: URLSearchParams): StatisticsSettingsMo
 
 type UnwrapArray<T> = T extends Array<infer U> ? U : T
 
-export function getColumnLabel(column: string, metadata: UnwrapArray<typeof metadataModule> | undefined, opt: { hideBondName?: boolean, hideParameterName?: boolean}={}) {
+export const longBaseNames = { A: "adenine", T: "thymine", U: "uracil", G: "guanine", "C": "cytosine", DA: "adenine", DT: "thymine", DU: "uracil", DG: "guanine", DC: "cytosine" }
+export const longNucleotideNames = {
+    A: "adenosine", T: "thymidine", U: "uridine", G: "guanosine", "C": "cytidine",
+    DA: "deoxy-adenosine", DT: "deoxy-thymidine", DU: "deoxy-uridine", DG: "deoxy-guanosine", DC: "deoxy-cytidine"
+}
+
+function capitalizeFirst(str: string | null | undefined) {
+    return !str ? str : str.replace(/^./, x => x.toUpperCase())
+}
+
+function formatBaseNames(metadata: UnwrapArray<typeof metadataModule> | undefined, long: boolean, nucleotide: boolean = null) {
+    if (!metadata) {
+        return long ? [ 'base 1', 'base 2' ] : [ 'A', 'B' ]
+    }
+    nucleotide ??= long && metadata.atoms.some(a => a.some(a => a.endsWith("'") || a.startsWith("OP")))
+    const [b1, b2] = metadata.pair_type[1].toUpperCase().split('-')
+    if (long) {
+        const dict = nucleotide ? longNucleotideNames : longBaseNames
+        if (b1 == b2) {
+            return [ `left ${dict[b1] ?? b1}`, `right ${dict[b2] ?? b2}` ]
+        } else {
+            return [ dict[b1] ?? b1, dict[b2] ?? b2 ]
+        }
+    } else {
+        if (b1 == b2) {
+            return [ `${b1}₁`, `${b2}₂` ]
+        } else {
+            return [ b1, b2 ]
+        }
+    }
+}
+
+function formatAtomNames(metadata: UnwrapArray<typeof metadataModule> | undefined, atoms: string[], long: boolean, comments?: (string | null)[]) {
+    const [b1, b2] = formatBaseNames(metadata, long)
+    let result = ''
+    for (let i = 0; i < atoms.length; i++) {
+        if (i > 0) {
+            result += ', '
+            if (long && i == atoms.length - 1)
+                result += 'and '
+        }
+        if (/^[AB]/.test(atoms[i]) && atoms[i-1]?.[0] != atoms[i][0]) {
+            result += (atoms[i][0] == 'A' ? b1 : b2) + ' '
+        }
+
+        result += atoms[i].replace(/^[AB]/, '')
+        if (comments && comments[i])
+            result += ' ' + comments[i]
+    }
+    return result
+}
+
+function baseNitrogen(base) {
+    return base == 'G' || base == 'A' ? 'N9' : 'N1'
+}
+
+function formatEdge(e: string) {
+    e = e.toUpperCase()
+    return e == 'S' ? 'Sugar' :
+           e == 'W' ? 'Watson-Crick' :
+           e == 'H' ? 'Hoogsteen' :
+           e == 'B' ? 'Bifurcated' :
+           e
+}
+
+export function getColumnLabel(column: string, metadata: UnwrapArray<typeof metadataModule> | undefined, opt: { hideBondName?: boolean, hideParameterName?: boolean}={}): [string, string | null] {
     let m
     if ((m = /hb_(\d)_(\w+)/.exec(column))) {
         const [_, i, name] = m
-        if (metadata.labels[Number(i)])
-            return [
+        if (metadata?.labels[Number(i)]) {
+            const hbondAtoms = metadata.atoms[i]
+            const baseNames = formatBaseNames(metadata, true)
+            const label = [
                 opt.hideBondName ? null : metadata.labels[Number(i)],
-                opt.hideParameterName ? null : {'length': "Length", 'donor_angle': "Donor angle", 'acceptor_angle': "Acceptor angle"}[name]
+                opt.hideParameterName ? null : ({
+                    'length': "Length",
+                    'donor_angle': "Donor-covalent ∡",
+                    'acceptor_angle': "Acceptor-covalent ∡",
+                    'donor_OOPA': 'Donor-plane ∡',
+                    'acceptor_OOPA': 'Acceptor-plane ∡',
+                }[name] ?? name)
             ].filter(x => x != null).join(' ')
+            const tooltip =
+                !hbondAtoms ? null :
+                name == 'length' ? "Distance between the H-bond heavy atoms - " + formatAtomNames(metadata, hbondAtoms.slice(1, 3), true) :
+                name == 'donor_angle' ? `Angle between heavy atoms ${formatAtomNames(metadata, hbondAtoms.slice(0, 3), true, [null, "(donor)", "(acceptor)"])}` :
+                name == 'acceptor_angle' ? `Angle between heavy atoms ${formatAtomNames(metadata, hbondAtoms.slice(1, 4), true, ["(donor)", "(acceptor)", null])}` :
+                name == 'donor_OOPA' ? `Angle of ${metadata.labels[i]} and the ${baseNames[0]} (donor) plane` :
+                name == 'acceptor_OOPA' ? `Angle of ${metadata.labels[i]} and the ${baseNames[1]} (acceptor) plane` :
+                null
+            return [label, tooltip]
+        }
     }
     if (column == "bogopropeller" || column == "coplanarity_angle") {
-        return "Coplanarity °"
+        return ["Coplanarity ∡", "Angle between planes of the pairing bases."]
+    }
+    if (column == 'coplanarity_shift1' || column == 'coplanarity_shift2') {
+        let [b1, b2] = formatBaseNames(metadata, false, false)
+        let [lb1, lb2] = formatBaseNames(metadata, true, false)
+        if (column == 'coplanarity_shift1') {
+            [b1, b2] = [b2, b1];
+            [lb1, lb2] = [lb2, lb1]
+        }
+        return [`${b1} edge - ${b2} plane distance`, `Shortest distance between ${lb1} ${formatEdge(metadata.pair_type[0][column == 'coplanarity_shift2' ? 2 : 1])} edge and ${lb2} plane`]
+    }
+    if (column == 'coplanarity_edge_angle1' || column == 'coplanarity_edge_angle2') {
+        const swap = column == 'coplanarity_edge_angle2'
+        let [b1, b2] = formatBaseNames(metadata, false, false)
+        let [lb1, lb2] = formatBaseNames(metadata, true, false)
+        if (swap) {
+            [b1, b2] = [b2, b1];
+            [lb1, lb2] = [lb2, lb1]
+        }
+        return [`${b1} edge / ${b2} plane ∡`, `Angle between ${lb1} ${formatEdge(metadata.pair_type[0][swap ? 2 : 1])} edge and ${lb2} plane`]
+    }
+    if (column == "resolution") {
+        return ["Structure resolution", null]
+    }
+    if (column == 'C1_C1_distance') {
+        return ["C1'-C1' distance", null]
+    }
+    if (column == 'C1_C1_total_angle') {
+        const [b1, b2] = formatBaseNames(metadata, true, true)
+        const [n1, n2] = metadata.pair_type[1].toUpperCase().split('-').map(baseNitrogen)
+        return [`C1'-${n1} / ${n2}-C1' ∡`, `Total angle between ${b1} C1'-${n1} bond and ${b2} ${n2}-C1' bond` ]
+    }
+    if ((m = /^C1_C1_(yaw|pitch|roll)$/.exec(column))) {
+        const angleName = m[1]
+        const [b1, b2] = formatBaseNames(metadata, true, true)
+        const [n1, n2] = metadata.pair_type[1].toUpperCase().split('-').map(baseNitrogen)
+        return [`C1'-${n1} / ${n2}-C1' ${capitalizeFirst(angleName)} ∡`, `Yaw angle between ${b1} C1'-${n1} bond and ${b2} ${n2}-C1' bond, relative to the nitrogen plane` ]
+    }
+    if (column == 'jirka_approves') {
+        return [ "Passed quality filter", null ]
+    }
+    if (column == 'mode_deviations') {
+        return [ "Sum of stddevs from KDE mode", "Sum of standard deviations from the peak of Kernel Density Estimate of selected parameters" ]
+    }
+    if (column == 'log_likelihood') {
+        return [ "Log likelihood in KDE", "Sum of log likelihood in Kernel Density Estimate of selected parameters" ]
     }
     return null
+}
+
+export function hideColumn(column: string, metadata: UnwrapArray<typeof metadataModule> | undefined) {
+    let m
+    if (metadata && (m = /hb_(\d)_(\w+)/.exec(column))) {
+        return Number(m[1]) >= metadata.atoms.length
+    }
+    return false
 }
 
 export function fillStatsLegends(stats: StatisticsSettingsModel, metadata: UnwrapArray<typeof metadataModule> | undefined): StatisticsSettingsModel {
@@ -352,8 +489,11 @@ export function fillStatLegends(p: StatPanelSettingsModel, metadata: UnwrapArray
     const hideBondName = p.variables.length > 1 && p.variables.every(v => v.column.startsWith('hb_') && v.column.startsWith(p.variables[0].column.slice(0, 4)))
     const hideParameterName = p.variables.length > 1 && p.variables.every(v => v.column.startsWith('hb_') && v.column.endsWith(p.variables[0].column.slice(5)))
     const variables: VariableModel[] = p.variables.map(v => {
-        const label = v.label || getColumnLabel(v.column, metadata, { hideBondName, hideParameterName })
-        return { ...v, label }
+        if (!v.label) {
+            const [label, tooltip] = getColumnLabel(v.column, metadata, { hideBondName, hideParameterName }) ?? [ v.label, v.tooltip ]
+            v = { ...v, label, tooltip }
+        }
+        return v
     })
     if (p.type == 'kde2d') {
         return {...p, variables } as KDE2DSettingsModel

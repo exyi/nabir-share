@@ -13,8 +13,6 @@
   export let videoShow: boolean = false
   export let allowHoverVideo: boolean = true
 
-
-
   let pngFallback = false,
     webpFallback = false,
     videoLoaded = false
@@ -46,8 +44,6 @@
     }
     console.warn("Failed to load image", e)
   }
-
-
 
   const {open} = getContext<Context>('simple-modal');
 	function showModal(): any {

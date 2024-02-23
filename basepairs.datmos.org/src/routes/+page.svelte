@@ -5,12 +5,12 @@
   import metadata from '$lib/metadata'
 	import FilterEditor from '$lib/components/filterEditor.svelte';
 	import { aggregateBondParameters, aggregatePdbCountQuery, aggregateTypesQuery, defaultFilter, filterToSqlCondition, makeSqlQuery, parseUrl, type NucleotideFilterModel, filterToUrl, type HistogramSettingsModel, type StatisticsSettingsModel, fillStatsLegends, statPresets, type StatPanelSettingsModel, statsToUrl } from '$lib/dbModels.js';
-	import { parsePairingType, type NucleotideId, type PairId, type PairingInfo, type HydrogenBondInfo, tryParsePairingType } from '$lib/pairing.js';
+	import { parsePairingType, type NucleotideId, type PairId, type PairingInfo, type HydrogenBondInfo, tryParsePairingType, type PairingFamily } from '$lib/pairing.js';
 	import { Modal } from 'svelte-simple-modal';
 	import type { AsyncDuckDBConnection } from '@duckdb/duckdb-wasm';
 	import { AsyncLock } from '$lib/lock.js';
   import * as db from '$lib/dbInstance';
-  import type * as arrow from 'apache-arrow'
+  import * as arrow from 'apache-arrow'
 	import { AsyncDebouncer } from '$lib/debouncer.js';
   import HistogramPlot from '$lib/components/HistogramPlot.svelte';
 	import StatsPanel from '$lib/components/StatsPanel.svelte';
@@ -112,7 +112,11 @@
   }
 
   async function ensureViews(conn: AsyncDuckDBConnection, abort: AbortSignal, query: string) {
-    async function addView(name: string, file: string) {
+    async function addView(pairingType: string | [ PairingFamily, string ] | null | undefined, name: string, file: string) {
+      pairingType = tryParsePairingType(pairingType)
+      if (pairingType && !metadata.some(m => m.pair_type[0].toLowerCase() == pairingType[0].toLowerCase() && m.pair_type[1].toLowerCase() == pairingType[1].toLowerCase())) {
+        throw new Error(`Pairing type ${pairingType.join('-')} is not defined.`)
+      }
       console.log(`Loading ${file} into view ${name}`)
       abort.throwIfAborted()
       await conn.query(`CREATE OR REPLACE VIEW '${name}' AS SELECT * FROM parquet_scan('${file}')`)
@@ -126,24 +130,25 @@
     }
     console.log("missing tables:", [...queryTables])
     if (queryTables.has('selectedpair')) {
-      await addView('selectedpair', `${selectedPairing}`)
+      await addView(selectedPairing, 'selectedpair', `${selectedPairing}`)
       queryTables.delete('selectedpair')
     }
     if (queryTables.has('selectedpair_f')) {
-      await addView('selectedpair_f', `${selectedPairing}-filtered`)
+      await addView(selectedPairing, 'selectedpair_f', `${selectedPairing}-filtered`)
       queryTables.delete('selectedpair_f')
     }
     if (queryTables.has('selectedpair_n')) {
-      await addView('selectedpair_n', `n${selectedPairing}`)
+      await addView(selectedPairing, 'selectedpair_n', `n${selectedPairing}`)
       queryTables.delete('selectedpair_n')
     }
 
     for (const t of queryTables) {
-      if (tryParsePairingType(t) != null) {
-        await addView(t, t)
+      let pair
+      if ((pair = tryParsePairingType(t)) != null) {
+        await addView(pair, t, t)
       } else if ((t.endsWith('_f') || t.endsWith('-f') || t.endsWith('_n') || t.endsWith('-n')) &&
-        tryParsePairingType(t.slice(0, -2)) != null) {
-        await addView(t, (t.endsWith('n') ? 'n' : '') + t.slice(0, -2) + (t.endsWith('f') ? '-filtered' : ''))
+        (pair = tryParsePairingType(t.slice(0, -2))) != null) {
+        await addView(pair, t, (t.endsWith('n') ? 'n' : '') + t.slice(0, -2) + (t.endsWith('f') ? '-filtered' : ''))
       } else {
         if (!existingTables.has(t))
           console.warn(`Maybe missing table: ${t}?`)
@@ -227,7 +232,18 @@
       let startTime = performance.now()
       const timing = { ensureViews: -1, query: -1, queryConvert: -1, aggPdbId: -1, aggTypes: -1, aggBondParams: -1 }
       
+      const metadata = getMetadata(selectedPairing)
       const sql = filterMode == "sql" ? filter.sql : makeSqlQuery(filter, queryFromTable(filter))
+      if (filterMode != "sql" && (metadata == null || metadata.count == 0)) {
+        console.warn("Pair type not defined:", selectedPairing)
+        resultsPromise = Promise.resolve(undefined)
+        results = []
+        resultsTable = new arrow.Table()
+        resultsCount = 0
+        resultsAgg = {}
+        return
+      }
+
       console.log(sql)
       abort.throwIfAborted()
       await ensureViews(conn, abort, sql)
@@ -240,8 +256,8 @@
 
       abort.throwIfAborted()
       resultsPromise = conn.query(sql)
-      resultsAgg = {}
       resultsTable = await resultsPromise
+      resultsAgg = {}
       timing.query = performance.now() - startTime
       startTime = performance.now()
 
@@ -316,8 +332,8 @@
       isSymetrical ? [ 'A-A', 'A-C', 'A-G', 'A-U', 'C-C', 'C-U', 'G-C', 'G-G', 'G-U', 'U-U' ]
                    : [ 'A-A', 'A-C', 'A-G', 'A-U', 'C-A', 'C-C', 'C-G', 'C-U', 'G-A', 'G-C', 'G-G', 'G-U', 'U-A', 'U-C', 'U-G', 'U-U' ]);
     const pairs =
-      db.pairTypes.filter(p => p[0].toLowerCase() == selectedFamily.toLowerCase() || selectedFamily == null)
-                  .map(p => ({ family: p[0], bases: p[1], real: true, conventional: allPairTypes.has(p[1].toUpperCase()) }))
+      db.pairTypes.filter(p => selectedFamily == null || p[0].toLowerCase() == selectedFamily.toLowerCase())
+                  .map(p => ({ family: p[0], bases: p[1], real: true, conventional: selectedFamily == null || allPairTypes.has(p[1].toUpperCase()) }))
     const existingPairs = new Set(pairs.map(p => p.bases.toUpperCase()))
     for (const p of allPairTypes) {
       if (!existingPairs.has(p.toUpperCase())) {
@@ -382,7 +398,7 @@
       on:click={() => {selectedPairing = `${p.family}-${p.bases}`}}>{selectedFamily == null ? p.family + "-" : ""}{p.bases}</button>
   {/each}
 </div>
-{#if selectedPairing && selectedPairing[1] == selectedPairing[2]}
+{#if selectedPairing && selectedPairing[1] == selectedPairing[2] && selectedPairing.slice(1) != 'SS'}
   <div class="buttons-help">The {selectedFamily} family is symmetrical, for example <b>C-A</b> is equivalent to <b>A-C</b></div>
 {/if}
 <div style="margin-bottom: 1rem"></div>
@@ -394,9 +410,7 @@
 </div>
 {#await resultsPromise}
 <div style="display:flex; flex-direction: row;">
-  <div style="flex-grow: 1;"></div>
   <Spinner></Spinner>
-  <div style="flex-grow: 1;"></div>
 </div>
 {:then result}
   {#if filterMode == "sql"}
@@ -478,11 +492,16 @@
 
 {/if}
 {#await resultsPromise}
-  <Spinner></Spinner>
+  <!-- <Spinner></Spinner> -->
 {:then _} 
   {#if resultsCount == 0}
-    <h5 class="title is-5" style="text-align: center">Sorry, no results matched your query</h5>
-    <p class="subtitle is-6" style="text-align: center">You can try to loosen the filters {#if filter.mode != 'sql' && filter.filtered}(untick the Representative set, for example){/if}</p>
+    {#if getMetadata(selectedPairing) == null}
+      <h5 class="title is-5" style="text-align: center">Sorry, the base pair is not defined.</h5>
+      <!-- TODO: show rotated bases to illustrate that it's probably impossible -->
+    {:else}
+      <h5 class="title is-5" style="text-align: center">Sorry, no results matched your query</h5>
+      <p class="subtitle is-6" style="text-align: center">You can try to loosen the filters {#if filter.mode != 'sql' && filter.filtered}(untick the Representative set, for example){/if}</p>
+    {/if}
   {/if}
 {/await}
 <PairImages pairs={results} rootImages={imgDir} imgAttachement=".png" videoAttachement=".webm" />

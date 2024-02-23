@@ -200,19 +200,6 @@
               Both
             </label>
           </div>
-          <div class="field has-addons">
-            {#if filter.resolution.min != null}
-              <div class="control">
-                <input class="input is-small num-input" style="max-width:4rem" type="number" step="0.1" min=0 max={filter.filtered ? 3.5 : 20} placeholder="Min" value={filter.resolution?.min ?? 0} on:change={ev => { filter.resolution ??= {}; filter.resolution.min = tryParseNum(ev.currentTarget.value)} }>
-              </div>
-            {/if}
-            <label class="label" for="ntfilter-resolution">{#if filter.resolution.min != null}&nbsp;≤ {/if}Resolution ≤&nbsp;</label>
-            <div class="control">
-              <input class="input is-small num-input" style="max-width:4rem" type="number" step="0.1" min=0 max={filter.filtered ? 3.5 : 20} placeholder={filter.filtered ? '3.5' : ''} value={filter.resolution?.max ?? ''} on:change={ev => { filter.resolution ??= {}; filter.resolution.max = tryParseNum(ev.currentTarget.value)}}>
-            </div>
-            &nbsp;Å
-          </div>
-
 
           <div class="control">
             <label class="checkbox" title="Filter out redundant nucleotides or nucleoties with bad something TODO">
@@ -241,8 +228,10 @@
                   <option value="">pdbid</option>
                   <option value="pdbid DESC, model DESC, chain1 DESC, nr1 DESC">pdbid descending</option>
                   <option value="resolution NULLS LAST, pdbid, model, chain1, nr1" title="Reported resolution of the source PDB structure">resolution</option>
-                  <option value="mode_deviations" title="Number of standard deviations between the H-bond parameters and the modes (peaks) calculated from Kernel Density Estimate. Use to list &quot;nicest&quot; pairs and avoid secondary modes.">Deviation from KDE mode</option>
-                  <option value="log_likelihood DESC" title="Multiplied likelihoods of all H-bond parameters in their Kernel Density Estimate distribution. Use to list &quot;nicest&quot; pairs without disqualifying secondary modes.">KDE log likelihood</option>
+                  <option value="mode_deviations" title="ASCENDING - best to worst - Number of standard deviations between the H-bond parameters and the modes (peaks) calculated from Kernel Density Estimate. Use to list &quot;nicest&quot; pairs and avoid secondary modes.">Deviation from KDE mode ↓</option>
+                  <option value="mode_deviations" title="DESCENDING - worst to best - Number of standard deviations between the H-bond parameters and the modes (peaks) calculated from Kernel Density Estimate. Use to list &quot;nicest&quot; pairs and avoid secondary modes.">Deviation from KDE mode ↑</option>
+                  <option value="log_likelihood DESC" title="↑ DESCENDING - best to worst - Multiplied likelihoods of all H-bond parameters in their Kernel Density Estimate distribution. Use to list &quot;nicest&quot; pairs without disqualifying secondary modes.">KDE likelihood ↑</option>
+                  <option value="log_likelihood DESC" title="↓ ASCENDING - best to worst - Multiplied likelihoods of all H-bond parameters in their Kernel Density Estimate distribution. Use to list &quot;nicest&quot; pairs without disqualifying secondary modes.">KDE likelihood ↓</option>
                 </select>
               </div>
             </div>
