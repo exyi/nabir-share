@@ -517,10 +517,10 @@ def calculate_stats(df: pl.DataFrame, pair_type):
     # print(f"{columns=}")
     cdata = [ df[c].drop_nulls().to_numpy() for c in columns ]
     kdes = [ scipy.stats.gaussian_kde(sample_for_kde(c)) if len(c) > 5 else None for c in cdata ]
-    kde_modes = [ None if kde is None else c[np.argmax(kde.pdf(c))] for kde, c in zip(kdes, cdata) ]
-    medians = [ np.median(c) if len(c) > 0 else None for c in cdata ]
-    means = [ np.mean(c) if len(c) > 0 else None for c in cdata ]
-    stds = [ np.std(c) if len(c) > 1 else None for c in cdata ]
+    kde_modes = [ None if kde is None else float(c[np.argmax(kde.pdf(c))]) for kde, c in zip(kdes, cdata) ]
+    medians = [ float(np.median(c)) if len(c) > 0 else None for c in cdata ]
+    means = [ float(np.mean(c)) if len(c) > 0 else None for c in cdata ]
+    stds = [ float(np.std(c)) if len(c) > 1 else None for c in cdata ]
     kde_mode_stds = [ None if kde_mode is None else np.sqrt(np.mean((c - kde_mode) ** 2)) for kde_mode, c in zip(kde_modes, cdata) ]
     def calc_datapoint_mode_deviations(df):
         return np.sum([
@@ -555,9 +555,9 @@ def calculate_stats(df: pl.DataFrame, pair_type):
         "nicest_bp": str(next(df[nicest_basepair, ["pdbid", "model", "chain1", "res1", "nr1", "ins1", "alt1", "chain2", "res2", "nr2", "ins2", "alt2"]].iter_rows())),
         "nicest_bp_index": nicest_basepair,
         "nicest_bp_indices": nicest_basepairs,
-        **{
-            f"hb_{i}_label": get_label(f"hb_{i}_length", pair_type) for i in range(len(pair_defs.get_hbonds(pair_type)))
-        },
+        # **{
+        #     f"hb_{i}_label": get_label(f"hb_{i}_length", pair_type) for i in range(len(pair_defs.get_hbonds(pair_type)))
+        # },
         **tranpose_dict({
             "mode": kde_modes,
             "median": medians,
@@ -816,7 +816,7 @@ def main(argv):
 
     subprocess.run(["gs", "-dBATCH", "-dNOPAUSE", "-q", "-sDEVICE=pdfwrite", "-dPDFSETTINGS=/prepress", f"-sOutputFile={os.path.join(args.output_dir, 'hbonds-merged.pdf')}", *output_files])
     print("Wrote", os.path.join(args.output_dir, 'hbonds-merged.pdf'))
-    save_statistics(all_statistics, args.output_dir)
+    # save_statistics(all_statistics, args.output_dir)
 
     with open(os.path.join(args.output_dir, "output.json"), "w") as f:
         import json

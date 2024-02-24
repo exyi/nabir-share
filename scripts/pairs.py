@@ -31,8 +31,8 @@ class AltResidue:
         if a.is_disordered():
             if self.alt == '':
                 # don't crash on uninteresting atoms
-                if (a.id.startswith('H') or a.id in ['P', 'OP1', 'OP2', 'OP3', "O5'", "C5'", "C4'", "O4'", "C3'", "O3'", "O2'", "C2'", "C1'"]):
-                    return a.disordered_get('A')
+                if a.id.startswith('H') or a.id in ['P', 'OP1', 'OP2', 'OP3', "O5'", "C5'", "C4'", "O4'", "C3'", "O3'", "O2'", "C2'", "C1'"]:
+                    return a.disordered_get(a.disordered_get_id_list()[0])
                 elif np.allclose(a.disordered_get('A').coord, a.disordered_get('B').coord, atol=0.05):
                     return a.disordered_get('A')
             if not a.disordered_has_id(self.alt):
@@ -41,8 +41,18 @@ class AltResidue:
         else:
             return a
     def get_atoms(self):
+        disorder_match = False
         for a in self.res.get_atoms():
+            if self.alt != '' and a.is_disordered():
+                if a.disordered_has_id(self.alt):
+                    disorder_match = True
+                    yield a.disordered_get(self.alt)
+                    continue
+
             yield self.transform_atom(a)
+
+        if self.alt != '' and not disorder_match:
+            raise KeyError(f"Alt {self.alt} not found in residue {self.res.full_id}")
     def get_atom(self, name, default: Any=_sentinel) -> Bio.PDB.Atom.Atom:
         if name in self.res:
             return self.transform_atom(self.res[name])
@@ -293,13 +303,20 @@ def get_residue_posinfo_C1_N(res: AltResidue) -> TranslationThenRotation:
 
     return TranslationThenRotation(translation, rotation)
 
-def get_C1_N_angles(rot1: np.ndarray, rot2: np.ndarray) -> Tuple[float, float, float]:
+def get_C1_N_yaw_pitch_roll(rot1: np.ndarray, rot2: np.ndarray) -> Tuple[float, float, float]:
     matrix = rot1.T @ rot2
     # https://stackoverflow.com/a/37558238
     yaw = math.degrees(math.atan2(matrix[1, 0], matrix[0, 0]))
     pitch = math.degrees(math.atan2(-matrix[2, 0], math.sqrt(matrix[2, 1]**2 + matrix[2, 2]**2)))
     roll = math.degrees(math.atan2(matrix[2, 1], matrix[2, 2]))
     return yaw, pitch, roll
+def get_C1_N_euler_angles(rot1: np.ndarray, rot2: np.ndarray) -> Tuple[float, float, float]:
+    matrix = rot1.T @ rot2
+    # https://en.wikipedia.org/wiki/Rotation_formalisms_in_three_dimensions#Rotation_matrix_%E2%86%92_Euler_angles_(z-x-z_extrinsic)
+    eu1 = math.degrees(math.atan2(matrix[2, 0], matrix[2, 1]))
+    eu2 = math.degrees(math.acos(matrix[2, 2]))
+    eu3 = -math.degrees(math.atan2(matrix[0, 2], matrix[1, 2]))
+    return eu1, eu2, eu3
 
 T = TypeVar('T')
 def try_x(f: Callable[[AltResidue], T], res: AltResidue, warning = None) -> Optional[T]:
@@ -343,6 +360,9 @@ class PairStats:
     C1_C1_yaw2: Optional[float] = None
     C1_C1_pitch2: Optional[float] = None
     C1_C1_roll2: Optional[float] = None
+    C1_C1_euler_phi: Optional[float] = None
+    C1_C1_euler_theta: Optional[float] = None
+    C1_C1_euler_psi: Optional[float] = None
     # opening: float
     # nearest_distance: float
 
@@ -402,8 +422,9 @@ def calc_pair_stats(pair_type: pair_defs.PairType, res1: AltResidue, res2: AltRe
         out.C1_C1_total_angle = math.degrees(np.arccos(np.dot(_linalg_normalize(p1.n_pos - p1.c1_pos), _linalg_normalize(p2.c1_pos - p2.n_pos))))
     
     if rot_trans1 and rot_trans2:
-        out.C1_C1_yaw1, out.C1_C1_pitch1, out.C1_C1_roll1 = get_C1_N_angles(rot_trans1.rotation, -rot_trans2.rotation)
-        out.C1_C1_yaw2, out.C1_C1_pitch2, out.C1_C1_roll2 = get_C1_N_angles(rot_trans2.rotation, -rot_trans1.rotation)
+        out.C1_C1_yaw1, out.C1_C1_pitch1, out.C1_C1_roll1 = get_C1_N_yaw_pitch_roll(rot_trans1.rotation, -rot_trans2.rotation)
+        out.C1_C1_yaw2, out.C1_C1_pitch2, out.C1_C1_roll2 = get_C1_N_yaw_pitch_roll(rot_trans2.rotation, -rot_trans1.rotation)
+        out.C1_C1_euler_phi, out.C1_C1_euler_theta, out.C1_C1_euler_psi = get_C1_N_euler_angles(rot_trans1.rotation, -rot_trans2.rotation)
 
     return out, p1, p2
 
