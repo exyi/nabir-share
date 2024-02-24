@@ -27,7 +27,6 @@
     panels: _.cloneDeep([ statPresets.histL, statPresets.histDA, statPresets.histAA ])
   }
 
-  const urlUpdateDebouncer = new AsyncDebouncer(700, true)
   let lastUrlUpdate = 0
 
   function updateUrlNow() {

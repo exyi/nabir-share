@@ -449,11 +449,19 @@ export function getColumnLabel(column: string, metadata: UnwrapArray<typeof meta
         const [n1, n2] = metadata.pair_type[1].toUpperCase().split('-').map(baseNitrogen)
         return [`C1'-${n1} / ${n2}-C1' ∡`, `Total angle between ${b1} C1'-${n1} bond and ${b2} ${n2}-C1' bond` ]
     }
-    if ((m = /^C1_C1_(yaw|pitch|roll)$/.exec(column))) {
+    if ((m = /^C1_C1_(yaw|pitch|roll)(\d+)?$/.exec(column))) {
         const angleName = m[1]
-        const [b1, b2] = formatBaseNames(metadata, true, true)
+        const [b1, b2] = formatBaseNames(metadata, true, false)
+        const b = m[2] == '2' ? b2 : b1
         const [n1, n2] = metadata.pair_type[1].toUpperCase().split('-').map(baseNitrogen)
-        return [`C1'-${n1} / ${n2}-C1' ${capitalizeFirst(angleName)} ∡`, `Yaw angle between ${b1} C1'-${n1} bond and ${b2} ${n2}-C1' bond, relative to the nitrogen plane` ]
+        return [`C1'-${n1} / ${n2}-C1' ${capitalizeFirst(angleName)} ∡`, `${capitalizeFirst(angleName)} angle between C1'-${n1} bonds bond, relative to the ${b} nitrogen plane` ]
+    }
+    if ((m = /^C1_C1_euler_(\w+)$/.exec(column))) {
+        const angleName = m[1]
+        const [b1, b2] = formatBaseNames(metadata, true, false)
+        const [n1, n2] = metadata.pair_type[1].toUpperCase().split('-').map(baseNitrogen)
+        const letter = { 'theta': 'θ', 'phi': 'φ', 'psi': 'ψ' }[angleName] ?? angleName
+        return [`C1'-${n1} / ${n2}-C1' Euler ${letter} ∡`, `${letter} (${angleName}) euler angle between C1'-${n1} bonds, relative to the ${b1} nitrogen plane` ]
     }
     if (column == 'jirka_approves') {
         return [ "Passed quality filter", null ]
