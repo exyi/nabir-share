@@ -105,6 +105,7 @@ def run_dssr(dssr_binary, pdbid, input_file: TextIO) -> list[Pair]:
             with input_file as f2:
                 f.write(f2.read())
         try:
+            # it has a JSON flag, but it is simply ignored if we also specify --analyze
             subprocess.run([dssr_binary, '--analyze', '-i=' + os.path.join(dir, 'input.cif')], check=True, cwd=dir,
                            stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL
                         )
