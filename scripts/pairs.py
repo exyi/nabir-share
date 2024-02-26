@@ -282,23 +282,23 @@ def get_residue_posinfo_C1_N(res: AltResidue) -> TranslationThenRotation:
         c2 = res.get_atom("C8", None)
     else:
         n = res.get_atom("N1", None)
-        c2 = res.get_atom("C2", None)
+        c2 = res.get_atom("C6", None) # ale tady mi copilot dal hajzl C dvojku
     if c1 is None or n is None or c2 is None:
         raise ResideTransformError(f"Missing atoms in residue {res.res.full_id}")
     translation = -n.coord # tvl copilot toto dal asi, cool priklad do appendix AI
-    x = -(c1.coord - n.coord)
+    x = c1.coord - n.coord
     x /= np.linalg.norm(x)
     y = c2.coord - n.coord
     y -= np.dot(y, x) * x
     y /= np.linalg.norm(y)
-    z = np.cross(x, y)
+    z = np.cross(y, x)
     z /= np.linalg.norm(z)
     rotation = np.array([x, y, z]).T
 
     test = AltResidue(transform_residue(res.res, translation, rotation), res.alt)
     assert np.all(test.get_atom(n.name).coord < 0.001)
     assert np.all(test.get_atom(c1.name).coord[1:] < 0.001)
-    assert -1.9 < test.get_atom(c1.name).coord[0] < -1.2, f"Unexpected C1' coordinates (x is bad): {test.get_atom(c1.name).coord}"
+    assert 1.2 < test.get_atom(c1.name).coord[0] < 1.9, f"Unexpected C1' coordinates (x is bad): {test.get_atom(c1.name).coord}"
     assert np.all(test.get_atom(c2.name).coord[2] < 0.001)
 
     return TranslationThenRotation(translation, rotation)
