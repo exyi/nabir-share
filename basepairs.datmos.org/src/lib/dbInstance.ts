@@ -12,7 +12,7 @@ export const pairTypes = metadata.map(m => m.pair_type)
 export const pairFamilies = [...new Set(pairTypes.map(t => normalizePairFamily(t[0])))]
 
 pairFamilies.sort(compareFamilies)
-const cacheBuster = '?v=2'
+const cacheBuster = '?v=6'
 
 for (const pairMeta of metadata) {
   const [family, bases] = pairMeta.pair_type
