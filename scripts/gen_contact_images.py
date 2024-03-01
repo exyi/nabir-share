@@ -11,7 +11,7 @@ import numpy as np
 import math
 from dataclasses import dataclass
 import shutil
-import subprocess
+import subprocess, threading
 import pair_defs
 
 def residue_selection(chain, nt, ins, alt):
@@ -285,6 +285,8 @@ class BPArgs:
     incremental: bool
     incremental_max_age: int
     skip_bad: bool
+    ortho: bool
+    ffmpeg_background: int
 
 def make_pair_image(output_file, pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2, bpargs: BPArgs, hbonds: Optional[list[tuple[str, str, str, str]]], pair_type: Optional[pair_defs.PairType]):
     print(bpargs)
@@ -292,24 +294,44 @@ def make_pair_image(output_file, pdbid, chain1, nt1, ins1, alt1, chain2, nt2, in
     cmd.png(output_file, width=2560, height=1440, ray=1)
     print(f"Saved basepair image {output_file}")
 
-def run_ffmpeg(output_file, input_dir, *args):
+background_jobs: list[threading.Thread] = []
+
+def run_ffmpeg(output_file, input_dir, *args, background=0, after=lambda: None):
     if os.path.exists(output_file) and output_file != "/dev/null":
         os.remove(output_file)
-
-    ffmpeg_result = subprocess.run([
+    command = [
         "ffmpeg",
         "-framerate", "24",
         "-pattern_type", "glob",
         "-i", "./*.png",
         *args,
         os.path.abspath(output_file)
-    ], capture_output=True, cwd=input_dir)
-    if ffmpeg_result.returncode != 0:
-        print("ffmpeg failed:", " ".join(ffmpeg_result.args))
-        print(ffmpeg_result.stdout.decode("utf-8"))
-        print(ffmpeg_result.stderr.decode("utf-8"))
-        raise Exception("ffmpeg failed")
-    return ffmpeg_result
+    ]
+    def core():
+        try:
+            ffmpeg_result = subprocess.run(command, capture_output=True, cwd=input_dir)
+            if ffmpeg_result.returncode != 0:
+                print("ffmpeg failed:", " ".join(ffmpeg_result.args))
+                print(ffmpeg_result.stdout.decode("utf-8"))
+                print(ffmpeg_result.stderr.decode("utf-8"))
+                raise Exception("ffmpeg failed")
+        finally:
+            after()
+    if background == 0:
+        core()
+    else:
+        can_start_new = False
+        while not can_start_new:
+            for x in list(background_jobs):
+                if not x.is_alive():
+                    background_jobs.remove(x)
+            if len(background_jobs) >= background:
+                time.sleep(1)
+            else:
+                can_start_new = True
+        t = threading.Thread(target=core)
+        t.start()
+        background_jobs.append(t)
 
 def make_pair_rot_movie(output_file, pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2, bpargs: BPArgs, hbonds: Optional[list[tuple[str, str, str, str]]], pair_type: Optional[pair_defs.PairType]):
     length = bpargs.movie
@@ -346,16 +368,17 @@ def make_pair_rot_movie(output_file, pdbid, chain1, nt1, ins1, alt1, chain2, nt2
                         "-pattern_type", "glob",
                         "-i", output_file + ".pngdir/*.png",
                         "-c:v", "libx264",
-                        "-pix_fmt", "yuv420p")
+                        "-pix_fmt", "yuv420p", background=bpargs.ffmpeg_background, after=lambda: shutil.rmtree(output_file + ".pngdir"))
                 if bpargs.movie_format == "webm":
                     # webm with alpha, VP9 twopass
                     vp9opt = "-c:v libvpx-vp9 -auto-alt-ref 1 -lag-in-frames 25 -quality good -speed 0 -metadata:s:v:0 alpha_mode=1 -crf 45 -b:v 0".split(" ")
                     run_ffmpeg("/dev/null", output_file + ".pngdir",
                         *vp9opt, "-pass", "1", "-an", "-f", "null")
-                    run_ffmpeg(output_file + ".webm", output_file + ".pngdir",
-                        *vp9opt, "-pass", "2", "-an")
+                    run_ffmpeg(output_file + ".webm", output_file + ".pngdir", "-threads", "1",
+                        *vp9opt, "-pass", "2", "-an", background=bpargs.ffmpeg_background, after=lambda: shutil.rmtree(output_file + ".pngdir"))
             finally:
-                shutil.rmtree(output_file + ".pngdir")
+                # shutil.rmtree(output_file + ".pngdir")
+                pass
         else:
             from pymol import movie
             movie.produce(output_file + ".mp4", mode="draw", quality=96, width=1280, height=720, encoder="ffmpeg")
@@ -388,6 +411,7 @@ def process_group(pdbid, group: pl.DataFrame, output_dir: str, bpargs: BPArgs):
             loaded = True
     pdbdir = os.path.join(output_dir, pdbid)
     os.makedirs(pdbdir, exist_ok=True)
+    cmd.set("orthoscopic", bpargs.ortho)
     type_column = group["type"] if "type" in group.columns else itertools.repeat(None)
     for pair_type, res1, chain1, nt1, ins1, alt1, res2, chain2, nt2, ins2, alt2 in zip(type_column, group["res1"], group["chain1"], group["nr1"], group["ins1"], group["alt1"], group["res2"], group["chain2"], group["nr2"], group["ins2"], group["alt2"]):
         try:
@@ -484,12 +508,14 @@ def main(argv):
     parser.add_argument("--movie-format", type=str, default="webm", help="webm (VP9 with alpha) or mp4 (H.264)")
     parser.add_argument("--incremental", type=bool, default=False, help="Generate the image/video only if it does not exist yet")
     parser.add_argument("--incremental-max-age", type=int, default=False, help="Maximum age of the image/video to be considered done, in days")
+    parser.add_argument("--ortho", action="store_true", help="Use orthoscopic projection")
+    parser.add_argument("--ffmpeg_background", type=int, default=0, help="How many ffmpeg processes can be left running asynchronously per PyMOL thread. 0 = run synchronously. With the VP9 encoding, about 3 ffmpegs for 1 pymol thread is reasonable.")
     parser.add_argument("--skip-bad", type=bool, default=False, help="Skip basepairs with bad or missing parameters")
     args = parser.parse_args(argv)
 
     import pair_csv_parse
     df = pair_csv_parse.scan_pair_csvs(args.input).collect()
-    bpargs = BPArgs(args.standard_orientation, args.movie, args.movie_format, args.incremental, args.incremental_max_age, args.skip_bad)
+    bpargs = BPArgs(args.standard_orientation, args.movie, args.movie_format, args.incremental, args.incremental_max_age, args.skip_bad, args.ortho, args.ffmpeg_background)
     threads = args.threads
     if threads is None and args.cpu_affinity is not None:
         threads = len(args.cpu_affinity)
