@@ -34,6 +34,7 @@ subplots = (2, 2)
 resolutions = [
     ("DNA ≤3 Å", is_some_quality & is_rna.is_not() & (pl.col("resolution") <= 3)),
     ("RNA ≤3 Å", is_some_quality & is_rna & (pl.col("resolution") <= 3)),
+    # ("RNA ≤3 Å", is_some_quality & (pl.col("resolution") <= 3)),
     # ("No filter ≤3 Å", (pl.col("resolution") <= 3)),
     # ("DNA >3 Å", is_rna.is_not() & (pl.col("resolution") > 3)),
     # ("RNA >3 Å", is_rna & (pl.col("resolution") > 3)),
@@ -69,7 +70,7 @@ class HistogramDef:
         return self.copy(columns=columns, legend=legend)
 
 
-histogram_defs = [
+hbond_histogram_defs = [
     HistogramDef(
         "H-bond length",
         "Distance (Å)",
@@ -93,6 +94,69 @@ histogram_defs = [
         pseudomin=0,
         pseudomax=360
     )
+]
+
+coplanarity_histogram_defs = [
+    HistogramDef(
+        "Euler angles, N1-C1' reference frames",
+        "Angle (°)",
+        ["C1_C1_euler_phi", "C1_C1_euler_theta", "C1_C1_euler_psi", "C1_C1_euler_phicospsi"],
+        legend=["φ", "θ", "ψ", "φ-cos(θ)ψ"],
+        # bin_width=0.05,
+        min=-180,
+        max=180
+    ),
+    HistogramDef(
+        "Yaw, pitch, left-to-right, N1-C1' reference frames",
+        "Angle (°)",
+        ["C1_C1_yaw1", "C1_C1_pitch1", "C1_C1_roll1"],
+        legend=["Yaw 1", "Pitch 1", "Roll 1"],
+        # bin_width=2,
+        min=-180,
+        max=180
+    ),
+    HistogramDef(
+        "Yaw, pitch, right-to-left, N1-C1' reference frames",
+        "Angle (°)",
+        ["C1_C1_yaw2", "C1_C1_pitch2", "C1_C1_roll2"],
+        legend=["Yaw 2", "Pitch 2", "Roll 2"],
+        min=-180,
+        max=180
+    )
+]
+
+coplanarity_histogram_defs2 = [
+    HistogramDef(
+        "H-bond angle to donor plane",
+        "Angle (°)",
+        ["hb_0_donor_OOPA", "hb_1_donor_OOPA", "hb_2_donor_OOPA"],
+        pseudomin=-180,
+        pseudomax=180
+    ),
+    HistogramDef(
+        "H-bond angle to donor plane",
+        "Angle (°)",
+        ["hb_0_acceptor_OOPA", "hb_1_acceptor_OOPA", "hb_2_acceptor_OOPA"],
+        pseudomin=-180,
+        pseudomax=180
+    ),
+    HistogramDef(
+        "Edge-to-plane distance",
+        "Distance (Å)",
+        ["coplanarity_shift1", "coplanarity_shift2"],
+        legend=["Edge 2 - plane 2", "Edge 1 - Plane 2"],
+        pseudomin=-6,
+        pseudomax=6
+    ),
+        HistogramDef(
+        "Edge-to-plane angle",
+        "Angle (°)",
+        ["coplanarity_edge_angle1", "coplanarity_edge_angle2"],
+        legend=["Edge 2 - plane 2", "Edge 1 - Plane 2"],
+        pseudomin=-180,
+        pseudomax=180
+    ),
+
 ]
 
 def format_angle_label(atoms: tuple[str, str, str], swap=False):
@@ -142,7 +206,7 @@ def get_label(col: str, pair_type: PairType, throw=True):
         ix = int(m.group(1))
         if len(hbonds) <= ix: return None
         return format_angle_label(hbonds[ix][1:], swap=swap)
-    elif (m := re.match("^hb_(\\d+)_length", col)):
+    elif (m := re.match("^hb_(\\d+)_(length|.*)", col)):
         ix = int(m.group(1))
         if len(hbonds) <= ix: return None
         return format_length_label(hbonds[ix][1:3], swap=swap)
@@ -338,6 +402,32 @@ def make_subplots(sp = subplots):
     fig, sp = plt.subplots(*sp)
     return fig, list(sp.reshape(-1))
 
+def draw_pair_img_highligh(ax, img, highlight: Optional[pl.DataFrame]):
+    if img is None:
+        return
+    img_data=crop_image(plt.imread(img), padding=(0, 30, 0, 0))
+    print(f"image {img} {img_data.shape}")
+    ax.imshow(img_data)
+    # ax.annotate("bazmek", (0, 1))
+    if highlight is not None:
+        def fmt_ins(ins):
+            if not ins or ins == '\0' or ins == ' ':
+                return ""
+            else:
+                return ".ins" + ins
+        def fmt_alt(alt):
+            if not alt or alt == '?':
+                return ""
+            else:
+                return ".alt" + alt
+        chain1 = f"chain {highlight[0, 'chain1']} "
+        chain2 = f"chain {highlight[0, 'chain2']} " if highlight[0, 'chain2'] != highlight[0, 'chain1'] else ""
+        address = f"{highlight[0, 'pdbid']}: {chain1}{highlight[0, 'res1']}{highlight[0, 'nr1']}{fmt_ins(highlight[0, 'ins1'])}{fmt_alt(highlight[0, 'alt1'])} · · · {chain2}{highlight[0, 'res2']}{highlight[0, 'nr2']}{fmt_ins(highlight[0, 'ins2'])}{fmt_alt(highlight[0, 'alt2'])}"
+        ax.text(0.5, 0, f"{address} ({highlight[0, 'resolution']:.1f} Å)", transform=ax.transAxes, horizontalalignment="center")
+    # ax.legend("bazmek")
+    ax.axis("off")
+
+
 def make_bond_pages(df: pl.DataFrame, outdir: str, pair_type: PairType, hs: list[HistogramDef], images = None, highlights: Optional[list[Optional[pl.DataFrame]]] = None, title_suffix = ""):
     hidden_bonds = get_hidden_columns(df, pair_type)
     if len(hidden_bonds) > 0:
@@ -353,40 +443,19 @@ def make_bond_pages(df: pl.DataFrame, outdir: str, pair_type: PairType, hs: list
         # fig.tight_layout(pad=3.0)
         fig.suptitle(title + f" ({len(df)}, class {determine_bp_class(df, pair_type)})")
 
+    plot_offset = 0 if images is None else 1
     for i, h in enumerate(hs):
-        make_histogram_group(dataframes, [ p[1][i+1] for p in pages ], [h.title] * len(dataframes), pair_type, h)
+        make_histogram_group(dataframes, [ p[1][i+plot_offset] for p in pages ], [h.title] * len(dataframes), pair_type, h)
     if images is not None:
         for p, img, highlight in zip(pages, images, highlights or itertools.repeat(None)):
-            if img is None:
-                continue
             ax = p[1][0]
-            img_data=crop_image(plt.imread(img), padding=(0, 30, 0, 0))
-            print(f"image {img} {img_data.shape}")
-            ax.imshow(img_data)
-            # ax.annotate("bazmek", (0, 1))
-            if highlight is not None:
-                def fmt_ins(ins):
-                    if not ins or ins == '\0' or ins == ' ':
-                        return ""
-                    else:
-                        return ".ins" + ins
-                def fmt_alt(alt):
-                    if not alt or alt == '?':
-                        return ""
-                    else:
-                        return ".alt" + alt
-                chain1 = f"chain {highlight[0, 'chain1']} "
-                chain2 = f"chain {highlight[0, 'chain2']} " if highlight[0, 'chain2'] != highlight[0, 'chain1'] else ""
-                address = f"{highlight[0, 'pdbid']}: {chain1}{highlight[0, 'res1']}{highlight[0, 'nr1']}{fmt_ins(highlight[0, 'ins1'])}{fmt_alt(highlight[0, 'alt1'])} · · · {chain2}{highlight[0, 'res2']}{highlight[0, 'nr2']}{fmt_ins(highlight[0, 'ins2'])}{fmt_alt(highlight[0, 'alt2'])}"
-                ax.text(0.5, 0, f"{address} ({highlight[0, 'resolution']:.1f} Å)", transform=ax.transAxes, horizontalalignment="center")
-            # ax.legend("bazmek")
-            ax.axis("off")
+            draw_pair_img_highligh(ax, img, highlight)
     if highlights is not None:
         for p, highlight in zip(pages, highlights):
             if highlight is None or len(highlight) == 0:
                 continue
 
-            for ax, h in zip(p[1][1:], hs):
+            for ax, h in zip(p[1][plot_offset:], hs):
                 for col_i, col in enumerate(h.columns):
                     if col in highlight.columns and highlight[0, col] is not None:
                         ax.plot([ float(highlight[0, col]) ], [ 0 ], marker="o", color=f"C{col_i}")
@@ -432,6 +501,15 @@ def make_resolution_comparison_page(df: pl.DataFrame, outdir: str, pair_type: Pa
         for ax_i, (resolution_lbl, resolution_filter) in enumerate(resolutions):
             yield save(axes[ax_i].figure, axes[ax_i].get_title(), outdir) #type:ignore
 
+def make_pairplot_page(df: pl.DataFrame, outdir: str, pair_type: PairType, variables: list[pl.Expr], title_suffix = ""):
+    title = f"{format_pair_type(pair_type)} Pairplot{title_suffix}"
+    grid: sns.PairGrid = sns.pairplot(df.select(*variables).to_pandas(),
+                                        kind="scatter" if len(df) < 400 else "kde",
+                                        #  kind="hist"
+                                        )
+    grid.figure.suptitle(title)
+
+    yield save(grid.figure, title, outdir)
 
 def save(fig: Figure, title, outdir):
     try:
@@ -453,8 +531,13 @@ def load_pair_table(file: str):
     if "coplanarity_angle" not in df.columns:
         # older file version
         df = df.with_columns(
-            pl.col("^hb_\\d+_donor_angle$") / np.pi * 180,
-            pl.col("^hb_\\d+_acceptor_angle$") / np.pi * 180,
+            pl.col("^hb_\\d+_donor_angle$").degrees(),
+            pl.col("^hb_\\d+_acceptor_angle$").degrees(),
+        )
+    if "C1_C1_euler_phi" in df.columns:
+        df = df.with_columns(
+            C1_C1_euler_phicospsi=
+                (pl.col("C1_C1_euler_phi") - pl.col("C1_C1_euler_psi") * pl.col("C1_C1_euler_theta").radians().cos() + 180 ) % 360 - 180,
         )
     return df
 
@@ -784,6 +867,38 @@ def main(argv):
                 f for f in make_bond_pages(df, args.output_dir, pair_type, histogram_defs, images=dna_rna_images, highlights=dna_rna_highlights
                 )
             ]
+            # output_files.extend(
+            #     make_bond_pages(dff, args.output_dir, pair_type, coplanarity_histogram_defs2, highlights=dna_rna_highlights, title_suffix= " - B")
+            # )
+            # output_files.extend(
+            #     make_pairplot_page(dff, args.output_dir, pair_type, variables=[
+            #         pl.col(f"C1_C1_euler_phi").alias("Euler Φ"),
+            #         pl.col(f"C1_C1_euler_theta").alias("Euler Θ"),
+            #         pl.col(f"C1_C1_euler_psi").alias("Euler Ψ"),
+            #         pl.col(f"C1_C1_euler_phicospsi").alias("Euler Φ-cos(Θ)Ψ"),
+            #         pl.col(f"C1_C1_yaw1").alias("Yaw 1"),
+            #         pl.col(f"C1_C1_pitch1").alias("Pitch 1"),
+            #         pl.col(f"C1_C1_roll1").alias("Roll 1"),
+            #         pl.col(f"C1_C1_yaw2").alias("Yaw 2"),
+            #         pl.col(f"C1_C1_pitch2").alias("Pitch 2"),
+            #         pl.col(f"C1_C1_roll2").alias("Roll 2"),
+            #     ], title_suffix=" - Various N1-C1' reference frame angles")
+            # )
+            # output_files.extend(
+            #     make_pairplot_page(dff, args.output_dir, pair_type, variables=[
+            #         pl.col(f"coplanarity_angle").alias("Plane normal angle"),
+            #         pl.col(f"C1_C1_yaw1").alias("Yaw 1"),
+            #         pl.col(f"C1_C1_pitch1").alias("Pitch 1"),
+            #         pl.col(f"C1_C1_roll1").alias("Roll 1"),
+            #         pl.col(f"coplanarity_edge_angle1").alias("Edge 1 / plane 2"),
+            #         pl.col(f"coplanarity_edge_angle2").alias("Edge 2 / plane 1"),
+            #         pl.col("hb_1_donor_OOPA").alias("H-bond 2 / donor plane"),
+            #         pl.col("hb_1_acceptor_OOPA").alias("H-bond 2 / acceptor plane"),
+            #         pl.col("coplanarity_shift1").alias("Edge 1/plane 2 shift"),
+            #         pl.col("coplanarity_shift2").alias("Edge 2/plane 1 shift"),
+
+            #     ], title_suffix=" - Other coplanarity metrics")
+            # )
             # output_files = [
             #     f
             #     for column in [0, 1, 2]
@@ -811,7 +926,8 @@ def main(argv):
 
     # results.sort(key=lambda r: r["score"], reverse=True)
     # results.sort(key=lambda r: r["pair_type"])
-    results.sort(key=lambda r: (r["bp_class"] or 5, pair_defs.PairType.from_tuple(r["pair_type"])))
+    # results.sort(key=lambda r: (r["bp_class"] or 5, pair_defs.PairType.from_tuple(r["pair_type"])))
+    results.sort(key=lambda r: (1, pair_defs.PairType.from_tuple(r["pair_type"])))
     output_files = [ f for r in results for f in r["files"] ]
 
     subprocess.run(["gs", "-dBATCH", "-dNOPAUSE", "-q", "-sDEVICE=pdfwrite", "-dPDFSETTINGS=/prepress", f"-sOutputFile={os.path.join(args.output_dir, 'hbonds-merged.pdf')}", *output_files])
