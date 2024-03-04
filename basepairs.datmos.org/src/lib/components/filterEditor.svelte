@@ -200,6 +200,18 @@
               Both
             </label>
           </div>
+          <div class="field has-addons">
+            {#if filter.resolution.min != null}
+              <div class="control">
+                <input class="input is-small num-input" style="max-width:4rem" type="number" step="0.1" min=0 max={filter.filtered ? 3.5 : 20} placeholder="Min" value={filter.resolution?.min ?? 0} on:change={ev => { filter.resolution ??= {}; filter.resolution.min = tryParseNum(ev.currentTarget.value)} }>
+              </div>
+            {/if}
+            <label class="label" for="ntfilter-resolution">{#if filter.resolution.min != null}&nbsp;≤ {/if}Resolution ≤&nbsp;</label>
+            <div class="control">
+              <input class="input is-small num-input" style="max-width:4rem" type="number" step="0.1" min=0 max={filter.filtered ? 3.5 : 20} placeholder={filter.filtered ? '3.5' : ''} value={filter.resolution?.max ?? ''} on:change={ev => { filter.resolution ??= {}; filter.resolution.max = tryParseNum(ev.currentTarget.value)}}>
+            </div>
+            &nbsp;Å
+          </div>
 
           <div class="control">
             <label class="checkbox" title="Filter out redundant nucleotides or nucleoties with bad something TODO">

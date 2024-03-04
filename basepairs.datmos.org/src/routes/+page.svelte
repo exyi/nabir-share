@@ -31,12 +31,12 @@
 
   let lastUrlUpdate = 0
 
-  function updateUrlNow() {
+  function updateUrlNow(opt: {alwaysReplace?:boolean}={}) {
     const params = filterToUrl(filter, filterMode)
     statsToUrl(params, testStats)
     const url = selectedPairing == null ? '' : `${selectedPairing}/${params.toString()}`
     if (window.location.hash.replace(/^#/, '') != url) {
-      if (lastUrlUpdate + 1000 < performance.now()) {
+      if (!opt.alwaysReplace && lastUrlUpdate + 1000 < performance.now()) {
         history.pushState({}, "", '#' + url)
       } else {
         history.replaceState({}, "", '#' + url)
@@ -65,7 +65,7 @@
       selectedPairing = undefined
       selectedFamily = undefined
     }
-    updateUrlNow()
+    updateUrlNow({alwaysReplace: true})
   }
 
   setModeFromUrl(window.location.hash)
@@ -377,11 +377,12 @@
       class:is-info={selectedFamily == family}
       class:is-selected={selectedFamily == family}
       on:click={() => {
-        if (selectedFamily == family)
+        if (selectedFamily == family) {
           selectedFamily = null
-        else {
+          selectedPairing = null
+        } else {
           selectedFamily = family
-          selectedPairing = selectedPairing.replace(/^[^-]*-/, `${family}-`)
+          selectedPairing = selectedPairing?.replace(/^[^-]*-/, `${family}-`)
         }
       }}
     >{family}</button>
@@ -394,13 +395,19 @@
   <!-- class:is-light={selectedPairing.toLowerCase() != `${p.family}-${p.bases}`.toLowerCase()} -->
     <button
       class="button"
-      class:is-light-warning={!p.conventional && selectedPairing.toLowerCase() != `${p.family}-${p.bases}`.toLowerCase()}
-      class:is-success={selectedPairing.toLowerCase() == `${p.family}-${p.bases}`.toLowerCase()}
-      class:is-selected={selectedPairing.toLowerCase() == `${p.family}-${p.bases}`.toLowerCase()}
+      class:is-light-warning={!p.conventional && selectedPairing?.toLowerCase() != `${p.family}-${p.bases}`.toLowerCase()}
+      class:is-success={selectedPairing?.toLowerCase() == `${p.family}-${p.bases}`.toLowerCase()}
+      class:is-selected={selectedPairing?.toLowerCase() == `${p.family}-${p.bases}`.toLowerCase()}
       class:is-static={!p.real}
       disabled={!p.real}
       title={formatTitleForPair(p.family, p.bases, p.real, p.conventional)}
-      on:click={() => {selectedPairing = `${p.family}-${p.bases}`}}>{selectedFamily == null ? p.family + "-" : ""}{p.bases}</button>
+      on:click={() => {
+        if (selectedPairing?.toLowerCase() == `${p.family}-${p.bases}`.toLowerCase()) {
+          selectedPairing = null
+        } else {
+          selectedPairing = `${p.family}-${p.bases}`
+        }
+      }}>{selectedFamily == null ? p.family + "-" : ""}{p.bases}</button>
   {/each}
 </div>
 {#if selectedPairing && selectedPairing[1] == selectedPairing[2] && selectedPairing.slice(1) != 'SS'}
@@ -470,7 +477,7 @@
 
   <div style="position: absolute; width: 200px; text-align: center; margin-left: -100px; left:50%">
     {#if testStats.enabled}
-    <a style="text-align: center; :inline-end" href="javascript:;" on:click={e => testStats.enabled = false }>▲ collapse plots ▲</a>
+    <a style="text-align: center;" href="javascript:;" on:click={e => testStats.enabled = false }>▲ collapse plots ▲</a>
     {:else}
     <a href="javascript:;" on:click={() => testStats.enabled = true}>▽ expand plots ▽</a>
     {/if}

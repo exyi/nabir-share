@@ -73,10 +73,12 @@ A<script lang="ts">
     }
     .LW-table-column > div:not(.LW-table-col-head) {
         height: var(--cell-height);
-        display: table-cell;
-        vertical-align: middle;
+        text-align: center;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
     }
-
 
     h2 {
         font-size: 2rem;
@@ -104,14 +106,17 @@ A<script lang="ts">
                     {@const meta = metadata.find(m => m.pair_type[0].toUpperCase() == family.toUpperCase() && m.pair_type[1] == `${base1}-${base2}`)}
                     {@const biggestStat = meta?.statistics.reduce((prev, x) => (prev && prev.count > x.count ? prev : x), null)}
                     {@const url = biggestStat?.nicest_bp == null ? null : `${imgDir}/${biggestStat.nicest_bp[0]}/${biggestStat.nicest_bp[2]}_${biggestStat.nicest_bp[4]}${biggestStat.nicest_bp[5]??''}${biggestStat.nicest_bp[6]??''}-${biggestStat.nicest_bp[7]}_${biggestStat.nicest_bp[9]}${biggestStat.nicest_bp[10]??''}${biggestStat.nicest_bp[11]??''}.png`}
-                    <div style="text-align: center">
+                    <div class="LW-table-cell" style="text-align: center">
                         {#if url != null}
+                        <!-- onClick={() => location.hash = `#${family}-${base1}-${base2}`} -->
                         <Pairimage
                             parentSize={true}
                             url={url}
                             videoUrl={undefined}
                             allowHoverVideo={false}
-                            onClick={() => location.hash = `#${family}-${base1}-${base2}`}
+                            linkText="show statistics + exemplars"
+                            linkUrl={`#${family}-${base1}-${base2}`}
+                            onClick={() => true}
                             pair={{
                                 id: {
                                     nt1: {pdbid: biggestStat.nicest_bp[0], model: biggestStat.nicest_bp[1], chain: biggestStat.nicest_bp[2], resname: biggestStat.nicest_bp[3], resnum: biggestStat.nicest_bp[4], altloc: biggestStat.nicest_bp[5], inscode: biggestStat.nicest_bp[6]},
@@ -119,10 +124,12 @@ A<script lang="ts">
                                     pairingType: [ family, `${base1}-${base2}` ]
                                 }
                             }} />
-                        {:else if metadata.find(m => m.pair_type[0].toUpperCase() == family.toUpperCase() && m.pair_type[1] == `${base2}-${base1}`)}
-                            same as <b>{base2}-{base1}</b>
+                        {:else if
+                            ['WW', 'HH'].includes(family.toLowerCase().replace(/^n?[ct]/, '')) &&
+                            metadata.find(m => m.pair_type[0].toUpperCase() == family.toUpperCase() && m.pair_type[1] == `${base2}-${base1}`)}
+                            <div style="font-size: 1.5rem; color: rgb(170, 170, 170)">same as <b>{base2}-{base1}</b></div>
                         {:else}
-                            not defined
+                            <div style="font-size: 1.5rem; color: rgb(255, 170, 170)">not defined</div>
                         {/if}
                     </div>
                 {/each}

@@ -13,7 +13,9 @@
   export let videoShow: boolean = false
   export let allowHoverVideo: boolean = true
   export let parentSize: boolean = false
-  export let onClick: () => any = () => { showModal() }
+  export let linkText: string | undefined = undefined
+  export let linkUrl: string | undefined = undefined
+  export let onClick: () => any = () => { showModal(); return false }
 
   let pngFallback = false,
     webpFallback = false,
@@ -66,11 +68,13 @@
     flex-grow: 1;
   }
   .header {
-    text-align: center;
+    display: flex;
     font-size: 0.75rem;
+    margin-top: -0.5rem;
   }
   .img-root {
     position: relative;
+    cursor: pointer;
     aspect-ratio: 16 / 9;
   }
   @media (max-width: 800px) {
@@ -105,14 +109,8 @@
 </style>
 
 <div class="pairimage">
-<div class="header">
-    <strong>{pair?.id.nt1.pdbid}</strong>{pair?.id.nt1.model > 1 ? "-" + pair?.id.nt1.model : ""}
-    {pair?.id.nt1.chain}-{pair?.id.nt1.resname??''}<strong>{pair?.id.nt1.resnum}{pair?.id.nt1.altloc??''}{pair?.id.nt1.inscode??''}</strong>
-    · · ·
-    {pair?.id.nt2.chain}-{pair?.id.nt2.resname??''}<strong>{pair?.id.nt2.resnum}{pair?.id.nt2.altloc??''}{pair?.id.nt2.inscode??''}</strong>
-</div>
-<div class="img-root" class:autosize={!parentSize} class:allow-video={allowHoverVideo && videoUrl != null} class:video-show={videoShow} on:mouseover={() => { videoLoaded = true }} on:focus={() => { videoLoaded = true }}
-    on:click={() => onClick()}>
+  <a on:click={() => onClick()} href={linkUrl ?? "javascript:;"}>
+<div class="img-root" class:autosize={!parentSize} class:allow-video={allowHoverVideo && videoUrl != null} class:video-show={videoShow} on:mouseover={() => { videoLoaded = true }} on:focus={() => { videoLoaded = true }}>
   <div class="video">
     {#if videoLoaded || videoPreload || videoShow}
       <video src={videoUrl} autoplay loop muted preload="none"></video>
@@ -127,6 +125,21 @@
       <img src={url} srcset={generateSrcset(url, webpFallback)} alt="xxx" loading="lazy" on:error={onerror} />
     {/if}
   </div>
+</div>
+</a>
+<div class="header">
+    <div style="flex: 1 1 0px"></div>
+    <div style="flex: 0 0 auto; margin: 0 0.5rem">
+      <strong>{pair?.id.nt1.pdbid}</strong>{pair?.id.nt1.model > 1 ? "-" + pair?.id.nt1.model : ""}
+      {pair?.id.nt1.chain}-{pair?.id.nt1.resname??''}<strong>{pair?.id.nt1.resnum}{pair?.id.nt1.altloc??''}{pair?.id.nt1.inscode??''}</strong>
+      · · ·
+      {pair?.id.nt2.chain}-{pair?.id.nt2.resname??''}<strong>{pair?.id.nt2.resnum}{pair?.id.nt2.altloc??''}{pair?.id.nt2.inscode??''}</strong>
+    </div>
+    <div style="flex: 1 1 auto; overflow: visible; text-align: left">
+      {#if linkText}
+        <a href={linkUrl ?? "javascript:;"} style="text-decoration: underline;" on:click={() => onClick()}>{linkText}</a>
+      {/if}
+    </div>
 </div>
 
 </div>
