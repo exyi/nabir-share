@@ -8,8 +8,8 @@ let conn: AsyncDuckDBConnection | null = null
 
 export const parquetFiles = {
 }
-export const pairTypes = metadata.map(m => m.pair_type)
-export const pairFamilies = [...new Set(pairTypes.map(t => normalizePairFamily(t[0])))]
+export const pairTypes: [ string, string ][] = metadata.map(m => m.pair_type).filter(p => !p[0].startsWith('n'))
+export const pairFamilies: string[] = [...new Set(pairTypes.map(t => normalizePairFamily(t[0])))]
 
 pairFamilies.sort(compareFamilies)
 const cacheBuster = '?v=6'
@@ -27,6 +27,7 @@ for (const pairMeta of metadata) {
 }
 export const host = window.location.hostname.match(/(^|[.])localhost$/) ? 'localhost' : window.location.hostname
 export const fileBase = (new URL('tables/', host == 'localhost' ? 'https://pairs.exyi.cz/' : document.baseURI)).href
+export const imgDir = host == 'localhost' ? "https://pairs.exyi.cz/img" : (new URL('pregen-img', document.baseURI)).href
 
 export function getConnectionSync(): AsyncDuckDBConnection {
   if (!conn)

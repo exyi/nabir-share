@@ -635,7 +635,7 @@ def calculate_stats(df: pl.DataFrame, pair_type):
     result_stats = {
         "count": len(df),
         "bp_class": determine_bp_class(df, pair_type, throw=False),
-        "nicest_bp": str(next(df[nicest_basepair, ["pdbid", "model", "chain1", "res1", "nr1", "ins1", "alt1", "chain2", "res2", "nr2", "ins2", "alt2"]].iter_rows())),
+        "nicest_bp": list(next(df[nicest_basepair, ["pdbid", "model", "chain1", "res1", "nr1", "ins1", "alt1", "chain2", "res2", "nr2", "ins2", "alt2"]].iter_rows())),
         "nicest_bp_index": nicest_basepair,
         "nicest_bp_indices": nicest_basepairs,
         # **{
@@ -864,7 +864,7 @@ def main(argv):
             dna_rna_images = [ create_pair_image(dff[bp], args.output_dir, pair_type) if bp >= 0 else None for bp in nicest_bps ] * len(resolutions) if nicest_bps is not None else []
             dna_rna_highlights = [ dff[bp] if bp >= 0 else None for bp in nicest_bps ] if nicest_bps is not None else []
             output_files = [
-                f for f in make_bond_pages(df, args.output_dir, pair_type, histogram_defs, images=dna_rna_images, highlights=dna_rna_highlights
+                f for f in make_bond_pages(df, args.output_dir, pair_type, hbond_histogram_defs, images=dna_rna_images, highlights=dna_rna_highlights
                 )
             ]
             # output_files.extend(

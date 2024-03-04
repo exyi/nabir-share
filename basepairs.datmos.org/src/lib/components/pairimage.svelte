@@ -12,6 +12,8 @@
   export let videoPreload: boolean = false
   export let videoShow: boolean = false
   export let allowHoverVideo: boolean = true
+  export let parentSize: boolean = false
+  export let onClick: () => any = () => { showModal() }
 
   let pngFallback = false,
     webpFallback = false,
@@ -72,22 +74,22 @@
     aspect-ratio: 16 / 9;
   }
   @media (max-width: 800px) {
-    .img-root {
+    .img-root.autosize {
       width: 49vw;
     }
   }
   @media (max-width: 1200px) and (min-width: 800px) {
-    .img-root {
+    .img-root.autosize {
       width: 33vw;
     }
   }
   @media (max-width: 2000px) and (min-width: 1200px) {
-    .img-root {
+    .img-root.autosize {
       width: 24vw;
     }
   }
   @media (min-width: 2000px) {
-    .img-root {
+    .img-root.autosize {
       width: 19.5vw;
     }
   }
@@ -109,8 +111,8 @@
     · · ·
     {pair?.id.nt2.chain}-{pair?.id.nt2.resname??''}<strong>{pair?.id.nt2.resnum}{pair?.id.nt2.altloc??''}{pair?.id.nt2.inscode??''}</strong>
 </div>
-<div class="img-root" class:allow-video={allowHoverVideo && videoUrl != null} class:video-show={videoShow} on:mouseover={() => { videoLoaded = true }} on:focus={() => { videoLoaded = true }}
-    on:click={() => showModal()}>
+<div class="img-root" class:autosize={!parentSize} class:allow-video={allowHoverVideo && videoUrl != null} class:video-show={videoShow} on:mouseover={() => { videoLoaded = true }} on:focus={() => { videoLoaded = true }}
+    on:click={() => onClick()}>
   <div class="video">
     {#if videoLoaded || videoPreload || videoShow}
       <video src={videoUrl} autoplay loop muted preload="none"></video>

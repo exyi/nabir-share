@@ -789,8 +789,8 @@ def main(pool: Union[Pool, MockPool], args):
     if args.dedupe:
         df = remove_duplicate_pairs(df)
     df = df.sort('pdbid', 'model', 'nr1', 'nr2')
-    df.write_csv(args.output)
-    if not args.output.startswith("/dev/"):
+    if args != "/dev/null":
+        df.write_csv(args.output if args.output.endswith(".csv") else args.output + ".csv")
         df.write_parquet(args.output + ".parquet")
     return df
 
@@ -799,7 +799,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="""
         Adds geometric information to the specified pairing CSV files.
         Added columns:
-            * hb_0_length, hb_0_heavy_a_angle, hb_1_length, hb_1_heavy_a_angle, hb_2_length, hb_2_heavy_a_angle - hydrogen bond lengths and angles between heavy atoms
+            * hb_0_length, hb_0_acceptor_angle, hb_0_donor_angle, ... - hydrogen bond lengths and angles between heavy atoms on both sides
             * coplanarity_angle - angle between planes of the two nucleotides
         When --dssr-binary is specified, DSSR --analyze is executed to gain additional information:
             * dssr_pairing_type - pairing type according to DSSR (e.g. WC, Platform, ~rHoogsteen)
@@ -808,7 +808,7 @@ if __name__ == "__main__":
         formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument("inputs", nargs="+")
     parser.add_argument("--pdbcache", nargs="+", help="Directories to search for PDB files in order to avoid downloading. Last directory will be written to, if the structure is not found and has to be downloaded.")
-    parser.add_argument("--output", "-o", required=True, help="Output CSV file name")
+    parser.add_argument("--output", "-o", required=True, help="Output CSV/Parquet file name")
     parser.add_argument("--threads", type=int, default=1, help="Maximum parallelism - number of worker processes to spawn")
     parser.add_argument("--metadata", type=bool, default=True, help="Add deposition_date, resolution and structure_method columns")
     parser.add_argument("--dssr-binary", type=str, help="If specified, DSSR --analyze will be invoked for each structure and its results stored as 'dssr_' prefixed columns")

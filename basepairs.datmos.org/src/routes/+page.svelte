@@ -15,9 +15,11 @@
   import HistogramPlot from '$lib/components/HistogramPlot.svelte';
 	import StatsPanel from '$lib/components/StatsPanel.svelte';
   import _ from 'lodash'
+	import { unescape } from 'lodash';
+	import OverviewTable from '$lib/components/OverviewTable.svelte';
 
-  let selectedFamily = 'tWW'
-  let selectedPairing = 'tWW-A-A'
+  let selectedFamily: string | undefined
+  let selectedPairing: string | undefined
 
   let filterMode: "ranges" | "sql" = "ranges"
   let filter: NucleotideFilterModel = defaultFilter()
@@ -32,7 +34,7 @@
   function updateUrlNow() {
     const params = filterToUrl(filter, filterMode)
     statsToUrl(params, testStats)
-    const url = `${selectedPairing}/${params.toString()}`
+    const url = selectedPairing == null ? '' : `${selectedPairing}/${params.toString()}`
     if (window.location.hash.replace(/^#/, '') != url) {
       if (lastUrlUpdate + 1000 < performance.now()) {
         history.pushState({}, "", '#' + url)
@@ -59,6 +61,9 @@
     if (x.pairType != null) {
       selectedFamily = db.pairFamilies.find(f => f.toLowerCase() == x.pairFamily.toLowerCase()) ?? x.pairFamily
       selectedPairing = db.pairTypes.map(([f, b]) => `${f}-${b}`).find(f => f.toLowerCase() == x.pairType.toLowerCase()) ?? x.pairType
+    } else {
+      selectedPairing = undefined
+      selectedFamily = undefined
     }
     updateUrlNow()
   }
@@ -175,6 +180,7 @@
   const recommendedColumns = [ "model", "ins1", "alt1", "res1", "res2", "ins2", "alt2", "res2" ]
 
   function getMetadata(pairType) {
+    if (pairType == null) return undefined
     return metadata.find(m => m.pair_type.join('-').toLowerCase() == pairType.toLowerCase())
   }
 
@@ -233,7 +239,7 @@
       
       const metadata = getMetadata(selectedPairing)
       const sql = filterMode == "sql" ? filter.sql : makeSqlQuery(filter, queryFromTable(filter))
-      if (filterMode != "sql" && (metadata == null || metadata.count == 0)) {
+      if (selectedPairing == null || filterMode != "sql" && (metadata == null || metadata.count == 0)) {
         console.warn("Pair type not defined:", selectedPairing)
         resultsPromise = Promise.resolve(undefined)
         results = []
@@ -359,7 +365,6 @@
   }
 
   // const imgDir = "http://[2a01:4f8:c2c:bb6c:4::8]:12345/"
-  const imgDir = db.host == 'localhost' ? "https://pairs.exyi.cz/img" : (new URL('pregen-img', document.baseURI)).href
   // const imgDir = base+"/img"
 </script>
 
@@ -383,6 +388,7 @@
   {/each}
 </div>
 
+{#if selectedFamily != null}
 <div class="selector buttons has-addons is-centered are-small" style="margin-bottom: 0px">
   {#each getPairTypeList(selectedFamily) as p}
   <!-- class:is-light={selectedPairing.toLowerCase() != `${p.family}-${p.bases}`.toLowerCase()} -->
@@ -400,7 +406,11 @@
 {#if selectedPairing && selectedPairing[1] == selectedPairing[2] && selectedPairing.slice(1) != 'SS'}
   <div class="buttons-help">The {selectedFamily} family is symmetrical, for example <b>C-A</b> is equivalent to <b>A-C</b></div>
 {/if}
+{/if}
 <div style="margin-bottom: 1rem"></div>
+{#if selectedPairing == null}
+  <OverviewTable families={selectedFamily == null ? undefined : [selectedFamily]} />
+{:else}
 <div class="filters">
   <FilterEditor bind:filter={filter}
     selectingFromTable={filter && queryFromTable(filter)}
@@ -460,9 +470,9 @@
 
   <div style="position: absolute; width: 200px; text-align: center; margin-left: -100px; left:50%">
     {#if testStats.enabled}
-    <a style="text-align: center; :inline-end" href="javascript:" on:click={e => testStats.enabled = false }>▲ collapse plots ▲</a>
+    <a style="text-align: center; :inline-end" href="javascript:;" on:click={e => testStats.enabled = false }>▲ collapse plots ▲</a>
     {:else}
-    <a href="javascript:" on:click={() => testStats.enabled = true}>▽ expand plots ▽</a>
+    <a href="javascript:;" on:click={() => testStats.enabled = true}>▽ expand plots ▽</a>
     {/if}
   </div>
   <div>
@@ -503,9 +513,10 @@
     {/if}
   {/if}
 {/await}
-<PairImages pairs={results} rootImages={imgDir} imgAttachement=".png" videoAttachement=".webm" />
+<PairImages pairs={results} rootImages={db.imgDir} imgAttachement=".png" videoAttachement=".webm" />
 {#if resultsCount != results?.length && resultsCount > 0}
   <p style="text-align: center">Loading more... than 100 items is not implemented at the moment</p>
+{/if}
 {/if}
 
 </Modal>
