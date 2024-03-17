@@ -1,14 +1,15 @@
 import functools
 import itertools
 from multiprocessing.pool import Pool
-from typing import Any, Callable, List, Optional, Tuple, TypeVar, Union
+from typing import Any, Callable, Generator, Iterator, List, Literal, Optional, Sequence, Tuple, TypeVar, Union
 import Bio.PDB, Bio.PDB.Structure, Bio.PDB.Model, Bio.PDB.Residue, Bio.PDB.Atom, Bio.PDB.Chain, Bio.PDB.Entity
-import os, sys, io, gzip, math, numpy as np
+import os, sys, io, gzip, math, json, numpy as np
 import polars as pl
 from dataclasses import dataclass
 import dataclasses
 from requests import HTTPError
 import multiprocessing
+import scipy.spatial
 from pair_csv_parse import scan_pair_csvs
 import pdb_utils
 import pair_defs as pair_defs
@@ -16,7 +17,6 @@ from async_utils import MockPool
 pdef = pair_defs
 
 _sentinel = object()
-
 
 @dataclass
 class AltResidue:
@@ -61,14 +61,23 @@ class AltResidue:
                 raise KeyError(f"Atom {name} not found in residue {self.res.full_id}")
             else:
                 return default
+            
+    def copy(self) -> 'AltResidue':
+        return AltResidue(self.res.copy(), self.alt)
 
-def get_base_atoms(res: AltResidue) -> Optional[Tuple[Bio.PDB.Atom.Atom, List[Bio.PDB.Atom.Atom]]]:
+def try_get_base_atoms(res: AltResidue) -> Optional[Tuple[Bio.PDB.Atom.Atom, List[Bio.PDB.Atom.Atom]]]:
     c1 = res.get_atom("C1'", None)
     if c1 is not None:
-        planar_base_atoms = [ a for a in res.get_atoms() if not a.name.endswith("'") and a.element != "H" and a.element != "D" ]
+        planar_base_atoms = [ a for a in res.get_atoms() if not a.name.endswith("'") and a.element not in [ "H", "D", "P" ] and a.name not in ["P", "OP1", "OP2", "OP3"] ]
         assert len(planar_base_atoms) >= 6
         return c1, planar_base_atoms
     return None
+
+def get_base_atoms(res: AltResidue) -> Tuple[Bio.PDB.Atom.Atom, List[Bio.PDB.Atom.Atom]]:
+    x = try_get_base_atoms(res)
+    if x is None:
+        raise ResideTransformError(f"No C1' atom found at {res.res.full_id}")
+    return x
 
 def bfs(adj_matrix, current):
     assert np.diagonal(adj_matrix).all()
@@ -124,6 +133,16 @@ class TranslationThenRotation:
     def __post_init__(self):
         assert self.rotation.shape == (3, 3)
         assert self.translation.shape == (3,)
+
+@dataclass
+class TranslationRotationTranslation:
+    translation1: np.ndarray
+    rotation: np.ndarray
+    translation2: np.ndarray
+    def __post_init__(self):
+        assert self.rotation.shape == (3, 3)
+        assert self.translation1.shape == (3,)
+        assert self.translation2.shape == (3,)
 
 @dataclass
 class ResiduePosition:
@@ -190,10 +209,7 @@ def get_residue_posinfo(res: AltResidue) -> ResiduePosition:
     """
     Returns a tuple of (translation, rotation) that moves the C1' atom to the origin and the C1'-N bond to the x-axis and all planar atoms with (near) 0 z-coordinate.
     """
-    x = get_base_atoms(res)
-    if x is None:
-        raise ResideTransformError(f"No C1' atom found at {res.res.full_id}")
-    c1, planar_atoms = x
+    c1, planar_atoms = get_base_atoms(res)
     nX = res.get_atom("N1", None) or res.get_atom("N9", None)
     planar_atoms = filter_atoms(c1, planar_atoms)
     
@@ -295,13 +311,155 @@ def get_residue_posinfo_C1_N(res: AltResidue) -> TranslationThenRotation:
     z /= np.linalg.norm(z)
     rotation = np.array([x, y, z]).T
 
-    test = AltResidue(transform_residue(res.res, translation, rotation), res.alt)
+    test = transform_residue(res, TranslationThenRotation(translation, rotation))
     assert np.all(test.get_atom(n.name).coord < 0.001)
     assert np.all(test.get_atom(c1.name).coord[1:] < 0.001)
     assert 1.2 < test.get_atom(c1.name).coord[0] < 1.9, f"Unexpected C1' coordinates (x is bad): {test.get_atom(c1.name).coord}"
     assert np.all(test.get_atom(c2.name).coord[2] < 0.001)
 
     return TranslationThenRotation(translation, rotation)
+
+def fit_trans_rot_to_pairs(atom_pairs: Sequence[Tuple[Optional[Bio.PDB.Atom.Atom], Optional[Bio.PDB.Atom.Atom]]]) -> TranslationRotationTranslation:
+    """
+    Find a translation plus rotation minimizing the RMSD beweteen the atom pairs.
+    """
+    atom_pairs = [ (a, b) for a, b in atom_pairs if a is not None and b is not None ]
+    if len(atom_pairs) < 3:
+        raise ResideTransformError(f"Not enough pairs for fitting: {len(atom_pairs)}")
+    coord_pairs = [ (a.coord, b.coord) for a, b in atom_pairs ]
+    m1, m2 = zip(*coord_pairs)
+    trans1 = -np.mean(m1, axis=0)
+    m1 = np.array(m1) + trans1
+    trans2 = np.mean(m2, axis=0)
+    m2 = np.array(m2) - trans2
+
+    rotation, rssd, _sensitivity_matrix = scipy.spatial.transform.Rotation.align_vectors(m1, m2, return_sensitivity=True) # type:ignore
+    #                      return_sensitivity=True makes it throw on some unwanted special cases ^^^^^^^^^^^^^^^^^^
+
+    return TranslationRotationTranslation(trans1, rotation.as_matrix(), trans2)
+
+def atom_pair_rmsd(atom_pairs: Sequence[Tuple[Optional[Bio.PDB.Atom.Atom], Optional[Bio.PDB.Atom.Atom]]]) -> float:
+    """
+    Calculate RMSD between to sets of atoms, without rotating/translating them
+    """
+    atom_pairs = [ (a, b) for a, b in atom_pairs if a is not None and b is not None ]
+    coord_pairs = [ (a.coord, b.coord) for a, b in atom_pairs ]
+    return float(np.mean([ _linalg_norm(c1 - c2) for c1, c2 in coord_pairs ]))
+
+@dataclass
+class PairInformation:
+    type: pair_defs.PairType
+    res1: AltResidue
+    res2: AltResidue
+    position1: Optional[ResiduePosition]
+    position2: Optional[ResiduePosition]
+    rot_trans1: Optional[TranslationThenRotation]
+    rot_trans2: Optional[TranslationThenRotation]
+
+def calc_pair_information(pair_type: pair_defs.PairType, res1: AltResidue, res2: AltResidue) -> PairInformation:
+    p1 = try_get_residue_posinfo(res1)
+    p2 = try_get_residue_posinfo(res2)
+    rot_trans1 = try_x(get_residue_posinfo_C1_N, res1)
+    rot_trans2 = try_x(get_residue_posinfo_C1_N, res2)
+
+    return PairInformation(pair_type, res1, res2, p1, p2, rot_trans1, rot_trans2)
+
+def load_pair_information_by_idtuple(pair_type: Union[tuple[str, str], pair_defs.PairType], identifier: tuple[str, int, str, str, int, str, str, str, str, int, str, str]) -> PairInformation:
+    pdbid, model, chain1, resname1, nr1, ins1, alt1, chain2, resname2, nr2, ins2, alt2 = identifier
+    pair_type = pair_defs.PairType.from_tuple(pair_type)
+    print(f"Loading ideal basepair:", *identifier)
+    structure = pdb_utils.load_pdb(None, pdbid)
+
+    res1 = get_residue(structure, model, chain1, nr1, ins1, alt1)
+    res2 = get_residue(structure, model, chain2, nr2, ins2, alt2)
+    # detach parent to lower memory usage (all structures would get replicated to all workers)
+    res1 = res1.copy()
+    res2 = res2.copy()
+    assert res1.res.resname == resname1 and res2.res.resname == resname2, f"Residue names don't match: {res1.res.resname} {res2.res.resname} {resname1} {resname2} ({identifier})"
+    return calc_pair_information(pair_type, res1, res2)
+
+def load_ideal_pairs(pool: Union[Pool, MockPool], metadata_file: str) -> dict[pair_defs.PairType, PairInformation]:
+    with open(metadata_file) as f:
+        metadata = json.load(f)
+    result = dict()
+    
+    for pair_meta in metadata:
+        if not pair_meta.get("statistics", None):
+            continue
+        pair_type = pair_defs.PairType.from_tuple(pair_meta["pair_type"])
+        if pair_type.n:
+            continue
+        largest_stat = max(pair_meta["statistics"], key=lambda x: x["count"])
+        nicest_bp = largest_stat["nicest_bp"]
+        result[pair_type] = pool.apply_async(load_pair_information_by_idtuple, args=[pair_type, nicest_bp])
+
+    for k in result:
+        result[k] = result[k].get()
+    return result
+
+class PairMetric: # "interface"
+    columns=None
+    def get_columns(self) -> Sequence[str]:
+        if self.columns is None:
+            raise NotImplementedError()
+        return tuple(self.columns)
+
+    def get_values(self, pair: PairInformation) -> Sequence[Optional[float]]:
+        raise NotImplementedError()
+
+    def select(self, columns: Sequence[str], rename_as: Optional[Sequence[str]]=None) -> 'PairMetric':
+        metric = self
+        class SelectPairMetric(PairMetric):
+            def get_columns(self) -> Sequence[str]:
+                return tuple(rename_as) if rename_as else tuple(columns)
+            def get_values(self, pair: PairInformation) -> Sequence[Optional[float]]:
+                selection = [ i for i, col in enumerate(metric.get_columns()) if col in columns ]
+                vals = list(metric.get_values(pair))
+                return tuple([vals[i] for i in selection])
+        return SelectPairMetric()
+    
+    def apply_with(self, metric2: 'PairMetric', fn: Callable[[float, float], float], rename_as: Optional[Sequence[str]]=None) -> 'PairMetric':
+        metric = self
+        assert len(metric.get_columns()) == len(metric2.get_columns()), f"Cannot apply {fn.__name__} to metrics with different number of columns."
+
+        class ApplyWithPairMetric(PairMetric):
+            def get_columns(self) -> Sequence[str]:
+                return tuple(rename_as) if rename_as else metric.get_columns()
+            def get_values(self, pair: PairInformation) -> Sequence[Optional[float]]:
+                return [ (None if a is None or b is None else fn(a, b))
+                         for a, b in zip(metric.get_values(pair), metric2.get_values(pair))]
+
+        return ApplyWithPairMetric()
+    
+    def apply(self, fn: Callable[[float], float], rename_as: Optional[Sequence[str]]=None) -> 'PairMetric':
+        metric = self
+        class ApplyPairMetric(PairMetric):
+            def get_columns(self) -> Sequence[str]:
+                return tuple(rename_as) if rename_as else metric.get_columns()
+            def get_values(self, pair: PairInformation) -> Sequence[Optional[float]]:
+                return [ (None if a is None else fn(a))
+                         for a in metric.get_values(pair)]
+        return ApplyPairMetric()
+
+    def agg(self, fn: Callable[[list[Optional[float]]], float], rename_as: Optional[str]=None) -> 'PairMetric':
+        metric = self
+        class AggPairMetric(PairMetric):
+            def get_columns(self) -> Sequence[str]:
+                return (rename_as,) if rename_as else (metric.get_columns()[0],)
+            def get_values(self, pair: PairInformation) -> Sequence[Optional[float]]:
+                vals = list(metric.get_values(pair))
+                return [fn(vals)]
+        return AggPairMetric()
+
+    @staticmethod
+    def concat(metrics: list['PairMetric']) -> 'PairMetric':
+        class ConcatPairMetric(PairMetric):
+            def get_columns(self) -> Sequence[str]:
+                return list(itertools.chain(*[m.get_columns() for m in metrics]))
+            def get_values(self, pair: PairInformation) -> Sequence[Optional[float]]:
+                return list(itertools.chain(*[m.get_values(pair) for m in metrics]))
+        return ConcatPairMetric()
+
 
 def get_C1_N_yaw_pitch_roll(rot1: np.ndarray, rot2: np.ndarray) -> Tuple[float, float, float]:
     matrix = rot1.T @ rot2
@@ -329,42 +487,30 @@ def try_x(f: Callable[[AltResidue], T], res: AltResidue, warning = None) -> Opti
             print(f"WARNING(residue = {res.res.full_id} {res.alt}): {e}")
         return None
 
-
 def try_get_residue_posinfo(res: AltResidue, warning = None) -> Optional[ResiduePosition]:
     return try_x(get_residue_posinfo, res, warning)
 
-def transform_residue(r: Bio.PDB.Residue.Residue, translation: np.ndarray, rotation: np.ndarray):
+TResidue = TypeVar('TResidue', bound=Union[AltResidue, Bio.PDB.Residue.Residue])
+def transform_residue(r: TResidue, t: Union[TranslationThenRotation, TranslationRotationTranslation, ResiduePosition]) -> TResidue:
+    if isinstance(r, AltResidue):
+        return AltResidue(transform_residue(r.res, t), r.alt) # type: ignore
     r = r.copy()
-    r.transform(np.eye(3), translation)
-    r.transform(rotation, np.zeros(3))
+    if isinstance(t, TranslationThenRotation):
+        r.transform(np.eye(3), t.translation)
+        r.transform(t.rotation, np.zeros(3))
+    elif isinstance(t, ResiduePosition):
+        r.transform(np.eye(3), t.origin)
+        r.transform(t.rotation, np.zeros(3))
+    elif isinstance(t, TranslationRotationTranslation):
+        r.transform(np.eye(3), t.translation1)
+        r.transform(t.rotation, np.zeros(3))
+        r.transform(np.eye(3), t.translation2)
     return r
 
 def to_float32_df(df: pl.DataFrame) -> pl.DataFrame:
     return df.with_columns([
         pl.col(c).cast(pl.Float32).alias(c) for c in df.columns if df[c].dtype == pl.Float64
     ])
-
-@dataclass
-class PairStats:
-    # buckle: float
-    coplanarity_angle: Optional[float] = None
-    coplanarity_shift1: Optional[float] = None
-    coplanarity_shift2: Optional[float] = None
-    coplanarity_edge_angle1: Optional[float] = None
-    coplanarity_edge_angle2: Optional[float] = None
-    C1_C1_distance: Optional[float] = None
-    C1_C1_total_angle: Optional[float] = None
-    C1_C1_yaw1: Optional[float] = None
-    C1_C1_pitch1: Optional[float] = None
-    C1_C1_roll1: Optional[float] = None
-    C1_C1_yaw2: Optional[float] = None
-    C1_C1_pitch2: Optional[float] = None
-    C1_C1_roll2: Optional[float] = None
-    C1_C1_euler_phi: Optional[float] = None
-    C1_C1_euler_theta: Optional[float] = None
-    C1_C1_euler_psi: Optional[float] = None
-    # opening: float
-    # nearest_distance: float
 
 def _linalg_norm(v) -> float:
     return float(np.linalg.norm(v)) # typechecker se asi posral nebo fakt nevím z jakých halucinací usoudil, že výsledek np.linalg.norm nejde násobit, porovnávat nebo nic
@@ -393,40 +539,135 @@ def get_edge_edges(edge: List[Bio.PDB.Atom.Atom]) -> Optional[Tuple[Bio.PDB.Atom
         return (edge[0], edge[-1])
     return (polar_atoms[0], polar_atoms[-1])
 
-def calc_pair_stats(pair_type: pair_defs.PairType, res1: AltResidue, res2: AltResidue) -> tuple[Optional[PairStats], Optional[ResiduePosition], Optional[ResiduePosition]]:
-    p1 = try_get_residue_posinfo(res1)
-    p2 = try_get_residue_posinfo(res2)
-    rot_trans1 = try_x(get_residue_posinfo_C1_N, res1)
-    rot_trans2 = try_x(get_residue_posinfo_C1_N, res2)
+class CoplanarityEdgeMetrics(PairMetric):
+    columns = [ "coplanarity_angle", "coplanarity_shift1", "coplanarity_shift2", "coplanarity_edge_angle1", "coplanarity_edge_angle2" ]
+    def get_values(self, pair: PairInformation) -> Sequence[Optional[float]]:
+        p1, p2 = pair.position1, pair.position2
+        if p1 is None or p2 is None:
+            return [ None ] * len(self.columns)
 
-    if p1 is None or p2 is None:
-        return None, p1, p2
-    res1_ = AltResidue(transform_residue(res1.res, -p1.origin, p1.rotation), res1.alt)
-    res2_ = AltResidue(transform_residue(res2.res, -p1.origin, p1.rotation), res2.alt)
-    edge1 = get_edge_atoms(res1, pair_type.edge1_name)
-    edge1_edges = get_edge_edges(edge1)
-    edge2 = get_edge_atoms(res2, pair_type.edge2_name)
-    edge2_edges = get_edge_edges(edge2)
+        edge1 = get_edge_atoms(pair.res1, pair.type.edge1_name)
+        edge1_edges = get_edge_edges(edge1)
+        edge2 = get_edge_atoms(pair.res2, pair.type.edge2_name)
+        edge2_edges = get_edge_edges(edge2)
 
-    out = PairStats()
-
-    out.coplanarity_angle = math.degrees(np.arccos(np.dot(p1.plane_normal_vector, p2.plane_normal_vector)))
+        return [
+            math.degrees(np.arccos(np.dot(p1.plane_normal_vector, p2.plane_normal_vector))), # coplanarity_angle
+            maybe_agg(abs_min, [p2.plane_get_deviation(a.coord) for a in edge1]), # coplanarity_shift1
+            maybe_agg(abs_min, [p1.plane_get_deviation(a.coord) for a in edge2]), # coplanarity_shift2
+            p2.get_relative_line_rotation(*(a.coord for a in edge1_edges)) if edge1_edges is not None else None, # coplanarity_edge_angle1
+            p1.get_relative_line_rotation(*(a.coord for a in edge2_edges)) if edge2_edges is not None else None, # coplanarity_edge_angle2
+        ]
     
-    out.coplanarity_shift1 = maybe_agg(abs_min, [p2.plane_get_deviation(a.coord) for a in edge1])
-    out.coplanarity_shift2 = maybe_agg(abs_min, [p1.plane_get_deviation(a.coord) for a in edge2])
-    out.coplanarity_edge_angle1 = p2.get_relative_line_rotation(*(a.coord for a in edge1_edges)) if edge1_edges is not None else None
-    out.coplanarity_edge_angle2 = p1.get_relative_line_rotation(*(a.coord for a in edge2_edges)) if edge2_edges is not None else None
+class IsostericityCoreMetrics(PairMetric):
+    columns = [ "C1_C1_distance", "C1_C1_total_angle" ]
+    def get_values(self, pair: PairInformation) -> Sequence[Optional[float]]:
+        pos1, pos2 = pair.position1, pair.position2
+        if pos1 is None or pos2 is None or pos1.c1_pos is None or pos2.c1_pos is None:
+            return [ None ] * len(self.columns)
 
-    out.C1_C1_distance = _linalg_norm(res1.get_atom("C1'").coord - res2.get_atom("C1'").coord)
-    if p1.n_pos is not None and p2.n_pos is not None and p1.c1_pos is not None and p2.c1_pos is not None:
-        out.C1_C1_total_angle = math.degrees(np.arccos(np.dot(_linalg_normalize(p1.n_pos - p1.c1_pos), _linalg_normalize(p2.c1_pos - p2.n_pos))))
+        distance = _linalg_norm(pos1.c1_pos - pos2.c1_pos)
+        if pos1.n_pos is None or pos2.n_pos is None:
+            total_angle = None
+        else:
+            total_angle = math.degrees(np.arccos(np.dot(_linalg_normalize(pos1.n_pos - pos1.c1_pos), _linalg_normalize(pos2.c1_pos - pos2.n_pos))))
+        return [ distance, total_angle ]
     
-    if rot_trans1 and rot_trans2:
-        out.C1_C1_yaw1, out.C1_C1_pitch1, out.C1_C1_roll1 = get_C1_N_yaw_pitch_roll(rot_trans1.rotation, -rot_trans2.rotation)
-        out.C1_C1_yaw2, out.C1_C1_pitch2, out.C1_C1_roll2 = get_C1_N_yaw_pitch_roll(rot_trans2.rotation, -rot_trans1.rotation)
-        out.C1_C1_euler_phi, out.C1_C1_euler_theta, out.C1_C1_euler_psi = get_C1_N_euler_angles(rot_trans1.rotation, -rot_trans2.rotation)
+class EulerAngleMetrics(PairMetric):
+    def __init__(self, col_names: Sequence[str], function: Callable[[np.ndarray, np.ndarray], tuple[float, float, float]], swap: bool) -> None:
+        self.columns = [ "C1_C1_" + c for c in col_names ]
+        self.function = function
+        self.swap = swap
 
-    return out, p1, p2
+    def get_values(self, pair: PairInformation) -> Sequence[Optional[float]]:
+        rot_trans1, rot_trans2 = pair.rot_trans1, pair.rot_trans2
+        if rot_trans1 is None or rot_trans2 is None:
+            return [ None ] * len(self.columns)
+        if self.swap:
+            return self.function(rot_trans2.rotation, -rot_trans1.rotation)
+        else:
+            return self.function(rot_trans1.rotation, -rot_trans2.rotation)
+
+class StandardMetrics:
+    Coplanarity = CoplanarityEdgeMetrics()
+    Isostericity = IsostericityCoreMetrics()
+    EulerClassic = EulerAngleMetrics(["euler_phi", "euler_theta", "euler_psi"], get_C1_N_euler_angles, False)
+    YawPitchRoll = EulerAngleMetrics(["yaw1", "pitch1", "roll1"], get_C1_N_yaw_pitch_roll, False)
+    YawPitchRoll2 = EulerAngleMetrics(["yaw2", "pitch2", "roll2"], get_C1_N_yaw_pitch_roll, True)
+
+class RMSDToIdealMetric(PairMetric):
+    def __init__(self, name, ideal: dict[pair_defs.PairType, PairInformation],
+        fit_on: Literal['all', 'left_C1N', 'left', 'right', 'both_edges'],
+        calculate: Literal['all', 'right_C1N', 'both_C1N', 'left_edge', 'right_edge', 'both_edges'],
+    ) -> None:
+        self.ideal = ideal
+        self.columns = [ f"rmsd_{name}" ]
+        self.fit_on = fit_on
+        self.calculate = calculate
+
+    def get_c1n_atoms(self, res: AltResidue) -> list[Bio.PDB.Atom.Atom]:
+        n = res.get_atom("N9", None) or res.get_atom("N1", None)
+        c1 = res.get_atom("C1", None)
+        if n.name == "N9":
+            # purine
+            return [ c1, n, res.get_atom("C8", None), res.get_atom("C4", None) ] 
+        else:
+            # pyrimidine
+            return [ c1, n, res.get_atom("C6", None), res.get_atom("C2", None) ]
+
+    def atom_pairs(self, l, pair: PairInformation, ideal: PairInformation) -> list[tuple[Optional[Bio.PDB.Atom.Atom], Optional[Bio.PDB.Atom.Atom]]]:
+        if l == 'all':
+            return [ *self.atom_pairs('left', pair, ideal), *self.atom_pairs('right', pair, ideal) ]
+        elif l == 'left':
+            return [ (pair.res1.get_atom(a.name, None), ideal.res1.get_atom(a.name, None)) for a in get_base_atoms(pair.res1)[1] ]
+        elif l == 'right':
+            return [ (pair.res2.get_atom(a.name, None), ideal.res2.get_atom(a.name, None)) for a in get_base_atoms(pair.res2)[1] ]
+        elif l == 'left_C1N':
+            return list(zip(self.get_c1n_atoms(pair.res1), self.get_c1n_atoms(ideal.res1)))
+        elif l == 'right_C1N':
+            return list(zip(self.get_c1n_atoms(pair.res2), self.get_c1n_atoms(ideal.res2)))
+        elif l == 'both_C1N':
+            return [ *self.atom_pairs('left_C1N', pair, ideal), *self.atom_pairs('right_C1N', pair, ideal) ]
+        elif l == 'left_edge' or l == 'right_edge':
+            edge = pair.type.edge1_name if l == 'left_edge' else pair.type.edge2_name
+            p_edge = get_edge_atoms(pair.res1 if l == 'left_edge' else pair.res2, edge)
+            i_edge = get_edge_atoms(ideal.res1 if l == 'left_edge' else ideal.res2, edge)
+            both_atoms = { a.name for a in p_edge } & { a.name for a in i_edge }
+            return list(zip(
+                [ a for a in p_edge if a.name in both_atoms ],
+                [ a for a in i_edge if a.name in both_atoms ]
+            ))
+        elif l == 'both_edges':
+            return [ *self.atom_pairs('left_edge', pair, ideal), *self.atom_pairs('right_edge', pair, ideal) ]
+        else:
+            raise NotImplementedError(f"atom_pairs={l} is not implemented")
+
+    def get_values(self, pair: PairInformation) -> Sequence[Optional[float]]:
+        ideal = self.ideal.get(pair.type.without_n(), None)
+        if ideal is None or pair.rot_trans1 is None or pair.rot_trans2 is None:
+            return [ None ]
+        assert ideal.rot_trans1 is not None
+
+        if self.fit_on == 'left_C1N':
+            fit = TranslationRotationTranslation(pair.rot_trans1.translation, pair.rot_trans1.rotation @ ideal.rot_trans1.rotation.T, -ideal.rot_trans1.translation)
+        else:
+            atom_pairs = self.atom_pairs(self.fit_on, pair, ideal)
+            assert all(a.name == b.name for (a, b) in atom_pairs if a and b)
+            fit = fit_trans_rot_to_pairs(atom_pairs)
+        # elif self.fit_on == 'left':
+        #     atom_pairs = [ (pair.res1.get_atom(a, None), ideal.res1.get_atom(a, None)) for a in get_base_atoms(pair.res1)[1] ]
+        #     fit = fit_trans_rot_to_pairs(atom_pairs)
+        # else:
+        #     raise NotImplementedError(f"fit_on={self.fit_on}")
+
+        transformed1 = transform_residue(pair.res1, fit)
+        transformed2 = transform_residue(pair.res2, fit)
+
+        calc_atom_pairs = self.atom_pairs(self.calculate, dataclasses.replace(pair, res1=transformed1, res2=transformed2), ideal)
+        assert all(a.name == b.name for (a, b) in calc_atom_pairs if a and b)
+        rmsd = atom_pair_rmsd(calc_atom_pairs)
+        return [ rmsd ]
+
 
 def get_angle(atom1: Bio.PDB.Atom.Atom, atom2: Bio.PDB.Atom.Atom, atom3: Bio.PDB.Atom.Atom) -> float:
     v1 = atom1.coord - atom2.coord
@@ -478,10 +719,12 @@ resname_map = {
     'T': 'U',
 }
 
-def get_hbond_stats(pair_type: pair_defs.PairType, r1: AltResidue, r2: AltResidue, rp1: Optional[ResiduePosition], rp2: Optional[ResiduePosition]) -> Optional[List[Optional[HBondStats]]]:
+def get_hbond_stats(pair: PairInformation) -> Optional[List[Optional[HBondStats]]]:
+    r1, r2 = pair.res1, pair.res2
+    rp1, rp2 = pair.position1, pair.position2
     # if r1.resname > r2.resname:
     #     r1, r2 = r2, r1
-    hbonds = pdef.get_hbonds(pair_type, throw=False)
+    hbonds = pdef.get_hbonds(pair.type, throw=False)
     if len(hbonds) == 0:
         return None
     # print(pair_type, pair_name, hbonds)
@@ -503,7 +746,7 @@ def get_hbond_stats(pair_type: pair_defs.PairType, r1: AltResidue, r2: AltResidu
         for atoms, hb in zip(bonds_atoms, hbonds)
     ]
 
-def get_atom_df(model: Bio.PDB.Model.Model):
+def get_atom_df(model: Bio.PDB.Model.Model) -> dict[str, np.ndarray]:
     atom_count = sum(1 for atom in model.get_atoms())
     atom_res = np.zeros(atom_count, dtype=np.int32)
     atom_resname = np.zeros(atom_count, dtype="S4")
@@ -544,6 +787,7 @@ def to_csv_row(df: pl.DataFrame, i: int = 0, max_len = None) -> str:
 def get_residue(structure: Bio.PDB.Structure.Structure, model, chain, res, ins, alt) -> AltResidue:
     res = int(res)
     ins = ins or ' '
+    alt = alt or ''
     ch: Bio.PDB.Chain.Chain = structure[model-1][chain]
     found = ch.child_dict.get((' ', res, ins), None)
     if found is None:
@@ -553,9 +797,13 @@ def get_residue(structure: Bio.PDB.Structure.Structure, model, chain, res, ins, 
     return AltResidue(found, alt)
 
 
-def get_stats_for_csv(df_: pl.DataFrame, structure: Bio.PDB.Structure.Structure, global_pair_type: Optional[str]):
+def get_stats_for_csv(df_: pl.DataFrame, structure: Bio.PDB.Structure.Structure, global_pair_type: Optional[str], metrics: list[PairMetric]) -> Iterator[tuple[int, list[Optional[HBondStats]], list[Optional[float]]]]:
+    """
+    Add columns calculated from PDB structure
+    """
     df = df_.with_row_count()
     pair_type_col = df["type"] if global_pair_type is None else itertools.repeat(global_pair_type)
+    metric_columns = [ tuple(m.get_columns()) for m in metrics ]
     for (pair_family, i, pdbid, model, chain1, res1, ins1, alt1, chain2, res2, ins2, alt2) in zip(pair_type_col, df["row_nr"], df["pdbid"], df["model"], df["chain1"], df["nr1"], df["ins1"], df["alt1"], df["chain2"], df["nr2"], df["ins2"], df["alt2"]):
         if (chain1, res1, ins1, alt1) == (chain2, res2, ins2, alt2):
             continue
@@ -575,11 +823,15 @@ def get_stats_for_csv(df_: pl.DataFrame, structure: Bio.PDB.Structure.Structure,
                 print(f"Could not find residue2 {pdbid}.{model}.{chain2}.{str(res2)+ins2} in {pdbid} ({keyerror=})")
                 continue
             pair_type = pair_defs.PairType.create(pair_family, r1.resname, r2.resname, name_map=resname_map)
-            stats, rp1, rp2 = None, None, None
-            stats, rp1, rp2 = calc_pair_stats(pair_type, r1, r2)
-            hbonds = get_hbond_stats(pair_type, r1, r2, rp1, rp2)
+            pair_info = calc_pair_information(pair_type, r1, r2)
+            hbonds = get_hbond_stats(pair_info)
+            metric_values: list[Optional[float]] = []
+            for mix, m in enumerate(metrics):
+                v = m.get_values(pair_info)
+                assert len(v) == len(metric_columns[mix]), f"Invalid number of values from metric {m} (got {len(v)}, expected {metric_columns[mix]})"
+                metric_values.extend(v)
             if hbonds is not None:
-                yield i, hbonds, stats
+                yield i, hbonds, metric_values
         except AssertionError as e:
             print(f"Assertion error {e} on row:\n{to_csv_row(df_, i, 15)}")
             continue
@@ -591,7 +843,61 @@ def get_stats_for_csv(df_: pl.DataFrame, structure: Bio.PDB.Structure.Structure,
             print("Continuing...")
             continue
 
+def remove_duplicate_pairs_phase1(df: pl.DataFrame):
+    """
+    Removes duplicate symmetric pairs - i.e. cHS-AG and cHS-GA.
+    Keeps only the preferred family ordering (WS > SW), and only the preferred base ordering (GC > CG)
+    """
+    original = df
+    df = df.with_row_index("_tmp_row_nr")
+    df = df.with_columns(
+        pl.col("type").str.replace("^(n?[ct])([WHSBwhsb])([WHSBwhsb])([a-z]*)$", "$1$3$2$4").alias("_tmp_type_reversed")
+    )
+    def core(df: pl.DataFrame, condition):
+        duplicated = df.filter(condition)\
+            .join(df,
+                left_on=['type', 'pdbid', 'model', 'chain1', 'res1', 'nr1', 'ins1', 'alt1'],
+                right_on=['_tmp_type_reversed', 'pdbid', 'model', 'chain2', 'res2', 'nr2', 'ins2', 'alt2'],
+                join_nulls=True, how="inner"
+            )
+        duplicated_f = duplicated.select("_tmp_row_nr", "_tmp_row_nr_right")
+        duplicated_set = set(duplicated_f["_tmp_row_nr"])
+        check_not_removed = set(duplicated_f["_tmp_row_nr_right"])
+        if duplicated_set.intersection(check_not_removed):
+            # print(f"{len(duplicated_set)} entries would be removed twice! {list(duplicated_set.intersection(check_not_removed))}")
+            # print(df.filter(pl.col("_tmp_row_nr").is_in(duplicated_set.intersection(check_not_removed))).head(10))
+
+            # for x in list(duplicated_set.intersection(check_not_removed))[:10]:
+            #     print(x)
+            #     print(duplicated.filter(pl.col("_tmp_row_nr") == x).select("type", pl.col("res1") + pl.col("res2"), "pdbid", "chain1", "chain2", pl.col("alt1") + pl.col("nr1").cast(pl.Utf8) + pl.col("ins1"), pl.col("alt2") + pl.col("nr2").cast(pl.Utf8) + pl.col("ins2")))
+            #     print(duplicated.filter(pl.col("_tmp_row_nr_right") == x).select("type", pl.col("res1") + pl.col("res2"), "pdbid", "chain1", "chain2", pl.col("alt1") + pl.col("nr1").cast(pl.Utf8) + pl.col("ins1") , pl.col("alt2") + pl.col("nr2").cast(pl.Utf8) + pl.col("ins2")))
+            # assert False
+
+            duplicated_set.difference_update(check_not_removed)
+
+        df = df.filter(pl.col("_tmp_row_nr").is_in(duplicated_set).not_())
+        return df
+
+    df = core(df, pl.col("type").str.contains("^(?i)n?(c|t)(SH|HW|SW|BW)a?$"))
+    print(f"Removed duplicates - family orientation {len(original)} -> {len(df)}")
+
+    df = core(df, pl.col("type").str.contains("^n?[ct][whsb][WHSB]a?$"))
+    print(f"Removed duplicates - FR3D small letter is second {len(original)} -> {len(df)}")
+
+    base_ordering = { 'A': 1, 'G': 2, 'C': 3, 'U': 4, 'T': 4 }
+    df = core(df, pl.col("res1").replace(resname_map).replace(base_ordering, default=0) > pl.col("res2").replace(resname_map).replace(base_ordering, default=0))
+    print(f"Removed duplicates - base ordering {len(original)} -> {len(df)}")
+
+    assert len(df) >= len(original) / 2
+
+    return df.drop([ "_tmp_row_nr", "_tmp_type_reversed" ])
+
 def remove_duplicate_pairs(df: pl.DataFrame):
+    """
+    Removes duplicate symmetric pairs - i.e. cHS-AG and cHS-GA.
+    """
+    df = remove_duplicate_pairs_phase1(df)
+
     def pair_id(type, res1, res2, chain1, nr1, ins1, alt1, chain2, nr2, ins2, alt2):
         pair = [ (chain1, nr1, ins1, alt1), (chain2, nr2, ins2, alt2) ]
         pair.sort()
@@ -619,7 +925,8 @@ def remove_duplicate_pairs(df: pl.DataFrame):
 def get_max_bond_count(df: pl.DataFrame):
     pair_types = list(set(pair_defs.PairType.create(type, res1, res2, name_map=resname_map) for type, res1, res2 in df[["type", "res1", "res2"]].unique().iter_rows()))
     bond_count = max(len(pair_defs.get_hbonds(p, throw=False)) for p in pair_types)
-    print("Analyzing pair types:", *pair_types, "with bond count =", bond_count)
+    # print("Analyzing pair types:", pair_types, "with bond count =", bond_count)
+    print(f"Analyzing {len(pair_types)} pair  typeswith bond count =", bond_count)
     return max(3, bond_count)
 
 def backbone_columns(df: pl.DataFrame, structure: Optional[Bio.PDB.Structure.Structure]) -> list[pl.Series]:
@@ -669,14 +976,18 @@ def backbone_columns(df: pl.DataFrame, structure: Optional[Bio.PDB.Structure.Str
 
 
 
-def export_stats_csv(pdbid, df: pl.DataFrame, add_metadata_columns: bool, pair_type: Optional[str], max_bond_count: int) -> Tuple[str, pl.DataFrame, np.ndarray]:
+def export_stats_csv(pdbid, df: pl.DataFrame, add_metadata_columns: bool, pair_type: Optional[str], max_bond_count: int, metrics: list[PairMetric]) -> Tuple[str, pl.DataFrame, np.ndarray]:
     bond_params = [ x.name for x in dataclasses.fields(HBondStats) ]
     valid = np.zeros(len(df), dtype=np.bool_)
-    columns: list[pl.Series] = [
+    hb_columns: list[pl.Series] = [
         pl.Series(f"hb_{i}_{p}", [ None ] * len(df), dtype=pl.Float32)
         for i in range(max_bond_count)
         for p in bond_params ]
-    pair_stats: list[Optional[PairStats]] = [ None ] * len(df)
+    metric_columns: list[pl.Series] = [
+        pl.Series(name, [ None ] * len(df), dtype=pl.Float32)
+        for m in metrics
+        for name in m.get_columns()
+    ]
 
     structure = None
     try:
@@ -691,20 +1002,19 @@ def export_stats_csv(pdbid, df: pl.DataFrame, add_metadata_columns: bool, pair_t
         print(traceback.format_exc())
 
     if structure is not None:
-        for i, hbonds, stats in get_stats_for_csv(df, structure, pair_type):
+        for i, hbonds, metric_values in get_stats_for_csv(df, structure, pair_type, metrics):
             valid[i] = True
             for j, s in enumerate(hbonds):
                 if s is None:
                     continue
 
                 for param_i, param in enumerate(bond_params):
-                    columns[j * len(bond_params) + param_i][i] = getattr(s, param)
+                    hb_columns[j * len(bond_params) + param_i][i] = getattr(s, param)
 
-            pair_stats[i] = stats
+            for j, m in enumerate(metric_values):
+                metric_columns[j][i] = m
 
-    result_df = pl.DataFrame(columns).hstack(pl.DataFrame([
-            p or PairStats() for p in pair_stats
-        ]))
+    result_df = pl.DataFrame([*hb_columns, *metric_columns])
     result_df = to_float32_df(result_df)
     if add_metadata_columns:
         h = structure.header if structure is not None else dict()
@@ -714,11 +1024,10 @@ def export_stats_csv(pdbid, df: pl.DataFrame, add_metadata_columns: bool, pair_t
             pl.lit(h.get('structure_method', None), dtype=pl.Utf8).alias("structure_method"),
             pl.lit(h.get('resolution', None), dtype=pl.Float32).alias("resolution")
         )
-    
+
     result_df = result_df.with_columns(backbone_columns(df, structure))
     assert len(result_df) == len(df)
     return pdbid, result_df, valid
-
 
 def df_hstack(columns: list[pl.DataFrame]) -> pl.DataFrame:
     return functools.reduce(pl.DataFrame.hstack, columns)
@@ -751,15 +1060,36 @@ def validate_missing_columns(chunks: list[pl.DataFrame]):
 
 def main(pool: Union[Pool, MockPool], args):
     df = load_inputs(pool, args)
+    if args.dedupe:
+        df = remove_duplicate_pairs_phase1(df)
     max_bond_count = get_max_bond_count(df)
     groups = list(df.group_by(pl.col("pdbid")))
 
     processes = []
 
-    processes.append([
-        pool.apply_async(export_stats_csv, args=[pdbid, group, args.metadata, args.pair_type, max_bond_count])
+    pair_metrics = [
+        StandardMetrics.Coplanarity,
+        StandardMetrics.Isostericity,
+        StandardMetrics.EulerClassic,
+        StandardMetrics.YawPitchRoll,
+        StandardMetrics.YawPitchRoll2
+    ]
+    if args.reference_basepairs:
+        print("Loading metadata from ", args.reference_basepairs)
+        ideal_basepairs = load_ideal_pairs(pool, args.reference_basepairs)
+        print(f"Loaded {len(ideal_basepairs)} ideal basepairs")
+        pair_metrics.extend([
+            RMSDToIdealMetric('C1N_frames1', ideal_basepairs, fit_on='left_C1N', calculate='right_C1N'),
+            RMSDToIdealMetric('C1N_frames2', ideal_basepairs, fit_on='right_C1N', calculate='left_C1N'),
+            RMSDToIdealMetric('edge1', ideal_basepairs, fit_on='left', calculate='right_edge'),
+            RMSDToIdealMetric('edge2', ideal_basepairs, fit_on='right', calculate='left_edge'),
+            RMSDToIdealMetric('edge_C1N_frame', ideal_basepairs, fit_on='both_edges', calculate='both_C1N'),
+            RMSDToIdealMetric('all_base', ideal_basepairs, fit_on='all', calculate='all'),
+        ])
+
+    processes.append([ # process per PDB structure
+        pool.apply_async(export_stats_csv, args=[pdbid, group, args.metadata, args.pair_type, max_bond_count, pair_metrics])
         for (pdbid,), group in groups # type: ignore
-        # for chunk in group.iter_slices(n_rows=100)
     ])
     if args.dssr_binary is not None:
         import dssr_wrapper
@@ -769,11 +1099,15 @@ def main(pool: Union[Pool, MockPool], args):
         ])
 
     result_chunks = []
-    for ((_pdbid,), group), p in zip(groups, zip(*processes)):
-        p = [ x.get() for x in p ]
-        pdbids = [ x[0] for x in p ]
+    for ((_pdbid,), group), ps in zip(groups, zip(*processes)):
+        # each group of processes returns a tuple
+        # 0. PDBID of the chunk
+        # 1. a set of columns to be added to the original DataFrame
+        # 2. a boolean array indicating which rows are valid or should be dropped
+        ps = [ p.get() for p in ps ]
+        pdbids = [ p[0] for p in ps ]
         assert pdbids == [ _pdbid ] * len(pdbids), f"pdbid mismatch: {_pdbid} x {pdbids}"
-        added_columns, valid = [ x[1] for x in p ], [ x[2] for x in p ]
+        added_columns, valid = [ x[1] for x in ps ], [ x[2] for x in ps ]
         for c1, c2 in zip(added_columns, valid):
             assert len(group) == len(c1), f"DataFrame length mismatch: {len(group)} != {len(c1)}\n\n{group}\n\n{c1}"
             assert len(group) == len(c2), f"ValidArray length mismatch: {len(group)} != {len(c2)}\n\n{group}\n\n{c2}"
@@ -789,7 +1123,7 @@ def main(pool: Union[Pool, MockPool], args):
     if args.dedupe:
         df = remove_duplicate_pairs(df)
     df = df.sort('pdbid', 'model', 'nr1', 'nr2')
-    if args != "/dev/null":
+    if args.output != "/dev/null":
         df.write_csv(args.output if args.output.endswith(".csv") else args.output + ".csv")
         df.write_parquet(args.output + ".parquet")
     return df
@@ -814,6 +1148,7 @@ if __name__ == "__main__":
     parser.add_argument("--dssr-binary", type=str, help="If specified, DSSR --analyze will be invoked for each structure and its results stored as 'dssr_' prefixed columns")
     parser.add_argument("--filter", default=False, action="store_true", help="Filter out rows for which the values could not be calculated")
     parser.add_argument("--dedupe", default=False, action="store_true", help="Remove duplicate pairs, keep the one with shorter bonds or lower chain1,nr1")
+    parser.add_argument("--reference-basepairs", type=str, help="output of gen_histogram_plots.py with the 'nicest' basepairs, will be used as reference for RMSD calculation")
     parser.add_argument("--pair-type", type=str, required=False)
     args = parser.parse_args()
 

@@ -44,6 +44,10 @@ class PairType:
         return True
     def swap_is_nop(self) -> bool:
         return self.type[1] == self.type[2] and self.bases[0] == self.bases[1]
+    def without_n(self) -> 'PairType':
+        if self.n:
+            return PairType(self.type, self.bases, self.variant, n=False)
+        return self
     
     def order_key(self):
         t = self.type.lower()

@@ -156,7 +156,33 @@ coplanarity_histogram_defs2 = [
         pseudomin=-180, pseudomax=180,
         min=-60, max=60
     ),
+]
 
+rmsd_histogram_defs = [
+    HistogramDef(
+        "RMSD of C1'-N bonds",
+        "Å",
+        ["rmsd_C1N_frames1", "rmsd_C1N_frames2"],
+        legend=["fit on left nucleotide", "fit on right nucleotide"],
+    ),
+    HistogramDef(
+        "RMSD of pairing edges",
+        "Å",
+        ["rmsd_edge1", "rmsd_edge2"],
+        legend=["fit on left base", "fit on right base"],
+    ),
+    HistogramDef(
+        "RMSD of C1'-N bonds, ",
+        "Å",
+        ["rmsd_edge_C1N_frame"],
+        legend=["fit on pairing edges"]
+    ),
+    HistogramDef(
+        "Oveall basepair RMSD",
+        "Å",
+        ["rmsd_all_base"],
+        legend=["fit on all base atoms"]
+    ),
 ]
 
 def format_angle_label(atoms: tuple[str, str, str], swap=False):
@@ -596,7 +622,9 @@ def determine_bp_class(df: pl.DataFrame, pair_type: PairType, is_rna = None, thr
 def calculate_stats(df: pl.DataFrame, pair_type):
     if len(df) == 0:
         raise ValueError("No data")
-    columns = df.select(pl.col("^hb_\\d+_(length|donor_angle|acceptor_angle)$")).columns
+    # columns = df.select(pl.col("^hb_\\d+_(length|donor_angle|acceptor_angle)$")).columns
+    # columns = df.select(pl.col("^hb_\\d+_length$"), pl.col("^C1_C1_(yaw|pitch|roll)(1|2)$")).columns
+    columns = df.select(pl.col("^hb_\\d+_(length|donor_angle|acceptor_angle)$"), pl.col("^C1_C1_(yaw|pitch|roll)(1|2)$")).columns
     # print(f"{columns=}")
     cdata = [ df[c].drop_nulls().to_numpy() for c in columns ]
     kdes = [ scipy.stats.gaussian_kde(sample_for_kde(c)) if len(c) > 5 else None for c in cdata ]
@@ -864,11 +892,17 @@ def main(argv):
             dna_rna_images = [ create_pair_image(dff[bp], args.output_dir, pair_type) if bp >= 0 else None for bp in nicest_bps ] * len(resolutions) if nicest_bps is not None else []
             dna_rna_highlights = [ dff[bp] if bp >= 0 else None for bp in nicest_bps ] if nicest_bps is not None else []
             output_files = [
-                f for f in make_bond_pages(df, args.output_dir, pair_type, coplanarity_histogram_defs, images=dna_rna_images, highlights=dna_rna_highlights
+                f for f in make_bond_pages(df, args.output_dir, pair_type, hbonds_histogram_defs, images=dna_rna_images, highlights=dna_rna_highlights
                 )
             ]
             output_files.extend(
-                make_bond_pages(dff, args.output_dir, pair_type, coplanarity_histogram_defs2, highlights=dna_rna_highlights, title_suffix= " - B")
+                make_bond_pages(dff, args.output_dir, pair_type, coplanarity_histogram_defs, highlights=dna_rna_highlights, title_suffix= " - coplanarity")
+            )
+            output_files.extend(
+                make_bond_pages(dff, args.output_dir, pair_type, coplanarity_histogram_defs2, highlights=dna_rna_highlights, title_suffix= " - coplanarity2")
+            )
+            output_files.extend(
+                make_bond_pages(dff, args.output_dir, pair_type, rmsd_histogram_defs, highlights=dna_rna_highlights, title_suffix= " - RMSD to nicest BP")
             )
             output_files.extend(
                 make_pairplot_page(dff, args.output_dir, pair_type, variables=[
@@ -899,6 +933,19 @@ def main(argv):
 
                 ], title_suffix=" - Other coplanarity metrics")
             )
+            #output_files.extend(
+                #make_pairplot_page(dff, args.output_dir, pair_type, variables=[
+                    #pl.col(f"C1_C1_yaw1").alias("Yaw 1"),
+                    #pl.col(f"C1_C1_pitch1").alias("Pitch 1"),
+                    #pl.col(f"C1_C1_roll1").alias("Roll 1"),
+                    #pl.col(f"rmsd_C1N_frames"),
+                    #pl.col(f"rmsd_edge1"),
+                    #pl.col(f"rmsd_edge2"),
+                    #pl.col(f"rmsd_edge_C1N_frame"),
+                    #pl.col(f"rmsd_all_base"),
+                #], title_suffix=" - Various N1-C1' reference frame angles")
+            #)
+>>>>>>> Stashed changes
             # output_files = [
             #     f
             #     for column in [0, 1, 2]
