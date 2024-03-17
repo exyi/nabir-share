@@ -393,6 +393,7 @@
 <div class="selector buttons has-addons is-centered are-small" style="margin-bottom: 0px">
   {#each getPairTypeList(selectedFamily) as p}
   <!-- class:is-light={selectedPairing.toLowerCase() != `${p.family}-${p.bases}`.toLowerCase()} -->
+    {@const m = metadata.find(m => m.pair_type[0] == p.family && m.pair_type[1] == p.bases)}
     <button
       class="button"
       class:is-light-warning={!p.conventional && selectedPairing?.toLowerCase() != `${p.family}-${p.bases}`.toLowerCase()}
@@ -407,7 +408,7 @@
         } else {
           selectedPairing = `${p.family}-${p.bases}`
         }
-      }}>{selectedFamily == null ? p.family + "-" : ""}{p.bases}</button>
+      }}>{selectedFamily == null ? p.family + "-" : ""}{p.bases} ({m?.med_quality + m?.high_quality})</button>
   {/each}
 </div>
 {#if selectedPairing && selectedPairing[1] == selectedPairing[2] && selectedPairing.slice(1) != 'SS'}
@@ -494,11 +495,11 @@
     {/if}
   </div>
   {#if !testStats.enabled}
-    <div class="mini-stats">
+    <!-- <div class="mini-stats">
       {#each fillStatsLegends({ panels: miniStats, enabled: true }, getMetadata(selectedPairing)).panels as stat}
         <HistogramPlot data={resultsTable} settings={stat} />
       {/each}
-    </div>
+    </div> -->
   {/if}
 </div>
 
@@ -520,7 +521,7 @@
     {/if}
   {/if}
 {/await}
-<PairImages pairs={results} rootImages={db.imgDir} imgAttachement=".png" videoAttachement=".webm" />
+<PairImages pairs={results} rootImages={db.imgDir} imgAttachement={filter.rotX ? "-rotX.png" : ".png"} videoAttachement=".webm" videoOnHover={!!filter.rotX} />
 {#if resultsCount != results?.length && resultsCount > 0}
   <p style="text-align: center">Loading more... than 100 items is not implemented at the moment</p>
 {/if}

@@ -125,7 +125,7 @@ A<script lang="ts">
                                 }
                             }} />
                         {:else if
-                            ['WW', 'HH'].includes(family.toLowerCase().replace(/^n?[ct]/, '')) &&
+                            ['ww', 'hh'].includes(family.toLowerCase().replace(/^n?[ct]/, '')) &&
                             metadata.find(m => m.pair_type[0].toUpperCase() == family.toUpperCase() && m.pair_type[1] == `${base2}-${base1}`)}
                             <div style="font-size: 1.5rem; color: rgb(170, 170, 170)">same as <b>{base2}-{base1}</b></div>
                         {:else}

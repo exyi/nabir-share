@@ -22,9 +22,11 @@
         const script = []
         script.push(`fetch ${s.nt1?.pdbid}`)
         const pairSelection =
-            String(s.nt1?.chain) == String(s.nt2?.chain) ?
+            String(s.nt1?.chain) != String(s.nt2?.chain) ?
+                `${s.nt1?.pdbid} and (chain ${s.nt1.chain} and ${resSele(s.nt1)} or chain ${s.nt2.chain} and ${resSele(s.nt2)})` :
+            s.nt1?.altloc || s.nt1?.inscode || s.nt2?.altloc || s.nt2?.inscode || s.nt1.resnum < 0 || s.nt2.resnum < 0 ?
                 `${s.nt1?.pdbid} and chain ${s.nt1?.chain} and (${resSele(s.nt1)} or ${resSele(s.nt2)})` :
-                `${s.nt1?.pdbid} and (chain ${s.nt1.chain} and ${resSele(s.nt1)} or chain ${s.nt2.chain} and ${resSele(s.nt2)})`;
+                `${s.nt1?.pdbid} and chain ${s.nt1?.chain} and resi ${s.nt1.resnum}+${s.nt2.resnum}`
         script.push(`select pair, ${pairSelection}`)
         script.push(`show sticks, %pair`)
         script.push(`orient %pair`)

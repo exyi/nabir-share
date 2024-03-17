@@ -66,11 +66,21 @@
     display: flex;
     flex-direction: column;
     flex-grow: 1;
+    border-radius: 15px;
+  }
+  .pairimage:hover {
+    background-color: #dceff4;
+    transition: background-color 0.2s;
+    /* box-shadow: 0 0 5px 10px #dceff4; */
   }
   .header {
     display: flex;
+    flex-direction: column;
+    ;
     font-size: 0.75rem;
-    margin-top: -0.5rem;
+    margin-top: -1.5rem;
+    text-align: center;
+    height: 2rem;
   }
   .img-root {
     position: relative;
@@ -128,14 +138,14 @@
 </div>
 </a>
 <div class="header">
-    <div style="flex: 1 1 0px"></div>
-    <div style="flex: 0 0 auto; margin: 0 0.5rem">
+    <div style="flex: 1 1 0px;"></div>
+    <div style="flex: 0 0 auto;">
       <strong>{pair?.id.nt1.pdbid}</strong>{pair?.id.nt1.model > 1 ? "-" + pair?.id.nt1.model : ""}
       {pair?.id.nt1.chain}-{pair?.id.nt1.resname??''}<strong>{pair?.id.nt1.resnum}{pair?.id.nt1.altloc??''}{pair?.id.nt1.inscode??''}</strong>
       · · ·
       {pair?.id.nt2.chain}-{pair?.id.nt2.resname??''}<strong>{pair?.id.nt2.resnum}{pair?.id.nt2.altloc??''}{pair?.id.nt2.inscode??''}</strong>
     </div>
-    <div style="flex: 1 1 auto; overflow: visible; text-align: left">
+    <div style="flex: 0 0 auto; overflow: visible">
       {#if linkText}
         <a href={linkUrl ?? "javascript:;"} style="text-decoration: underline;" on:click={() => onClick()}>{linkText}</a>
       {/if}

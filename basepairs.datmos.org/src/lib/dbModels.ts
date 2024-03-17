@@ -17,6 +17,7 @@ export type NucleotideFilterModel = {
     orderBy?: string
     filtered: boolean
     includeNears: boolean
+    rotX?: boolean
 }
 
 export type StatisticsSettingsModel = {
@@ -442,26 +443,52 @@ export function getColumnLabel(column: string, metadata: UnwrapArray<typeof meta
         return ["Structure resolution", null]
     }
     if (column == 'C1_C1_distance') {
-        return ["C1'-C1' distance", null]
+        return ["C1'—C1' distance", null]
     }
     if (column == 'C1_C1_total_angle') {
         const [b1, b2] = formatBaseNames(metadata, true, true)
         const [n1, n2] = metadata.pair_type[1].toUpperCase().split('-').map(baseNitrogen)
-        return [`C1'-${n1} / ${n2}-C1' ∡`, `Total angle between ${b1} C1'-${n1} bond and ${b2} ${n2}-C1' bond` ]
+        return [`C1'—${n1} / ${n2}—C1' ∡`, `Total angle between ${b1} C1'-${n1} bond and ${b2} ${n2}-C1' bond` ]
     }
     if ((m = /^C1_C1_(yaw|pitch|roll)(\d+)?$/.exec(column))) {
         const angleName = m[1]
         const [b1, b2] = formatBaseNames(metadata, true, false)
         const b = m[2] == '2' ? b2 : b1
         const [n1, n2] = metadata.pair_type[1].toUpperCase().split('-').map(baseNitrogen)
-        return [`C1'-${n1} / ${n2}-C1' ${capitalizeFirst(angleName)} ∡`, `${capitalizeFirst(angleName)} angle between C1'-${n1} bonds bond, relative to the ${b} nitrogen plane` ]
+        return [`C1'—N ${capitalizeFirst(angleName)} ∡`, `${capitalizeFirst(angleName)} angle between C1'-${n1} bonds bond, relative to the ${b} nitrogen plane` ]
+    }
+    if (column == 'C1_C1_euler_phicospsi') {
+        return [ `C1'—N Euler φ+cos(θ)ψ`, 'φ+cos(θ)ψ ≈ "total Z-axis rotation"' ]
     }
     if ((m = /^C1_C1_euler_(\w+)$/.exec(column))) {
         const angleName = m[1]
         const [b1, b2] = formatBaseNames(metadata, true, false)
         const [n1, n2] = metadata.pair_type[1].toUpperCase().split('-').map(baseNitrogen)
         const letter = { 'theta': 'θ', 'phi': 'φ', 'psi': 'ψ' }[angleName] ?? angleName
-        return [`C1'-${n1} / ${n2}-C1' Euler ${letter} ∡`, `${letter} (${angleName}) euler angle between C1'-${n1} bonds, relative to the ${b1} nitrogen plane` ]
+        return [`C1'—N Euler ${letter} ∡`, `${letter} (${angleName}) euler angle between C1'-${n1} bonds, relative to the ${b1} nitrogen plane` ]
+    }
+    if (column == 'rmsd_C1N_frames1' || column == 'rmsd_C1N_frames2') {
+        let [b1, b2] = formatBaseNames(metadata, true, true)
+        if (column == 'rmsd_C1N_frames2') {
+            [b1, b2] = [b2, b1]
+        }
+        return [ `${column == 'rmsd_C1N_frames2' ? 'left' : 'right'} C1'—N RMSD`, `RMSD to exemplar basepair of ${b2} C1'—N reference frame atoms when aligned on ${b1} C1'—N` ]
+    }
+    if (column == 'rmsd_edge1' || column == 'rmsd_edge2') {
+        let [b1, b2] = formatBaseNames(metadata, true, false)
+        if (column == 'rmsd_edge2') {
+            [b1, b2] = [b2, b1]
+        }
+        return [ `${column == 'rmsd_edge2' ? 'left' : 'right'} edge RMSD`, `RMSD to exemplar basepair of ${b2} ${formatEdge(metadata.pair_type[0][column == 'rmsd_edge2' ? 2 : 1])} edge, when aligned on ${b1}` ]
+    }
+    if (column == 'rmsd_all_base') {
+        return [ 'All-atom RMSD', 'All-atom RMSD to exemplar basepair (only bases, not nucleotides)' ]
+    }
+    if (column == 'is_parallel') {
+        return [ 'Strands are parallel', 'true if the basepair is between parallel strands, false if antiparallel, null if it cannot be determined' ]
+    }
+    if (column == 'is_dinucleotide') {
+        return [ 'Is dinucleotide', 'true if the basepair are covalently linked consecutive nucleotides' ]
     }
     if (column == 'jirka_approves') {
         return [ "Passed quality filter", null ]

@@ -6,6 +6,7 @@
     export let rootImages: string
     export let imgAttachement: string
     export let videoAttachement: string
+    export let videoOnHover: boolean = false
 
     function getUrl(pair: PairId, attachement:string) {
         if (!pair?.nt1.pdbid || !pair?.nt2.pdbid || pair.nt1.chain == null || pair.nt2.chain == null || pair.nt1.resnum == null || pair.nt2.resnum == null)
@@ -18,7 +19,7 @@
 
 <div class="imgcontainer">
     {#each pairs as p}
-        <Pairimage pair={p} url={getUrl(p.id, imgAttachement)} videoUrl={getUrl(p.id, videoAttachement)} allowHoverVideo={false} />
+        <Pairimage pair={p} url={getUrl(p.id, imgAttachement)} videoUrl={getUrl(p.id, videoAttachement)} allowHoverVideo={videoOnHover} />
     {/each}
 </div>
 

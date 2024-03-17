@@ -241,12 +241,20 @@
                   <option value="pdbid DESC, model DESC, chain1 DESC, nr1 DESC">pdbid descending</option>
                   <option value="resolution NULLS LAST, pdbid, model, chain1, nr1" title="Reported resolution of the source PDB structure">resolution</option>
                   <option value="mode_deviations" title="ASCENDING - best to worst - Number of standard deviations between the H-bond parameters and the modes (peaks) calculated from Kernel Density Estimate. Use to list &quot;nicest&quot; pairs and avoid secondary modes.">Deviation from KDE mode ↓</option>
-                  <option value="mode_deviations" title="DESCENDING - worst to best - Number of standard deviations between the H-bond parameters and the modes (peaks) calculated from Kernel Density Estimate. Use to list &quot;nicest&quot; pairs and avoid secondary modes.">Deviation from KDE mode ↑</option>
-                  <option value="log_likelihood DESC" title="↑ DESCENDING - best to worst - Multiplied likelihoods of all H-bond parameters in their Kernel Density Estimate distribution. Use to list &quot;nicest&quot; pairs without disqualifying secondary modes.">KDE likelihood ↑</option>
-                  <option value="log_likelihood DESC" title="↓ ASCENDING - best to worst - Multiplied likelihoods of all H-bond parameters in their Kernel Density Estimate distribution. Use to list &quot;nicest&quot; pairs without disqualifying secondary modes.">KDE likelihood ↓</option>
+                  <option value="-mode_deviations" title="DESCENDING - worst to best - Number of standard deviations between the H-bond parameters and the modes (peaks) calculated from Kernel Density Estimate. Use to list &quot;nicest&quot; pairs and avoid secondary modes.">Deviation from KDE mode ↑</option>
+                  <option value="-log_likelihood" title="↑ DESCENDING - best to worst - Multiplied likelihoods of all H-bond parameters in their Kernel Density Estimate distribution. Use to list &quot;nicest&quot; pairs without disqualifying secondary modes.">KDE likelihood ↑</option>
+                  <option value="log_likelihood" title="↓ ASCENDING - best to worst - Multiplied likelihoods of all H-bond parameters in their Kernel Density Estimate distribution. Use to list &quot;nicest&quot; pairs without disqualifying secondary modes.">KDE likelihood ↓</option>
+                  <option value="(rmsd_edge1+rmsd_edge2)" title="↓ ASCENDING - edge RMSD to the 'nicest' basepair">Edge RMSD ↓</option>
+                  <option value="(rmsd_edge1+rmsd_edge2) DESC" title="↑ DESCENDING - edge RMSD to the 'nicest' basepair">Edge RMSD ↑</option>
                 </select>
               </div>
             </div>
+          </div>
+          <div class="control">
+            <label class="checkbox" title="Rotate images 90° along X-axis to see the coplanarity">
+              <input type="checkbox" checked={!!filter.rotX} on:change={e => filter = {...filter, rotX: e.currentTarget.checked }}>
+              Rotate images
+            </label>
           </div>
         </div>
 

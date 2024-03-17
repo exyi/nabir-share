@@ -130,6 +130,8 @@
         <g>
         {#each settings?.variables ?? [] as v, i}
         {#if v.label != null}
+            {@const maxLblLength = Math.max(...(settings?.variables ?? []).map(v => v.label?.length ?? 0))}
+
             <g opacity={hiddenColumns.includes(i) ? 0.5 : 1} on:click={() => {
                 if (hiddenColumns.includes(i)) {
                     hiddenColumns = hiddenColumns.filter(x => x!=i)
@@ -137,8 +139,8 @@
                     hiddenColumns = [ ...hiddenColumns, i ]
                 }
             }} cursor="pointer">
-                <circle cx={widthPx - marginPx.right - 100} cy={marginPx.top + 30 * i + 6} r="6" style="fill: {d3.color(colors[i]).brighter(0.5).hex() ?? '#000000'}; fill-opacity: 0.6; stroke: {d3.color(colors[i]).darker(0.5).hex()}"/>
-                <text x={widthPx - marginPx.right - 90} y={marginPx.top + 30 * i + 12} text-anchor="start" alignment-baseline="middle">
+                <circle cx={widthPx - marginPx.right - maxLblLength * 8 - 20} cy={marginPx.top + 30 * i + 6} r="6" style="fill: {d3.color(colors[i]).brighter(0.5).hex() ?? '#000000'}; fill-opacity: 0.6; stroke: {d3.color(colors[i]).darker(0.5).hex()}"/>
+                <text x={widthPx - marginPx.right - maxLblLength * 8 - 10} y={marginPx.top + 30 * i + 12} text-anchor="start" alignment-baseline="middle">
                     <title>{v.column} {#if v.filterSql}WHERE {v.filterSql}{/if}</title>
                     {v.label}
                 </text>
