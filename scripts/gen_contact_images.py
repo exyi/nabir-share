@@ -294,6 +294,13 @@ def make_pair_image(output_file, pdbid, chain1, nt1, ins1, alt1, chain2, nt2, in
     cmd.png(output_file, width=2560, height=1440, ray=1)
     print(f"Saved basepair image {output_file}")
 
+def make_pair_rotX_image(output_file, pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2, bpargs: BPArgs, hbonds: Optional[list[tuple[str, str, str, str]]], pair_type: Optional[pair_defs.PairType]):
+    orient_pair(pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2, standard_orientation=True, pair_type=pair_type, find_water=True, grey_context=True)
+    cmd.turn("x", 90)
+    cmd.png(output_file, width=2560, height=1440, ray=1)
+    print(f"Saved basepair-rotX image {output_file}")
+
+
 background_jobs: list[threading.Thread] = []
 
 def run_ffmpeg(output_file, input_dir, *args, background=0, after=lambda: None):
@@ -390,6 +397,20 @@ def save_str(file: str, x: str):
     with open(file, "w") as f:
         f.write(x)
 
+def can_skip(file, bpargs: BPArgs):
+    if not bpargs.incremental:
+        return False
+    if not os.path.exists(file):
+        return False
+    age = (time.time() - os.path.getctime(file)) / 3600 / 24
+    if age < bpargs.incremental_max_age:
+        print(f"Skipping {file} because it already exists (age={age:.1f})")
+        return True
+    else:
+        print(f"Recreating {file} because it is too old (age={age:.1f} > {bpargs.incremental_max_age})")
+
+    return False
+
 def process_group(pdbid, group: pl.DataFrame, output_dir: str, bpargs: BPArgs):
     if bpargs.skip_bad:
         orig_len = len(group)
@@ -428,25 +449,21 @@ def process_group(pdbid, group: pl.DataFrame, output_dir: str, bpargs: BPArgs):
                 pt = None
 
             output_file = os.path.join(pdbdir, f"{chain1}_{nt1}{ins1 or ''}{alt1 or ''}-{chain2}_{nt2}{ins2 or ''}{alt2 or ''}")
-            if bpargs.incremental and os.path.exists(output_file + ".png"):
-                if bpargs.movie == 0 or os.path.exists(output_file + "." + bpargs.movie_format):
-                    age = os.path.getctime(output_file + ".png")
-                    if bpargs.movie:
-                        age = min(age, os.path.getctime(output_file + "." + bpargs.movie_format))
-                    age = (time.time() - age) / 3600 / 24
-                    if age < bpargs.incremental_max_age:
-                        print(f"Skipping {output_file} because it already exists (age={age:.1f})")
-                        continue
-                    else:
-                        print(f"Recreating {output_file} because it is too old (age={age:.1f} > {bpargs.incremental_max_age})")
 
-            load_if_needed()
-            make_pair_image(output_file + ".png", pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2, bpargs, hbonds, pt)
+            if not can_skip(output_file + ".png", bpargs):
+                load_if_needed()
+                make_pair_image(output_file + ".png", pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2, bpargs, hbonds, pt)
+            if not can_skip(output_file + "-rotX.png", bpargs):
+                load_if_needed()
+                make_pair_rotX_image(output_file + "-rotX.png", pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2, bpargs, hbonds, pt)
             # save_str(output_file + ".xyz", cmd.exporting.get_xyzstr("%pair"))
             # save_str(output_file + ".cif", cmd.exporting.get_cifstr("%pair"))
             # save_str(output_file + ".pdb", cmd.exporting.get_pdbstr("%pair"))
             # save_str(output_file + ".sdf", cmd.exporting.get_sdfstr("%pair"))
-            make_pair_rot_movie(output_file, pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2, bpargs, hbonds, pt)
+            if bpargs.movie and bpargs.movie > 0:
+                if not can_skip(output_file + "." + bpargs.movie_format, bpargs):
+                    load_if_needed()
+                    make_pair_rot_movie(output_file, pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2, bpargs, hbonds, pt)
         except Exception as e:
             print(f"ERROR in {pdbid} {chain1}-{res1}{alt1}{ins1}...{chain2}-{res2}{alt2}{ins2}: {e}")
 
