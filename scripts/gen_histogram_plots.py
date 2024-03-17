@@ -130,31 +130,31 @@ coplanarity_histogram_defs2 = [
         "H-bond angle to donor plane",
         "Angle (°)",
         ["hb_0_donor_OOPA", "hb_1_donor_OOPA", "hb_2_donor_OOPA"],
-        pseudomin=-180,
-        pseudomax=180
+        pseudomin=-180, pseudomax=180,
+        min=-60, max=60
     ),
     HistogramDef(
         "H-bond angle to donor plane",
         "Angle (°)",
         ["hb_0_acceptor_OOPA", "hb_1_acceptor_OOPA", "hb_2_acceptor_OOPA"],
-        pseudomin=-180,
-        pseudomax=180
+        pseudomin=-180, pseudomax=180,
+        min=-60, max=60
     ),
     HistogramDef(
         "Edge-to-plane distance",
         "Distance (Å)",
         ["coplanarity_shift1", "coplanarity_shift2"],
         legend=["Edge 2 - plane 2", "Edge 1 - Plane 2"],
-        pseudomin=-6,
-        pseudomax=6
+        pseudomin=-6, pseudomax=6,
+        min=-1.1, max=1.1
     ),
         HistogramDef(
         "Edge-to-plane angle",
         "Angle (°)",
         ["coplanarity_edge_angle1", "coplanarity_edge_angle2"],
         legend=["Edge 2 - plane 2", "Edge 1 - Plane 2"],
-        pseudomin=-180,
-        pseudomax=180
+        pseudomin=-180, pseudomax=180,
+        min=-60, max=60
     ),
 
 ]
@@ -864,41 +864,41 @@ def main(argv):
             dna_rna_images = [ create_pair_image(dff[bp], args.output_dir, pair_type) if bp >= 0 else None for bp in nicest_bps ] * len(resolutions) if nicest_bps is not None else []
             dna_rna_highlights = [ dff[bp] if bp >= 0 else None for bp in nicest_bps ] if nicest_bps is not None else []
             output_files = [
-                f for f in make_bond_pages(df, args.output_dir, pair_type, hbond_histogram_defs, images=dna_rna_images, highlights=dna_rna_highlights
+                f for f in make_bond_pages(df, args.output_dir, pair_type, coplanarity_histogram_defs, images=dna_rna_images, highlights=dna_rna_highlights
                 )
             ]
-            # output_files.extend(
-            #     make_bond_pages(dff, args.output_dir, pair_type, coplanarity_histogram_defs2, highlights=dna_rna_highlights, title_suffix= " - B")
-            # )
-            # output_files.extend(
-            #     make_pairplot_page(dff, args.output_dir, pair_type, variables=[
-            #         pl.col(f"C1_C1_euler_phi").alias("Euler Φ"),
-            #         pl.col(f"C1_C1_euler_theta").alias("Euler Θ"),
-            #         pl.col(f"C1_C1_euler_psi").alias("Euler Ψ"),
-            #         pl.col(f"C1_C1_euler_phicospsi").alias("Euler Φ-cos(Θ)Ψ"),
-            #         pl.col(f"C1_C1_yaw1").alias("Yaw 1"),
-            #         pl.col(f"C1_C1_pitch1").alias("Pitch 1"),
-            #         pl.col(f"C1_C1_roll1").alias("Roll 1"),
-            #         pl.col(f"C1_C1_yaw2").alias("Yaw 2"),
-            #         pl.col(f"C1_C1_pitch2").alias("Pitch 2"),
-            #         pl.col(f"C1_C1_roll2").alias("Roll 2"),
-            #     ], title_suffix=" - Various N1-C1' reference frame angles")
-            # )
-            # output_files.extend(
-            #     make_pairplot_page(dff, args.output_dir, pair_type, variables=[
-            #         pl.col(f"coplanarity_angle").alias("Plane normal angle"),
-            #         pl.col(f"C1_C1_yaw1").alias("Yaw 1"),
-            #         pl.col(f"C1_C1_pitch1").alias("Pitch 1"),
-            #         pl.col(f"C1_C1_roll1").alias("Roll 1"),
-            #         pl.col(f"coplanarity_edge_angle1").alias("Edge 1 / plane 2"),
-            #         pl.col(f"coplanarity_edge_angle2").alias("Edge 2 / plane 1"),
-            #         pl.col("hb_1_donor_OOPA").alias("H-bond 2 / donor plane"),
-            #         pl.col("hb_1_acceptor_OOPA").alias("H-bond 2 / acceptor plane"),
-            #         pl.col("coplanarity_shift1").alias("Edge 1/plane 2 shift"),
-            #         pl.col("coplanarity_shift2").alias("Edge 2/plane 1 shift"),
+            output_files.extend(
+                make_bond_pages(dff, args.output_dir, pair_type, coplanarity_histogram_defs2, highlights=dna_rna_highlights, title_suffix= " - B")
+            )
+            output_files.extend(
+                make_pairplot_page(dff, args.output_dir, pair_type, variables=[
+                    pl.col(f"C1_C1_euler_phi").alias("Euler Φ"),
+                    pl.col(f"C1_C1_euler_theta").alias("Euler Θ"),
+                    pl.col(f"C1_C1_euler_psi").alias("Euler Ψ"),
+                    pl.col(f"C1_C1_euler_phicospsi").alias("Euler Φ-cos(Θ)Ψ"),
+                    pl.col(f"C1_C1_yaw1").alias("Yaw 1"),
+                    pl.col(f"C1_C1_pitch1").alias("Pitch 1"),
+                    pl.col(f"C1_C1_roll1").alias("Roll 1"),
+                    pl.col(f"C1_C1_yaw2").alias("Yaw 2"),
+                    pl.col(f"C1_C1_pitch2").alias("Pitch 2"),
+                    pl.col(f"C1_C1_roll2").alias("Roll 2"),
+                ], title_suffix=" - Various N1-C1' reference frame angles")
+            )
+            output_files.extend(
+                make_pairplot_page(dff, args.output_dir, pair_type, variables=[
+                    pl.col(f"coplanarity_angle").alias("Plane normal angle"),
+                    pl.col(f"C1_C1_yaw1").alias("Yaw 1"),
+                    pl.col(f"C1_C1_pitch1").alias("Pitch 1"),
+                    pl.col(f"C1_C1_roll1").alias("Roll 1"),
+                    pl.col(f"coplanarity_edge_angle1").alias("Edge 1 / plane 2"),
+                    pl.col(f"coplanarity_edge_angle2").alias("Edge 2 / plane 1"),
+                    pl.col("hb_1_donor_OOPA").alias("H-bond 2 / donor plane"),
+                    pl.col("hb_1_acceptor_OOPA").alias("H-bond 2 / acceptor plane"),
+                    pl.col("coplanarity_shift1").alias("Edge 1/plane 2 shift"),
+                    pl.col("coplanarity_shift2").alias("Edge 2/plane 1 shift"),
 
-            #     ], title_suffix=" - Other coplanarity metrics")
-            # )
+                ], title_suffix=" - Other coplanarity metrics")
+            )
             # output_files = [
             #     f
             #     for column in [0, 1, 2]

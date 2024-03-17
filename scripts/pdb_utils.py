@@ -1,6 +1,7 @@
 
-import os, gzip, io
+import os, gzip, io, dataclasses
 from typing import Any, Callable, Optional, TextIO, TypeVar, Union
+import numpy as np
 
 
 pdb_cache_dirs: list[str] = [ x for x in os.environ.get("PDB_CACHE_DIR", "").split(";") if x.strip() != "" ]
@@ -109,4 +110,49 @@ def load_pdb(file: Optional[str | TextIO], pdb_id: Optional[str] = None):
         parser = Bio.PDB.MMCIFParser(QUIET=True)
         structure = parser.get_structure(pdb_id, file)
         return structure
+
+@dataclasses.dataclass
+class SymmetryOperation:
+    pdbname: str
+    triplet: str
+    rotation: np.ndarray
+    translation: np.ndarray
+
+
+@dataclasses.dataclass
+class StructureData:
+    assembly: list[SymmetryOperation]
+    organism: Optional[str] = None
+    organism_id: Optional[int] = None
+
+def load_sym_data(file: Optional[str | TextIO], pdb_id: Optional[str] = None) -> StructureData:
+    from mmcif.io.PdbxReader import PdbxReader
+    if isinstance(file, str) or file is None:
+        with open_pdb_file(file, pdb_id) as f:
+            return load_sym_data(f, pdb_id)
+    else:
+        datablocks = []
+        PdbxReader(file).read(datablocks)
+        result = StructureData([])
+
+        assembly_obj = datablocks[0].getObj("pdbx_struct_oper_list")
+        if assembly_obj:
+            idx = assembly_obj.getAttributeIndexDict()
+            for row in assembly_obj.data:
+                result.assembly.append(SymmetryOperation(
+                    pdbname=row[idx["name"]],
+                    triplet=row[idx["symmetry_operation"]],
+                    rotation=np.array([
+                        [ float(row[idx[f"matrix[1][1]"]]), float(row[idx[f"matrix[1][2]"]]), float(row[idx[f"matrix[1][3]"]]) ],
+                        [ float(row[idx[f"matrix[2][1]"]]), float(row[idx[f"matrix[2][2]"]]), float(row[idx[f"matrix[2][3]"]]) ],
+                        [ float(row[idx[f"matrix[3][1]"]]), float(row[idx[f"matrix[3][2]"]]), float(row[idx[f"matrix[3][3]"]]) ],
+                    ]),
+                    translation=np.array([ float(row[idx[f"vector[1]"]]), float(row[idx[f"vector[2]"]]), float(row[idx[f"vector[3]"]]) ])
+                ))
+
+        if obj := datablocks[0].getObj("pdbx_entity_src_syn"):
+            idx = obj.getAttributeIndexDict()
+            result.organism = obj.data[0][idx["organism_scientific"]]
+            result.organism_id = int(obj.data[0][idx["pdbx_src_id"]]) if obj.data[0][idx["pdbx_src_id"]] else None
+        return result
 
