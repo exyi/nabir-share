@@ -178,7 +178,8 @@ def read_fr3d_basepairing(file: Union[str, TextIO], pdbid: Optional[str] = None,
         "nr2": [],
         "alt1": [], "alt2": [],
         "ins1": [], "ins2": [],
-        "symmetry_operation": [],
+        "symmetry_operation1": [],
+        "symmetry_operation2": [],
         "type": [],
     }
     all_models = defaultdict(lambda: 0)
@@ -218,7 +219,8 @@ def read_fr3d_basepairing(file: Union[str, TextIO], pdbid: Optional[str] = None,
         pairs["alt2"].append(right.alternate_id)
         pairs["ins1"].append(left.insertion_code)
         pairs["ins2"].append(right.insertion_code)
-        pairs["symmetry_operation"].append(left.symmetry_operation or right.symmetry_operation or '')
+        pairs["symmetry_operation1"].append(left.symmetry_operation or None)
+        pairs["symmetry_operation2"].append(right.symmetry_operation or None)
         pairs["type"].append(basepair_type)
 
     if filter_model is not None and len(all_models) > 0 and filter_model not in all_models:
@@ -262,7 +264,14 @@ def _load_frame(file, filter):
         raise Exception(f"Error parsing {file}") from e
     if len(bps["model"]) == 0:
         return None
-    return pl.DataFrame(bps).filter(filter)
+    return pl.DataFrame(bps, schema_overrides={
+        "symmetry_operation1": pl.Utf8,
+        "symmetry_operation2": pl.Utf8,
+        "ins1": pl.Utf8,
+        "ins2": pl.Utf8,
+        "alt1": pl.Utf8,
+        "alt2": pl.Utf8,
+    }).filter(filter)
 
 def read_fr3d_files_df(pool: Union[Pool, MockPool], files: Sequence[str], filter=pl.lit(True)) -> pl.DataFrame:
     if pool is None:

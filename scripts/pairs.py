@@ -370,8 +370,8 @@ def load_pair_information_by_idtuple(pair_type: Union[tuple[str, str], pair_defs
     print(f"Loading ideal basepair:", *identifier)
     structure = pdb_utils.load_pdb(None, pdbid)
 
-    res1 = get_residue(structure, model, chain1, nr1, ins1, alt1)
-    res2 = get_residue(structure, model, chain2, nr2, ins2, alt2)
+    res1 = get_residue(structure, None, model, chain1, nr1, ins1, alt1, None)
+    res2 = get_residue(structure, None, model, chain2, nr2, ins2, alt2, None)
     # detach parent to lower memory usage (all structures would get replicated to all workers)
     res1 = res1.copy()
     res2 = res2.copy()
@@ -784,27 +784,48 @@ def to_csv_row(df: pl.DataFrame, i: int = 0, max_len = None) -> str:
         row = row[:max_len]
     return ','.join(str(x) for x in row)
 
-def get_residue(structure: Bio.PDB.Structure.Structure, model, chain, res, ins, alt) -> AltResidue:
+T = TypeVar("T")
+def lazy(create: Callable[..., T], *args) -> Callable[[], T]:
+    cache: T
+    has_value = False
+    def core():
+        nonlocal cache, has_value
+        if not has_value:
+            cache = create(*args)
+            has_value = True
+        return cache
+    return core
+
+def get_residue(structure: Bio.PDB.Structure.Structure, strdata: Optional[Callable[[], pdb_utils.StructureData]], model, chain, res, ins, alt, symop) -> AltResidue:
     res = int(res)
     ins = ins or ' '
     alt = alt or ''
     ch: Bio.PDB.Chain.Chain = structure[model-1][chain]
-    found = ch.child_dict.get((' ', res, ins), None)
+    found: Bio.PDB.Residue.Residue = ch.child_dict.get((' ', res, ins), None)
     if found is None:
         found = next((r for r in ch.get_residues() if r.id[1] == res and r.id[2] == ins), None)
     if found is None:
         raise KeyError(f"{chain}.{res}{ins}")
+    
+    if symop:
+        assert strdata is not None
+        sym_transform = next((a for a in strdata().assembly if a.pdbname == symop or f"ASM_{a.id}" == symop), None)
+        if sym_transform is not None:
+            found = found.copy()
+            found.transform(sym_transform.rotation, sym_transform.translation)
+        else:
+            raise KeyError(f"Symmetry operation {symop} is not defined {structure.id}")
     return AltResidue(found, alt)
 
 
-def get_stats_for_csv(df_: pl.DataFrame, structure: Bio.PDB.Structure.Structure, global_pair_type: Optional[str], metrics: list[PairMetric]) -> Iterator[tuple[int, list[Optional[HBondStats]], list[Optional[float]]]]:
+def get_stats_for_csv(df_: pl.DataFrame, structure: Bio.PDB.Structure.Structure, strdata: Callable[[], pdb_utils.StructureData], global_pair_type: Optional[str], metrics: list[PairMetric]) -> Iterator[tuple[int, list[Optional[HBondStats]], list[Optional[float]]]]:
     """
     Add columns calculated from PDB structure
     """
     df = df_.with_row_count()
     pair_type_col = df["type"] if global_pair_type is None else itertools.repeat(global_pair_type)
     metric_columns = [ tuple(m.get_columns()) for m in metrics ]
-    for (pair_family, i, pdbid, model, chain1, res1, ins1, alt1, chain2, res2, ins2, alt2) in zip(pair_type_col, df["row_nr"], df["pdbid"], df["model"], df["chain1"], df["nr1"], df["ins1"], df["alt1"], df["chain2"], df["nr2"], df["ins2"], df["alt2"]):
+    for (pair_family, i, pdbid, model, chain1, res1, ins1, alt1, symop1, chain2, res2, ins2, alt2, symop2) in zip(pair_type_col, df["row_nr"], df["pdbid"], df["model"], df["chain1"], df["nr1"], df["ins1"], df["alt1"], df["symmetry_operation1"], df["chain2"], df["nr2"], df["ins2"], df["alt2"], df["symmetry_operation2"]):
         if (chain1, res1, ins1, alt1) == (chain2, res2, ins2, alt2):
             continue
         try:
@@ -813,12 +834,12 @@ def get_stats_for_csv(df_: pl.DataFrame, structure: Bio.PDB.Structure.Structure,
             ins2 = ins2.strip()
 
             try:
-                r1 = get_residue(structure, model, chain1, res1, ins1, alt1)
+                r1 = get_residue(structure, strdata, model, chain1, res1, ins1, alt1, symop1)
             except KeyError as keyerror:
                 print(f"Could not find residue1 {pdbid}.{model}.{chain1}.{str(res1)+ins1} ({keyerror=})")
                 continue
             try:
-                r2 = get_residue(structure, model, chain2, res2, ins2, alt2)
+                r2 = get_residue(structure, strdata, model, chain2, res2, ins2, alt2, symop2)
             except KeyError as keyerror:
                 print(f"Could not find residue2 {pdbid}.{model}.{chain2}.{str(res2)+ins2} in {pdbid} ({keyerror=})")
                 continue
@@ -1001,8 +1022,10 @@ def export_stats_csv(pdbid, df: pl.DataFrame, add_metadata_columns: bool, pair_t
         print(e)
         print(traceback.format_exc())
 
+    structure_data = lazy(lambda: pdb_utils.load_sym_data(None, pdbid))
+
     if structure is not None:
-        for i, hbonds, metric_values in get_stats_for_csv(df, structure, pair_type, metrics):
+        for i, hbonds, metric_values in get_stats_for_csv(df, structure, structure_data, pair_type, metrics):
             valid[i] = True
             for j, s in enumerate(hbonds):
                 if s is None:
@@ -1043,7 +1066,9 @@ def load_inputs(pool: Union[Pool, MockPool], args) -> pl.DataFrame:
     elif inputs[0].endswith("_basepair.txt") or inputs[0].endswith("_basepair_detail.txt"):
         print(f"Loading {len(inputs)} basepair files")
         import fr3d_parser
-        df = fr3d_parser.read_fr3d_files_df(pool, args.inputs, filter=pl.col("symmetry_operation") == '').sort('pdbid', 'model', 'nr1', 'nr2')
+        df = fr3d_parser.read_fr3d_files_df(pool, args.inputs,
+            # filter=(pl.col("symmetry_operation1").is_null() & pl.col("symmetry_operation2").is_null())
+        ).sort('pdbid', 'model', 'nr1', 'nr2')
     else:
         raise ValueError("Unknown input file type")
     if "type" not in df.columns:

@@ -113,6 +113,7 @@ def load_pdb(file: Optional[str | TextIO], pdb_id: Optional[str] = None):
 
 @dataclasses.dataclass
 class SymmetryOperation:
+    id: str
     pdbname: str
     triplet: str
     rotation: np.ndarray
@@ -140,6 +141,7 @@ def load_sym_data(file: Optional[str | TextIO], pdb_id: Optional[str] = None) ->
             idx = assembly_obj.getAttributeIndexDict()
             for row in assembly_obj.data:
                 result.assembly.append(SymmetryOperation(
+                    id=str(row[idx["id"]]),
                     pdbname=row[idx["name"]],
                     triplet=row[idx["symmetry_operation"]],
                     rotation=np.array([
