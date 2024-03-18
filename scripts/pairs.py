@@ -854,10 +854,10 @@ def get_stats_for_csv(df_: pl.DataFrame, structure: Bio.PDB.Structure.Structure,
             if hbonds is not None:
                 yield i, hbonds, metric_values
         except AssertionError as e:
-            print(f"Assertion error {e} on row:\n{to_csv_row(df_, i, 15)}")
+            print(f"Assertion error {e} on row:\n{to_csv_row(df_, i, 18)}")
             continue
         except Exception as keyerror:
-            print(f"Error on row:\n{to_csv_row(df_, i, 15)}")
+            print(f"Error on row:\n{to_csv_row(df_, i, 18)}")
             import traceback
             print(keyerror)
             print(traceback.format_exc())
@@ -1085,6 +1085,11 @@ def validate_missing_columns(chunks: list[pl.DataFrame]):
 
 def main(pool: Union[Pool, MockPool], args):
     df = load_inputs(pool, args)
+    if args.disable_cross_symmetry:
+        df = df.filter(pl.col("symmetry_operation1").is_null() & pl.col("symmetry_operation2").is_null())
+    else:
+        # at least one has to be in the primary asymmetric unit
+        df = df.filter(pl.col("symmetry_operation1").is_null() | pl.col("symmetry_operation2").is_null())
     if args.dedupe:
         df = remove_duplicate_pairs_phase1(df)
     max_bond_count = get_max_bond_count(df)
@@ -1174,6 +1179,7 @@ if __name__ == "__main__":
     parser.add_argument("--filter", default=False, action="store_true", help="Filter out rows for which the values could not be calculated")
     parser.add_argument("--dedupe", default=False, action="store_true", help="Remove duplicate pairs, keep the one with shorter bonds or lower chain1,nr1")
     parser.add_argument("--reference-basepairs", type=str, help="output of gen_histogram_plots.py with the 'nicest' basepairs, will be used as reference for RMSD calculation")
+    parser.add_argument("--disable-cross-symmetry", default=False, action="store_true", help="Do not calculate pairs in different Asymmetrical Units")
     parser.add_argument("--pair-type", type=str, required=False)
     args = parser.parse_args()
 
