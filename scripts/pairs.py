@@ -307,7 +307,7 @@ def get_residue_posinfo_C1_N(res: AltResidue) -> TranslationThenRotation:
     y = c2.coord - n.coord
     y -= np.dot(y, x) * x
     y /= np.linalg.norm(y)
-    z = np.cross(y, x)
+    z = np.cross(x, y)
     z /= np.linalg.norm(z)
     rotation = np.array([x, y, z]).T
 

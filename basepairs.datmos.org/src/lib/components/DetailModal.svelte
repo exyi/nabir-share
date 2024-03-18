@@ -114,7 +114,7 @@
             forms {pair.id.pairingType[0]} basepair with
             {_.capitalize(longNucleotideNames[pair.id.nt2.resname] ?? pair.id.nt2.resname)} <strong>{pair.id.nt2.resnum}{pair.id.nt2.inscode ? '.' + pair.id.nt2.inscode : ''}</strong> in chain <strong>{pair.id.nt2.chain}</strong>
         </p>
-        <h5 style="margin-bottom: 0px">From structure{[null, undefined, '', 0, 1, '1', '0'].includes(pair.id.nt1.model) ? '' : ` (model ${pair.id.nt1.model}`}</h5>
+        <h5 style="margin-bottom: 0px">From structure{[null, undefined, '', 0, 1, '1', '0'].includes(pair.id.nt1.model) ? '' : ` (model ${pair.id.nt1.model})`}</h5>
         <div class='media' style="max-width: 600px">
             <div class="media-left">
                 <a href="https://www.rcsb.org/structure/{pair.id.nt1.pdbid}">
