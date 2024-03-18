@@ -53,6 +53,7 @@ class PairType:
         t = self.type.lower()
         return (
             pair_types.index(t) if t in pair_types else 1000,
+            t,
             self.bases[1],
             self.bases[0],
             self.variant,
@@ -69,6 +70,10 @@ class PairType:
     
     def __lt__(self, other: 'PairType') -> bool:
         return self.order_key() < other.order_key()
+    def __eq__(self, other: 'PairType') -> bool:
+        return self.order_key() == other.order_key()
+    def __hash__(self) -> int:
+        return hash(self.order_key())
     @staticmethod
     def from_tuple(t: Union['PairType', tuple[str, str]]) -> "PairType":
         if isinstance(t, PairType):
@@ -90,8 +95,26 @@ class PairType:
             type = type[:-1]
         return PairType(type, (base1, base2), variant, n)
     @staticmethod
-    def parse(s: str) -> "PairType":
-        raise NotImplementedError("PairType.parse is not implemented")
+    def parse(s: str, normalize_case=True) -> "PairType":
+        family_regex = r"(?P<n>n)?(?P<cistrans>[ct])(?P<family>[WHSB][WHSB])(?P<alt>[abc1234567890])?"
+        bases_compact_regex = r"(?P<base1a>[ATGCU])(?P<base2a>[ATGCU])"
+        bases_full_regex = r"(?P<base1b>\w+)-(?P<base2b>\w+)"
+        if (m := (re.match(f"^{family_regex}(-|_|\\s+)({bases_compact_regex}|{bases_full_regex})$", s, re.IGNORECASE) or
+                 re.match(f"^{bases_full_regex}-{family_regex}$", s, re.IGNORECASE)
+            )):
+            n = m.group("n") is not None
+            cistrans = m.group("cistrans")
+            family_core = m.group("family")
+            alt = m.group("alt") or ''
+            if normalize_case:
+                cistrans = cistrans.lower()
+                family_core = family_core.upper()
+                alt = alt.lower()
+            type = cistrans + family_core
+            base1: str = m.groupdict().get("base1a") or m.groupdict().get("base1b") or ""
+            base2: str = m.groupdict().get("base2a") or m.groupdict().get("base2b") or ""
+            return PairType(type, (base1, base2), alt, n)
+        raise ValueError(f"Invalid pair type: {s}")
 
 def read_pair_definitions(file = os.path.join(os.path.dirname(__file__), "H_bonding_Atoms_from_Isostericity_Table.csv")) -> dict[tuple[str, str], list[tuple[str, str, str, str]]]:
     with open(file, "r") as f:

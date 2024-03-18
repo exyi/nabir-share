@@ -32,7 +32,7 @@ subplots = (2, 2)
 # plt.rcParams["figure.figsize"] = (10, 6)
 
 resolutions = [
-    ("DNA ≤3 Å", is_some_quality & is_rna.is_not() & (pl.col("resolution") <= 3)),
+    # ("DNA ≤3 Å", is_some_quality & is_rna.is_not() & (pl.col("resolution") <= 3)),
     ("RNA ≤3 Å", is_some_quality & is_rna & (pl.col("resolution") <= 3)),
     # ("RNA ≤3 Å", is_some_quality & (pl.col("resolution") <= 3)),
     # ("No filter ≤3 Å", (pl.col("resolution") <= 3)),
@@ -144,17 +144,51 @@ coplanarity_histogram_defs2 = [
         "Edge-to-plane distance",
         "Distance (Å)",
         ["coplanarity_shift1", "coplanarity_shift2"],
-        legend=["Edge 2 - plane 2", "Edge 1 - Plane 2"],
+        legend=["Edge 2 - plane 1", "Edge 1 - Plane 2"],
         pseudomin=-6, pseudomax=6,
         min=-1.1, max=1.1
     ),
-        HistogramDef(
+    HistogramDef(
         "Edge-to-plane angle",
         "Angle (°)",
         ["coplanarity_edge_angle1", "coplanarity_edge_angle2"],
-        legend=["Edge 2 - plane 2", "Edge 1 - Plane 2"],
+        legend=["Edge 2 - plane 1", "Edge 1 - Plane 2"],
         pseudomin=-180, pseudomax=180,
         min=-60, max=60
+    ),
+]
+
+coplanarity_histogram_defs_selection = [
+    HistogramDef(
+        "Yaw, pitch, left-to-right, N1-C1' reference frames",
+        "Angle (°)",
+        ["C1_C1_yaw1", "C1_C1_pitch1", "C1_C1_roll1"],
+        legend=["Yaw 1", "Pitch 1", "Roll 1"],
+        # bin_width=2,
+        min=-180,
+        max=180
+    ),
+    HistogramDef(
+        "Edge-to-plane angle",
+        "Angle (°)",
+        ["coplanarity_edge_angle1", "coplanarity_edge_angle2"],
+        legend=["Edge 2 - plane 1", "Edge 1 - Plane 2"],
+        pseudomin=-180, pseudomax=180,
+        min=-60, max=60
+    ),
+    HistogramDef(
+        "Yaw, pitch, right-to-left, N1-C1' reference frames",
+        "Angle (°)",
+        ["C1_C1_yaw2", "C1_C1_pitch2", "C1_C1_roll2"],
+        legend=["Yaw 2", "Pitch 2", "Roll 2"],
+        min=-180,
+        max=180
+    ),
+    HistogramDef(
+        "RMSD of pairing edges",
+        "Å",
+        ["rmsd_edge1", "rmsd_edge2"],
+        legend=["fit on left base", "fit on right base"],
     ),
 ]
 
@@ -467,7 +501,8 @@ def make_bond_pages(df: pl.DataFrame, outdir: str, pair_type: PairType, hs: list
     for p, title, df in zip(pages, titles, dataframes):
         fig, _ = p
         # fig.tight_layout(pad=3.0)
-        fig.suptitle(title + f" ({len(df)}, class {determine_bp_class(df, pair_type)})")
+        # fig.suptitle(title + f" ({len(df)}, class {determine_bp_class(df, pair_type)})")
+        fig.suptitle(title + f" ({len(df)} observations)")
 
     plot_offset = 0 if images is None else 1
     for i, h in enumerate(hs):
@@ -825,16 +860,24 @@ def main(argv):
     parser.add_argument("--residue-directory", required=True)
     parser.add_argument("--reexport", default='none', choices=['none', 'partitioned'], help="Write out parquet files with calculated statistics columns (log likelihood, mode deviations)")
     parser.add_argument("--include-nears", default=False, action="store_true", help="If FR3D is run in basepair_detailed mode, it reports near basepairs (denoted as ncWW). By default, we ignore them, but this option includes them in the output.")
+    parser.add_argument("--filter-pair-type", default=None, help="Comma separated list of pair types to include in the result (formatted as cWW-AC). By default all are included.")
     parser.add_argument("--output-dir", "-o", required=True, help="Output directory")
     args = parser.parse_args(argv)
+
+
+    only_pairtypes = None if args.filter_pair_type is None else set(pair_defs.PairType.parse(pt) for pt in args.filter_pair_type.split(","))
 
     residue_lists = residue_filter.read_id_lists(args.residue_directory)
 
     results = []
-
     all_statistics = []
 
     for pair_type, df in enumerate_pair_types(args.input_file, args.include_nears):
+
+        if only_pairtypes is not None and pair_type.without_n() not in only_pairtypes:
+            print(f"Skipping {pair_type} because it is not in {only_pairtypes}")
+            continue
+
         df = residue_filter.add_res_filter_columns(df, residue_lists)
         print(f"{pair_type}: total count = {len(df)}, quality count = {len(df.filter(is_some_quality))}")
         print(df.select(pl.col("^hb_\\d+_length$"), pl.col("resolution"), is_some_quality.alias("some_quality")).describe())
@@ -892,59 +935,59 @@ def main(argv):
             dna_rna_images = [ create_pair_image(dff[bp], args.output_dir, pair_type) if bp >= 0 else None for bp in nicest_bps ] * len(resolutions) if nicest_bps is not None else []
             dna_rna_highlights = [ dff[bp] if bp >= 0 else None for bp in nicest_bps ] if nicest_bps is not None else []
             output_files = [
-                f for f in make_bond_pages(df, args.output_dir, pair_type, hbonds_histogram_defs, images=dna_rna_images, highlights=dna_rna_highlights
+                f for f in make_bond_pages(df, args.output_dir, pair_type, hbond_histogram_defs, images=dna_rna_images, highlights=dna_rna_highlights, title_suffix=" - H-bonds"
                 )
             ]
             output_files.extend(
-                make_bond_pages(dff, args.output_dir, pair_type, coplanarity_histogram_defs, highlights=dna_rna_highlights, title_suffix= " - coplanarity")
+                make_bond_pages(dff, args.output_dir, pair_type, coplanarity_histogram_defs_selection, highlights=dna_rna_highlights, title_suffix= " - Coplanarity")
             )
-            output_files.extend(
-                make_bond_pages(dff, args.output_dir, pair_type, coplanarity_histogram_defs2, highlights=dna_rna_highlights, title_suffix= " - coplanarity2")
-            )
-            output_files.extend(
-                make_bond_pages(dff, args.output_dir, pair_type, rmsd_histogram_defs, highlights=dna_rna_highlights, title_suffix= " - RMSD to nicest BP")
-            )
-            output_files.extend(
-                make_pairplot_page(dff, args.output_dir, pair_type, variables=[
-                    pl.col(f"C1_C1_euler_phi").alias("Euler Φ"),
-                    pl.col(f"C1_C1_euler_theta").alias("Euler Θ"),
-                    pl.col(f"C1_C1_euler_psi").alias("Euler Ψ"),
-                    pl.col(f"C1_C1_euler_phicospsi").alias("Euler Φ-cos(Θ)Ψ"),
-                    pl.col(f"C1_C1_yaw1").alias("Yaw 1"),
-                    pl.col(f"C1_C1_pitch1").alias("Pitch 1"),
-                    pl.col(f"C1_C1_roll1").alias("Roll 1"),
-                    pl.col(f"C1_C1_yaw2").alias("Yaw 2"),
-                    pl.col(f"C1_C1_pitch2").alias("Pitch 2"),
-                    pl.col(f"C1_C1_roll2").alias("Roll 2"),
-                ], title_suffix=" - Various N1-C1' reference frame angles")
-            )
-            output_files.extend(
-                make_pairplot_page(dff, args.output_dir, pair_type, variables=[
-                    pl.col(f"coplanarity_angle").alias("Plane normal angle"),
-                    pl.col(f"C1_C1_yaw1").alias("Yaw 1"),
-                    pl.col(f"C1_C1_pitch1").alias("Pitch 1"),
-                    pl.col(f"C1_C1_roll1").alias("Roll 1"),
-                    pl.col(f"coplanarity_edge_angle1").alias("Edge 1 / plane 2"),
-                    pl.col(f"coplanarity_edge_angle2").alias("Edge 2 / plane 1"),
-                    pl.col("hb_1_donor_OOPA").alias("H-bond 2 / donor plane"),
-                    pl.col("hb_1_acceptor_OOPA").alias("H-bond 2 / acceptor plane"),
-                    pl.col("coplanarity_shift1").alias("Edge 1/plane 2 shift"),
-                    pl.col("coplanarity_shift2").alias("Edge 2/plane 1 shift"),
+            # output_files.extend(
+            #     make_bond_pages(dff, args.output_dir, pair_type, coplanarity_histogram_defs2, highlights=dna_rna_highlights, title_suffix= " - coplanarity2")
+            # )
+            # output_files.extend(
+            #     make_bond_pages(dff, args.output_dir, pair_type, rmsd_histogram_defs, highlights=dna_rna_highlights, title_suffix= " - RMSD to nicest BP")
+            # )
+            # output_files.extend(
+            #     make_pairplot_page(dff, args.output_dir, pair_type, variables=[
+            #         pl.col(f"C1_C1_euler_phi").alias("Euler Φ"),
+            #         pl.col(f"C1_C1_euler_theta").alias("Euler Θ"),
+            #         pl.col(f"C1_C1_euler_psi").alias("Euler Ψ"),
+            #         pl.col(f"C1_C1_euler_phicospsi").alias("Euler Φ-cos(Θ)Ψ"),
+            #         pl.col(f"C1_C1_yaw1").alias("Yaw 1"),
+            #         pl.col(f"C1_C1_pitch1").alias("Pitch 1"),
+            #         pl.col(f"C1_C1_roll1").alias("Roll 1"),
+            #         pl.col(f"C1_C1_yaw2").alias("Yaw 2"),
+            #         pl.col(f"C1_C1_pitch2").alias("Pitch 2"),
+            #         pl.col(f"C1_C1_roll2").alias("Roll 2"),
+            #     ], title_suffix=" - Various N1-C1' reference frame angles")
+            # )
+            # output_files.extend(
+            #     make_pairplot_page(dff, args.output_dir, pair_type, variables=[
+            #         pl.col(f"coplanarity_angle").alias("Plane normal angle"),
+            #         pl.col(f"C1_C1_yaw1").alias("Yaw 1"),
+            #         pl.col(f"C1_C1_pitch1").alias("Pitch 1"),
+            #         pl.col(f"C1_C1_roll1").alias("Roll 1"),
+            #         pl.col(f"coplanarity_edge_angle1").alias("Edge 1 / plane 2"),
+            #         pl.col(f"coplanarity_edge_angle2").alias("Edge 2 / plane 1"),
+            #         pl.col("hb_1_donor_OOPA").alias("H-bond 2 / donor plane"),
+            #         pl.col("hb_1_acceptor_OOPA").alias("H-bond 2 / acceptor plane"),
+            #         pl.col("coplanarity_shift1").alias("Edge 1/plane 2 shift"),
+            #         pl.col("coplanarity_shift2").alias("Edge 2/plane 1 shift"),
 
-                ], title_suffix=" - Other coplanarity metrics")
-            )
-            #output_files.extend(
-                #make_pairplot_page(dff, args.output_dir, pair_type, variables=[
-                    #pl.col(f"C1_C1_yaw1").alias("Yaw 1"),
-                    #pl.col(f"C1_C1_pitch1").alias("Pitch 1"),
-                    #pl.col(f"C1_C1_roll1").alias("Roll 1"),
-                    #pl.col(f"rmsd_C1N_frames"),
-                    #pl.col(f"rmsd_edge1"),
-                    #pl.col(f"rmsd_edge2"),
-                    #pl.col(f"rmsd_edge_C1N_frame"),
-                    #pl.col(f"rmsd_all_base"),
-                #], title_suffix=" - Various N1-C1' reference frame angles")
-            #)
+            #     ], title_suffix=" - Other coplanarity metrics")
+            # )
+            # output_files.extend(
+            #     make_pairplot_page(dff, args.output_dir, pair_type, variables=[
+            #         pl.col(f"C1_C1_yaw1").alias("Yaw 1"),
+            #         pl.col(f"C1_C1_pitch1").alias("Pitch 1"),
+            #         pl.col(f"C1_C1_roll1").alias("Roll 1"),
+            #         pl.col(f"rmsd_C1N_frames"),
+            #         pl.col(f"rmsd_edge1"),
+            #         pl.col(f"rmsd_edge2"),
+            #         pl.col(f"rmsd_edge_C1N_frame"),
+            #         pl.col(f"rmsd_all_base"),
+            #     ], title_suffix=" - Various N1-C1' reference frame angles")
+            # )
             # output_files = [
             #     f
             #     for column in [0, 1, 2]
