@@ -937,6 +937,7 @@ def main(argv):
             #     for h in histogram_defs
             #     for f in make_resolution_comparison_page(df, args.output_dir, pair_type, h, images= [ create_pair_image(df[nicest_bp], args.output_dir, pair_type) ] if nicest_bp is not None else [])
             # ]
+            pair_type.
             dna_rna_images = [ create_pair_image(dff[bp], args.output_dir, pair_type) if bp >= 0 else None for bp in nicest_bps ] * len(resolutions) if nicest_bps is not None else []
             dna_rna_highlights = [ dff[bp] if bp >= 0 else None for bp in nicest_bps ] if nicest_bps is not None else []
             output_files = [
@@ -1000,8 +1001,8 @@ def main(argv):
             # ]
             all_statistics.extend(statistics)
         if args.reexport == "partitioned":
-            reexport_df(df, stat_columns or []).write_parquet(os.path.join(args.output_dir, f"{pair_type}.parquet"))
-            reexport_df(df.filter(is_some_quality), stat_columns or []).write_parquet(os.path.join(args.output_dir, f"{pair_type}-filtered.parquet"))
+            reexport_df(df, stat_columns or []).write_parquet(os.path.join(args.output_dir, f"{pair_type.normalize_capitalization()}.parquet"))
+            reexport_df(df.filter(is_some_quality), stat_columns or []).write_parquet(os.path.join(args.output_dir, f"{pair_type.normalize_capitalization()}-filtered.parquet"))
         results.append({
             # "input_file": file,
             "pair_type": pair_type.to_tuple(),

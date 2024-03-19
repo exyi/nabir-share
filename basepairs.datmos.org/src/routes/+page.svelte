@@ -102,6 +102,7 @@
           await conn.query(`DROP VIEW IF EXISTS selectedpair`)
           await conn.query(`DROP VIEW IF EXISTS selectedpair_f`)
           await conn.query(`DROP VIEW IF EXISTS selectedpair_n`)
+          await conn.query(`DROP VIEW IF EXISTS selectedpair_all_contacts`)
           // return Promise.all([
           //   conn.query(`CREATE OR REPLACE VIEW 'selectedpair' AS SELECT * FROM parquet_scan('${selectedPairing}')`),
           //   conn.query(`CREATE OR REPLACE VIEW 'selectedpair_f' AS SELECT * FROM parquet_scan('${selectedPairing}-filtered')`),
@@ -123,7 +124,7 @@
       }
       console.log(`Loading ${file} into view ${name}`)
       abort.throwIfAborted()
-      await conn.query(`CREATE OR REPLACE VIEW '${name}' AS SELECT * FROM parquet_scan('${file}')`)
+      await conn.query(`CREATE OR REPLACE VIEW '${name}' AS SELECT (pdbid || '-' || model || '-' || chain1 || '_' || coalesce(alt1, '') || nr1 || coalesce(ins1, '') || '-' || chain2 || '_' || coalesce(alt2, '') || nr2 || coalesce(ins2, '')) as pairid, * FROM parquet_scan('${file}')`)
     }
     // await conn.
     const queryTables = new Set(await conn.getTableNames(query))

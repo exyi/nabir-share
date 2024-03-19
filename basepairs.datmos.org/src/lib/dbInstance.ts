@@ -16,13 +16,15 @@ const cacheBuster = '?v=8'
 
 for (const pairMeta of metadata) {
   const [family, bases] = pairMeta.pair_type
+  const nf = normalizePairFamily(family)
   if (pairMeta.count != 0) {
-    parquetFiles[`${family}-${bases}`] = `${family}-${bases}.parquet${cacheBuster}`
-    parquetFiles[`${normalizePairFamily(family)}-${bases}`] = `${family}-${bases}.parquet${cacheBuster}`
-    parquetFiles[`${family}-${bases}-filtered`] = `${family}-${bases}-filtered.parquet${cacheBuster}`
-    parquetFiles[`${normalizePairFamily(family)}-${bases}-filtered`] = `${family}-${bases}-filtered.parquet${cacheBuster}`
-    parquetFiles[`n${family}-${bases}`] = `n${family}-${bases}.parquet${cacheBuster}`
-    parquetFiles[`${family}-${bases}_n`] = `n${family}-${bases}.parquet${cacheBuster}`
+    // parquetFiles[`${family}-${bases}`] = `${nf}-${bases}.parquet${cacheBuster}`
+    parquetFiles[`${nf}-${bases}`] = `${nf}-${bases}.parquet${cacheBuster}`
+    // parquetFiles[`${family}-${bases}-filtered`] = `${nf}-${bases}-filtered.parquet${cacheBuster}`
+    parquetFiles[`${nf}-${bases}-filtered`] = `${nf}-${bases}-filtered.parquet${cacheBuster}`
+    parquetFiles[`${nf}-${bases}-filtered-allcontacts`] = `${nf}-${bases}-filtered-allcontacts.parquet${cacheBuster}`
+    parquetFiles[`n${nf}-${bases}`] = `n${nf}-${bases}.parquet${cacheBuster}`
+    parquetFiles[`${nf}-${bases}_n`] = `n${nf}-${bases}.parquet${cacheBuster}`
   }
 }
 export const host = window.location.hostname.match(/(^|[.])localhost$/) ? 'localhost' : window.location.hostname

@@ -115,6 +115,14 @@ class PairType:
             base2: str = m.groupdict().get("base2a") or m.groupdict().get("base2b") or ""
             return PairType(type, (base1, base2), alt, n)
         raise ValueError(f"Invalid pair type: {s}")
+    
+    def normalize_capitalization(self) -> 'PairType':
+        if self.type[0].islower() and self.type[1].isupper() and self.type[2].isupper():
+            return self
+        else:
+            t = self.type[0].lower() + self.type[1].upper() + self.type[2].upper()
+            return PairType(t, self.bases, self.variant, self.n)
+
 
 def read_pair_definitions(file = os.path.join(os.path.dirname(__file__), "H_bonding_Atoms_from_Isostericity_Table.csv")) -> dict[tuple[str, str], list[tuple[str, str, str, str]]]:
     with open(file, "r") as f:
