@@ -140,9 +140,9 @@ def add_dssr_info(pdbid, df: pl.DataFrame, dssr_binary, column_prefix = 'dssr_')
         if pdbid_ != pdbid:
             print(f"WARNING: pdbid mismatch: {pdbid_} != {pdbid}")
 
-        if alt1 == '?':
+        if alt1 in ('?', '\0', ' '):
             alt1 = None
-        if alt2 == '?':
+        if alt2 in ('?', '\0', ' '):
             alt2 = None
         if ins1.strip() == '':
             ins1 = None

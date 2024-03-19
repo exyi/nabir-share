@@ -654,7 +654,7 @@ def determine_bp_class(df: pl.DataFrame, pair_type: PairType, is_rna = None, thr
     else:
         return 3
 
-def calculate_stats(df: pl.DataFrame, pair_type):
+def calculate_stats(df: pl.DataFrame, pair_type, skip_kde: bool):
     if len(df) == 0:
         raise ValueError("No data")
     # columns = df.select(pl.col("^hb_\\d+_(length|donor_angle|acceptor_angle)$")).columns
@@ -662,16 +662,21 @@ def calculate_stats(df: pl.DataFrame, pair_type):
     columns = df.select(pl.col("^hb_\\d+_(length|donor_angle|acceptor_angle)$"), pl.col("^C1_C1_(yaw|pitch|roll)(1|2)$")).columns
     # print(f"{columns=}")
     cdata = [ df[c].drop_nulls().to_numpy() for c in columns ]
-    kdes = [ scipy.stats.gaussian_kde(sample_for_kde(c)) if len(c) > 5 else None for c in cdata ]
-    kde_modes = [ None if kde is None else float(c[np.argmax(kde.pdf(c))]) for kde, c in zip(kdes, cdata) ]
     medians = [ float(np.median(c)) if len(c) > 0 else None for c in cdata ]
     means = [ float(np.mean(c)) if len(c) > 0 else None for c in cdata ]
     stds = [ float(np.std(c)) if len(c) > 1 else None for c in cdata ]
+    if skip_kde:
+        kdes = [ None ] * len(columns)
+    else:
+        kdes = [ scipy.stats.gaussian_kde(sample_for_kde(c)) if len(c) > 5 else None for c in cdata ]
+    kde_modes = [ None if kde is None else float(c[np.argmax(kde.pdf(c))]) for kde, c in zip(kdes, cdata) ]
     kde_mode_stds = [ None if kde_mode is None else np.sqrt(np.mean((c - kde_mode) ** 2)) for kde_mode, c in zip(kde_modes, cdata) ]
     def calc_datapoint_mode_deviations(df):
+        ms = [ median if kde_mode is None else kde_mode for kde_mode, median in zip(kde_modes, medians) ]
+        ss = [ std if kde_std is None else kde_std for kde_std, std in zip(kde_mode_stds, stds) ]
         return np.sum([
             ((df[c] - kde_mode) ** 2 / kde_mode_std ** 2).fill_null(10).to_numpy()
-            for kde_mode, kde_mode_std, c in zip(kde_modes, kde_mode_stds, columns)
+            for kde_mode, kde_mode_std, c in zip(ms, ss, columns)
             if kde_mode is not None and kde_mode_std
         ] + [ [0] * len(df) ], axis=0)
     def calc_datapoint_log_likelihood(df):
@@ -861,9 +866,9 @@ def main(argv):
     parser.add_argument("--reexport", default='none', choices=['none', 'partitioned'], help="Write out parquet files with calculated statistics columns (log likelihood, mode deviations)")
     parser.add_argument("--include-nears", default=False, action="store_true", help="If FR3D is run in basepair_detailed mode, it reports near basepairs (denoted as ncWW). By default, we ignore them, but this option includes them in the output.")
     parser.add_argument("--filter-pair-type", default=None, help="Comma separated list of pair types to include in the result (formatted as cWW-AC). By default all are included.")
+    parser.add_argument("--skip-kde", default=False, action="store_true", help="")
     parser.add_argument("--output-dir", "-o", required=True, help="Output directory")
     args = parser.parse_args(argv)
-
 
     only_pairtypes = None if args.filter_pair_type is None else set(pair_defs.PairType.parse(pt) for pt in args.filter_pair_type.split(","))
 
@@ -907,7 +912,7 @@ def main(argv):
                     .filter(pl.any_horizontal(pl.col("^hb_\\d+_length$").is_not_null()))
             if len(dff) == 0:
                 continue
-            stat_columns, stats = calculate_stats(dff, pair_type)
+            stat_columns, stats = calculate_stats(dff, pair_type, args.skip_kde)
             statistics.append({
                 "pair": pair_type.bases_str,
                 "pair_type": pair_type.full_type,

@@ -1,5 +1,5 @@
 import dataclasses
-from typing import Optional
+from typing import Optional, Union
 import polars as pl
 import numpy as np
 import os, re, math
@@ -38,7 +38,7 @@ def read_id_lists(directory) -> dict[str, pl.DataFrame]:
         "RNA-1.8-3.5": read_id_list(directory + "/non_redundant_RNA_filtered_residues_1.8-3.5A.csv").with_columns(pl.lit(True).alias("rna_lres")),
     }
 
-def add_res_filter_columns(df, residue_lists: dict[str, pl.DataFrame]):
+def add_res_filter_columns(df: pl.DataFrame, residue_lists: dict[str, pl.DataFrame]):
     # print(next(iter(residue_lists.values())))
     rcols = { f"{name}-r{resix}":
         df.join(

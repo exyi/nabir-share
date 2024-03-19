@@ -694,8 +694,7 @@ def hbond_stats(
     assert _linalg_norm(atom0.coord - atom1.coord) <= 1.6, f"atoms 0,1 not bonded: {atom0.full_id} {atom1.full_id} ({np.linalg.norm(atom0.coord - atom1.coord)} > 1.6, {atom0.coord} {atom1.coord})"
     assert _linalg_norm(atom2.coord - atom3.coord) <= 1.6, f"atoms 2,3 not bonded: {atom2.full_id} {atom3.full_id} ({np.linalg.norm(atom0.coord - atom1.coord)} > 1.6, {atom0.coord} {atom1.coord})"
     assert _linalg_norm(atom1.coord - atom2.coord) > 1.55, f"atoms too close for h-bond: {atom1.full_id} {atom2.full_id} ({np.linalg.norm(atom1.coord - atom2.coord)} < 2, {atom1.coord} {atom2.coord})"
-    assert _linalg_norm(atom1.coord - atom2.coord) < 10, f"atoms too far for h-bond: ({np.linalg.norm(atom1.coord - atom2.coord)} > 6, {atom1.coord} {atom2.coord})"
-
+    assert _linalg_norm(atom1.coord - atom2.coord) < 20, f"atoms too far for h-bond: ({np.linalg.norm(atom1.coord - atom2.coord)} > 6, {atom1.coord} {atom2.coord})"
 
     result = HBondStats(
         length=get_distance(atom1, atom2),
@@ -991,8 +990,8 @@ def backbone_columns(df: pl.DataFrame, structure: Optional[Bio.PDB.Structure.Str
         elif par and not antipar:
             is_parallel[i] = True
 
-        if antipar and par:
-            print("Interesting pair:", pdbid, model, chain1, nr1, ins1, chain2, nr2, ins2, "both parallel and antiparallel")
+        # if antipar and par:
+        #     print("Interesting pair:", pdbid, model, chain1, nr1, ins1, chain2, nr2, ins2, "both parallel and antiparallel")
     return [ is_dinucleotide, is_parallel ]
 
 
@@ -1062,7 +1061,21 @@ def load_inputs(pool: Union[Pool, MockPool], args) -> pl.DataFrame:
     
     if inputs[0].endswith(".parquet") or inputs[0].endswith('.csv'):
         print(f'Loading basepairing CSV files')
-        df = scan_pair_csvs(args.inputs).sort('pdbid', 'model', 'nr1', 'nr2').collect()
+        df = scan_pair_csvs(args.inputs).sort('pdbid', 'model', 'nr1', 'nr2')
+        df = df.with_columns(
+            alt1=pl.when((pl.col("alt1") == '\0') | (pl.col("alt1") == '?')).then(pl.lit('')).otherwise(pl.col("alt1").str.strip()),
+            alt2=pl.when((pl.col("alt2") == '\0') | (pl.col("alt2") == '?')).then(pl.lit('')).otherwise(pl.col("alt2").str.strip()),
+            ins1=pl.col("ins1").str.strip(),
+            ins2=pl.col("ins2").str.strip(),
+        )
+        if "pdbsymstr" in df.columns:
+            df = df.with_columns(
+                symmetry_operation1=pl.lit(None, pl.Utf8),
+                symmetry_operation2=pl.when(pl.col("pdbsymstr") == "1_555").then(pl.lit(None, pl.Utf8)).otherwise(pl.col("pdbsymstr"))
+            )
+        df = df.filter(pl.col("res1").is_in(["A", "T", "G", "U", "C"])).filter(pl.col("res2").is_in(["A", "T", "G", "U", "C"]))
+        # if "r11" in df.columns:
+        df = df.collect()
     elif inputs[0].endswith("_basepair.txt") or inputs[0].endswith("_basepair_detail.txt"):
         print(f"Loading {len(inputs)} basepair files")
         import fr3d_parser
@@ -1085,13 +1098,20 @@ def validate_missing_columns(chunks: list[pl.DataFrame]):
 
 def main(pool: Union[Pool, MockPool], args):
     df = load_inputs(pool, args)
+    raw_df_len = len(df)
+    print(f"Loaded {raw_df_len} raw basepairs")
     if args.disable_cross_symmetry:
         df = df.filter(pl.col("symmetry_operation1").is_null() & pl.col("symmetry_operation2").is_null())
+        print(f"Removed cross-symmetry basepairs -> len={len(df)}")
     else:
-        # at least one has to be in the primary asymmetric unit
-        df = df.filter(pl.col("symmetry_operation1").is_null() | pl.col("symmetry_operation2").is_null())
+        if 'symmetry_operation1' in df.columns and 'symmetry_operation2' in df.columns:
+            # at least one has to be in the primary asymmetric unit
+            df = df.filter(pl.col("symmetry_operation1").is_null() | pl.col("symmetry_operation2").is_null())
+            if len(df) < raw_df_len:
+                print(f"Removed purely cross-symmetry basepairs -> len={len(df)}")
     if args.dedupe:
         df = remove_duplicate_pairs_phase1(df)
+        print(f"Removed duplicates, phase1 -> len={len(df)}")
     max_bond_count = get_max_bond_count(df)
     groups = list(df.group_by(pl.col("pdbid")))
 

@@ -286,6 +286,7 @@ class BPArgs:
     incremental_max_age: int
     skip_bad: bool
     ortho: bool
+    ignore_basepair_type: bool
     ffmpeg_background: int
 
 def make_pair_image(output_file, pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2, bpargs: BPArgs, hbonds: Optional[list[tuple[str, str, str, str]]], pair_type: Optional[pair_defs.PairType]):
@@ -440,7 +441,7 @@ def process_group(pdbid, group: pl.DataFrame, output_dir: str, bpargs: BPArgs):
             ins2 = None if ins2 == ' ' else ins2
             alt1 = None if alt1 == '?' else alt1
             alt2 = None if alt2 == '?' else alt2
-            if pair_type:
+            if pair_type and not bpargs.ignore_basepair_type:
                 pt = pair_defs.PairType.create(pair_type, pair_defs.map_resname(res1), pair_defs.map_resname(res2))
                 hbonds = pair_defs.get_hbonds(pt)
                 hbonds = [ b for b in hbonds if not pair_defs.is_bond_hidden(pt, b) ]
@@ -528,11 +529,12 @@ def main(argv):
     parser.add_argument("--ortho", action="store_true", help="Use orthoscopic projection")
     parser.add_argument("--ffmpeg_background", type=int, default=0, help="How many ffmpeg processes can be left running asynchronously per PyMOL thread. 0 = run synchronously. With the VP9 encoding, about 3 ffmpegs for 1 pymol thread is reasonable.")
     parser.add_argument("--skip-bad", type=bool, default=False, help="Skip basepairs with bad or missing parameters")
+    parser.add_argument("--ignore-basepair-type", default=False, action="store_true", help="Don't render H-bonds")
     args = parser.parse_args(argv)
 
     import pair_csv_parse
     df = pair_csv_parse.scan_pair_csvs(args.input).collect()
-    bpargs = BPArgs(args.standard_orientation, args.movie, args.movie_format, args.incremental, args.incremental_max_age, args.skip_bad, args.ortho, args.ffmpeg_background)
+    bpargs = BPArgs(args.standard_orientation, args.movie, args.movie_format, args.incremental, args.incremental_max_age, args.skip_bad, args.ortho, args.ignore_basepair_type, args.ffmpeg_background)
     threads = args.threads
     if threads is None and args.cpu_affinity is not None:
         threads = len(args.cpu_affinity)
