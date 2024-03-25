@@ -683,13 +683,13 @@ class HBondStats:
     length: float
     donor_angle: float
     acceptor_angle: float
-    donor_OOPA: Optional[float] = None
-    acceptor_OOPA: Optional[float] = None
+    OOPA1: Optional[float] = None
+    OOPA2: Optional[float] = None
 
 def hbond_stats(
     atom0: Bio.PDB.Atom.Atom, atom1: Bio.PDB.Atom.Atom, atom2: Bio.PDB.Atom.Atom, atom3: Bio.PDB.Atom.Atom,
-    donor_plane: Optional[ResiduePosition],
-    acceptor_plane: Optional[ResiduePosition]
+    residue1_plane: Optional[ResiduePosition],
+    residue2_plane: Optional[ResiduePosition]
 ) -> HBondStats:
     assert _linalg_norm(atom0.coord - atom1.coord) <= 1.6, f"atoms 0,1 not bonded: {atom0.full_id} {atom1.full_id} ({np.linalg.norm(atom0.coord - atom1.coord)} > 1.6, {atom0.coord} {atom1.coord})"
     assert _linalg_norm(atom2.coord - atom3.coord) <= 1.6, f"atoms 2,3 not bonded: {atom2.full_id} {atom3.full_id} ({np.linalg.norm(atom0.coord - atom1.coord)} > 1.6, {atom0.coord} {atom1.coord})"
@@ -702,10 +702,10 @@ def hbond_stats(
         acceptor_angle=get_angle(atom3, atom2, atom1)
     )
 
-    if donor_plane is not None:
-        result.donor_OOPA = donor_plane.get_relative_line_rotation(atom1.coord, atom2.coord)
-    if acceptor_plane is not None:
-        result.acceptor_OOPA = acceptor_plane.get_relative_line_rotation(atom2.coord, atom1.coord)
+    if residue1_plane is not None:
+        result.OOPA1 = residue1_plane.get_relative_line_rotation(atom1.coord, atom2.coord)
+    if residue2_plane is not None:
+        result.OOPA2 = residue2_plane.get_relative_line_rotation(atom2.coord, atom1.coord)
 
     return result
 
@@ -741,7 +741,7 @@ def get_hbond_stats(pair: PairInformation) -> Optional[List[Optional[HBondStats]
     ]
 
     return [
-        hbond_stats(atoms[0], atoms[1], atoms[2], atoms[3], rp1 if hb[1][0] == 'A' else rp2, rp1 if hb[2][0] == 'A' else rp2) if None not in atoms else None
+        hbond_stats(atoms[0], atoms[1], atoms[2], atoms[3], rp1, rp2) if None not in atoms else None
         for atoms, hb in zip(bonds_atoms, hbonds)
     ]
 
@@ -822,7 +822,7 @@ def get_stats_for_csv(df_: pl.DataFrame, structure: Bio.PDB.Structure.Structure,
     Add columns calculated from PDB structure
     """
     df = df_.with_row_count()
-    pair_type_col = df["type"] if global_pair_type is None else itertools.repeat(global_pair_type)
+    pair_type_col = df["family" if "family" in df.columns else "type"] if global_pair_type is None else itertools.repeat(global_pair_type)
     metric_columns = [ tuple(m.get_columns()) for m in metrics ]
     for (pair_family, i, pdbid, model, chain1, res1, ins1, alt1, symop1, chain2, res2, ins2, alt2, symop2) in zip(pair_type_col, df["row_nr"], df["pdbid"], df["model"], df["chain1"], df["nr1"], df["ins1"], df["alt1"], df["symmetry_operation1"], df["chain2"], df["nr2"], df["ins2"], df["alt2"], df["symmetry_operation2"]):
         if (chain1, res1, ins1, alt1) == (chain2, res2, ins2, alt2):
@@ -870,14 +870,15 @@ def remove_duplicate_pairs_phase1(df: pl.DataFrame):
     """
     original = df
     df = df.with_row_index("_tmp_row_nr")
+    family_col = pl.col("family" if "family" in df.columns else "type")
     df = df.with_columns(
-        pl.col("type").str.replace("^(n?[ct])([WHSBwhsb])([WHSBwhsb])([a-z]*)$", "$1$3$2$4").alias("_tmp_type_reversed")
+        family_col.str.replace("^(n?[ct])([WHSBwhsb])([WHSBwhsb])([a-z]*)$", "$1$3$2$4").alias("_tmp_family_reversed")
     )
     def core(df: pl.DataFrame, condition):
         duplicated = df.filter(condition)\
             .join(df,
                 left_on=['type', 'pdbid', 'model', 'chain1', 'res1', 'nr1', 'ins1', 'alt1'],
-                right_on=['_tmp_type_reversed', 'pdbid', 'model', 'chain2', 'res2', 'nr2', 'ins2', 'alt2'],
+                right_on=['_tmp_family_reversed', 'pdbid', 'model', 'chain2', 'res2', 'nr2', 'ins2', 'alt2'],
                 join_nulls=True, how="inner"
             )
         duplicated_f = duplicated.select("_tmp_row_nr", "_tmp_row_nr_right")
@@ -898,10 +899,10 @@ def remove_duplicate_pairs_phase1(df: pl.DataFrame):
         df = df.filter(pl.col("_tmp_row_nr").is_in(duplicated_set).not_())
         return df
 
-    df = core(df, pl.col("type").str.contains("^(?i)n?(c|t)(SH|HW|SW|BW)a?$"))
+    df = core(df, family_col.str.contains("^(?i)n?(c|t)(SH|HW|SW|BW)a?$"))
     print(f"Removed duplicates - family orientation {len(original)} -> {len(df)}")
 
-    df = core(df, pl.col("type").str.contains("^n?[ct][whsb][WHSB]a?$"))
+    df = core(df, family_col.str.contains("^n?[ct][whsb][WHSB]a?$"))
     print(f"Removed duplicates - FR3D small letter is second {len(original)} -> {len(df)}")
 
     base_ordering = { 'A': 1, 'G': 2, 'C': 3, 'U': 4, 'T': 4 }
@@ -910,7 +911,7 @@ def remove_duplicate_pairs_phase1(df: pl.DataFrame):
 
     assert len(df) >= len(original) / 2
 
-    return df.drop([ "_tmp_row_nr", "_tmp_type_reversed" ])
+    return df.drop([ "_tmp_row_nr", "_tmp_family_reversed" ])
 
 def remove_duplicate_pairs(df: pl.DataFrame):
     """
@@ -923,7 +924,8 @@ def remove_duplicate_pairs(df: pl.DataFrame):
         pair.sort()
         bases = resname_map.get(res1, res1) + "-" + resname_map.get(res2, res2)
         return type + "-" + bases + "|".join(tuple(str(x) for x in (pair[0] + pair[1])))
-    pair_ids = [ pair_id(type, res1, res2, chain1, nr1, ins1, alt1, chain2, nr2, ins2, alt2) for type, res1, res2, chain1, nr1, ins1, alt1, chain2, nr2, ins2, alt2 in zip(df["type"], df["res1"], df["res2"], df["chain1"], df["nr1"], df["ins1"], df["alt1"], df["chain2"], df["nr2"], df["ins2"], df["alt2"]) ]
+    family_col = "family" if "family" in df.columns else "type"
+    pair_ids = [ pair_id(type, res1, res2, chain1, nr1, ins1, alt1, chain2, nr2, ins2, alt2) for type, res1, res2, chain1, nr1, ins1, alt1, chain2, nr2, ins2, alt2 in zip(df[family_col], df["res1"], df["res2"], df["chain1"], df["nr1"], df["ins1"], df["alt1"], df["chain2"], df["nr2"], df["ins2"], df["alt2"]) ]
     df = df.with_columns(
         pl.Series(pair_ids, dtype=pl.Utf8).alias("_tmp_pair_id")
     ).with_row_count("_tmp_row_nr")
@@ -937,7 +939,7 @@ def remove_duplicate_pairs(df: pl.DataFrame):
             score += pl.col(col).is_null().cast(pl.Float64)
 
     df = df.sort([score, "chain1", "nr1", "ins1", "alt1", "chain2", "nr2", "ins2", "alt2"])
-    df = df.unique(["type", "pdbid", "model", "_tmp_pair_id"], keep="first", maintain_order=True)
+    df = df.unique([family_col, "pdbid", "model", "_tmp_pair_id"], keep="first", maintain_order=True)
     df = df.sort("_tmp_row_nr")
     df = df.drop(["_tmp_pair_id", "_tmp_row_nr"])
     return df
@@ -1084,10 +1086,13 @@ def load_inputs(pool: Union[Pool, MockPool], args) -> pl.DataFrame:
         ).sort('pdbid', 'model', 'nr1', 'nr2')
     else:
         raise ValueError("Unknown input file type")
-    if "type" not in df.columns:
+    if "type" not in df.columns and "family" not in df.columns:
         if not args.pair_type:
-            raise ValueError("Input does not contain type column and --pair-type was not specified")
-        df = df.select(pl.lit(args.pair_type).alias("type"), pl.col("*"))
+            raise ValueError("Input does not contain family column and --pair-type was not specified")
+        df = df.select(
+            pl.lit(args.pair_type).alias("type"),
+            pl.lit(args.pair_type).alias("family"),
+            pl.col("*"))
     return df
 
 def validate_missing_columns(chunks: list[pl.DataFrame]):

@@ -152,7 +152,7 @@ def read_fr3d_basepairing(file: Union[str, TextIO], pdbid: Optional[str] = None,
     * res2: string - second nucleotide
     * nr1: int - second nucleotide index (index is 1-based in the whole sequence)
     * nr2: int - second nucleotide index
-    * type: string - basepairing type
+    * family: string - basepairing family (cWW, tWH, etc.)
     """
     if isinstance(file, str):
         if file.endswith('.gz'):
@@ -180,7 +180,7 @@ def read_fr3d_basepairing(file: Union[str, TextIO], pdbid: Optional[str] = None,
         "ins1": [], "ins2": [],
         "symmetry_operation1": [],
         "symmetry_operation2": [],
-        "type": [],
+        "family": [],
     }
     all_models = defaultdict(lambda: 0)
     all_chains = defaultdict(lambda: 0)
@@ -221,7 +221,7 @@ def read_fr3d_basepairing(file: Union[str, TextIO], pdbid: Optional[str] = None,
         pairs["ins2"].append(right.insertion_code)
         pairs["symmetry_operation1"].append(left.symmetry_operation or None)
         pairs["symmetry_operation2"].append(right.symmetry_operation or None)
-        pairs["type"].append(basepair_type)
+        pairs["family"].append(basepair_type)
 
     if filter_model is not None and len(all_models) > 0 and filter_model not in all_models:
         print(f"WARNING: model filter ({filter_model}) filtered out all basepairs in {pdbid}. All models: {dict(sorted(all_models.items()))}")
@@ -241,8 +241,9 @@ def read_fr3d_basepairing(file: Union[str, TextIO], pdbid: Optional[str] = None,
     # pairs["ins1"] = np.array(pairs["ins1"], dtype=np.str_)
     # pairs["ins2"] = np.array(pairs["ins2"], dtype=np.str_)
     # pairs["symmetry_operation"] = np.array(pairs["symmetry_operation"], dtype=np.str_)
-    # pairs["type"] = np.array(pairs["type"], dtype=np.str_)
+    # pairs["family"] = np.array(pairs["family"], dtype=np.str_)
     # print(pairs)
+    pairs["type"] = pairs["family"]
     return pairs
 
 def find_pairing_files(directory):

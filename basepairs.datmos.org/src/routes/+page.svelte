@@ -533,7 +533,7 @@
 
     }}> -->
       <!-- Load {Math.min(100, resultsCount - results.length)} more cases -->
-    </button>
+    <!-- </button> -->
   </div>
 {/if}
 {/if}

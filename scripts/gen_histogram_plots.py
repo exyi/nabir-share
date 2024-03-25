@@ -134,19 +134,33 @@ coplanarity_histogram_defs = [
 
 coplanarity_histogram_defs2 = [
     HistogramDef(
-        "H-bond angle to donor plane",
+        "H-bond angle to left plane",
         "Angle (°)",
-        ["hb_0_donor_OOPA", "hb_1_donor_OOPA", "hb_2_donor_OOPA"],
+        ["hb_0_OOPA1", "hb_1_OOPA1", "hb_2_OOPA1"],
         pseudomin=-180, pseudomax=180,
         min=-60, max=60
     ),
     HistogramDef(
-        "H-bond angle to donor plane",
+        "H-bond angle to right plane",
         "Angle (°)",
-        ["hb_0_acceptor_OOPA", "hb_1_acceptor_OOPA", "hb_2_acceptor_OOPA"],
+        ["hb_0_OOPA2", "hb_1_OOPA2", "hb_2_OOPA2"],
         pseudomin=-180, pseudomax=180,
         min=-60, max=60
     ),
+    # HistogramDef(
+    #     "H-bond angle to donor plane",
+    #     "Angle (°)",
+    #     ["hb_0_donor_OOPA", "hb_1_donor_OOPA", "hb_2_donor_OOPA"],
+    #     pseudomin=-180, pseudomax=180,
+    #     min=-60, max=60
+    # ),
+    # HistogramDef(
+    #     "H-bond angle to donor plane",
+    #     "Angle (°)",
+    #     ["hb_0_acceptor_OOPA", "hb_1_acceptor_OOPA", "hb_2_acceptor_OOPA"],
+    #     pseudomin=-180, pseudomax=180,
+    #     min=-60, max=60
+    # ),
     HistogramDef(
         "Edge-to-plane distance",
         "Distance (Å)",
@@ -873,13 +887,51 @@ def save_statistics(all_statistics, output_dir):
     import xlsxwriter
     xlsx = os.path.join(output_dir, "statistics2.xlsx")
     with xlsxwriter.Workbook(xlsx) as workbook:
-
-        df2.write_excel(workbook, worksheet="All", dtype_formats={ pl.Float64: "0.00" }, hidden_columns=["hb_ix", "Pair bases"])
+        df2.write_excel(workbook, worksheet="All", dtype_formats={ pl.Float64: "0.00", pl.Float32: "0.00" }, hidden_columns=["hb_ix", "Pair bases"])
         resolutions = df2["Resolution cutoff"].unique().to_list()
         for r in resolutions:
             df2.filter(pl.col("Resolution cutoff") == r)\
-                .write_excel(workbook, worksheet=f"{r}", dtype_formats={ pl.Float64: "0.00" }, hidden_columns=["hb_ix", "Pair bases", "Resolution cutoff"])
+                .write_excel(workbook, worksheet=f"{r}", dtype_formats={ pl.Float64: "0.00", pl.Float32: "0.00" }, hidden_columns=["hb_ix", "Pair bases", "Resolution cutoff"])
+def calculate_boundaries(df: pl.DataFrame, pair_type: PairType):
+    boundary_columns = {
+        "yaw1": "C1_C1_yaw1",
+        "pitch1": "C1_C1_pitch1",
+        "roll1": "C1_C1_roll1",
+        "yaw2": "C1_C1_yaw2",
+        "pitch2": "C1_C1_pitch2",
+        "roll2": "C1_C1_roll2",
+        "coplanarity_angle": "coplanarity_angle",
+        "coplanarity_edge_angle1": "coplanarity_edge_angle1",
+        "coplanarity_edge_angle2": "coplanarity_edge_angle2",
+        "coplanarity_shift1": "coplanarity_shift1",
+        "coplanarity_shift2": "coplanarity_shift2",
+        "hb_0_OOPA1": "hb_0_OOPA1",
+        "hb_0_OOPA2": "hb_0_OOPA2",
+        "hb_1_OOPA1": "hb_1_OOPA1",
+        "hb_1_OOPA2": "hb_1_OOPA2",
+        "hb_2_OOPA1": "hb_2_OOPA1",
+        "hb_2_OOPA2": "hb_2_OOPA2",
+    }
+    pt_family_dict = { pt: ix + 1 for ix, pt in enumerate(pair_defs.pair_types) }
+    def calc_boundary(col, df=df):
+        # return df[col].min(), df[col].max()
+        if len(df) <= 1 or df[col].is_null().mean() > 0.1:
+            return pl.lit(None, dtype=df[col].dtype), pl.lit(None, dtype=df[col].dtype)
 
+        return df[col].quantile(0.01), df[col].quantile(0.99)
+
+    boundaries = pl.DataFrame({
+        "family_id": [ pt_family_dict.get(pair_type.type.lower(), 99) ] * 2,
+        "family": [ pair_type.full_family ] * 2,
+        "bases": [ pair_type.bases_str ] * 2,
+        "count": [ len(df) ] * 2,
+        "boundary": [ "min", "max" ],
+        **{
+            col: calc_boundary(col)
+            for col in boundary_columns.values()
+        }
+    })
+    return boundaries
 
 def main(argv):
     import argparse
@@ -922,6 +974,7 @@ def main(argv):
         }
         nicest_bps: Optional[list[int]] = None
         statistics = []
+        boundaries = []
         for resolution_label, resolution_filter in {
             # "unfiltered": True,
             "1.8 Å": (pl.col("resolution") <= 1.8) & is_some_quality,
@@ -1021,6 +1074,16 @@ def main(argv):
             #     for f in make_bond_pages(df, args.output_dir, pair_type, [ h.select_columns(column) for h in histogram_defs], images=dna_rna_images, highlights=dna_rna_highlights, title_suffix=f" #{column}")
             # ]
             all_statistics.extend(statistics)
+            hb_filters = [
+                pl.col(f"hb_{i}_length") <= 4.0 if "C" in hb[1] or "C" in hb[2] else pl.col(f"hb_{i}_length") <= 3.8
+                for i, hb in enumerate(pair_defs.get_hbonds(pair_type, throw=False))
+            ]
+            boundaries.append(calculate_boundaries(
+                df.filter(
+                    pl.all_horizontal(is_some_quality, *hb_filters)
+                ),
+                pair_type
+            ))
         if args.reexport == "partitioned":
             reexport_df(df, stat_columns or []).write_parquet(os.path.join(args.output_dir, f"{pair_type.normalize_capitalization()}.parquet"))
             reexport_df(df.filter(is_some_quality), stat_columns or []).write_parquet(os.path.join(args.output_dir, f"{pair_type.normalize_capitalization()}-filtered.parquet"))
@@ -1048,6 +1111,9 @@ def main(argv):
 
     subprocess.run(["gs", "-dBATCH", "-dNOPAUSE", "-q", "-sDEVICE=pdfwrite", "-dPDFSETTINGS=/prepress", f"-sOutputFile={os.path.join(args.output_dir, 'hbonds-merged.pdf')}", *output_files])
     print("Wrote", os.path.join(args.output_dir, 'hbonds-merged.pdf'))
+    boundaries_df: pl.DataFrame = pl.concat(boundaries)
+    boundaries_df.write_csv(os.path.join(args.output_dir, "boundaries.csv"))
+    boundaries_df.write_excel(os.path.join(args.output_dir, "boundaries.xlsx"), dtype_formats={ pl.Float64: "0.00", pl.Float32: "0.00" })
     # save_statistics(all_statistics, args.output_dir)
 
     with open(os.path.join(args.output_dir, "output.json"), "w") as f:
@@ -1056,4 +1122,3 @@ def main(argv):
 
 if __name__ == "__main__":
     main(sys.argv[1:])
-

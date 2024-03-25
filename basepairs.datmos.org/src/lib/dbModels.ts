@@ -434,6 +434,8 @@ export function getColumnLabel(column: string, metadata: UnwrapArray<typeof meta
                     'acceptor_angle': "Acceptor-covalent ∡",
                     'donor_OOPA': 'Donor-plane ∡',
                     'acceptor_OOPA': 'Acceptor-plane ∡',
+                    'OOPA1': `Left plane ∡`,
+                    'OOPA2': `Right plane ∡`,
                 }[name] ?? name)
             ].filter(x => x != null).join(' ')
             const tooltip =
@@ -441,8 +443,10 @@ export function getColumnLabel(column: string, metadata: UnwrapArray<typeof meta
                 name == 'length' ? "Distance between the H-bond heavy atoms - " + formatAtomNames(metadata, hbondAtoms.slice(1, 3), true) :
                 name == 'donor_angle' ? `Angle between heavy atoms ${formatAtomNames(metadata, hbondAtoms.slice(0, 3), true, [null, "(donor)", "(acceptor)"])}` :
                 name == 'acceptor_angle' ? `Angle between heavy atoms ${formatAtomNames(metadata, hbondAtoms.slice(1, 4), true, ["(donor)", "(acceptor)", null])}` :
-                name == 'donor_OOPA' ? `Angle of ${metadata.labels[i]} and the ${baseNames[0]} (donor) plane` :
-                name == 'acceptor_OOPA' ? `Angle of ${metadata.labels[i]} and the ${baseNames[1]} (acceptor) plane` :
+                // name == 'donor_OOPA' ? `Angle of ${metadata.labels[i]} and the ${baseNames[0]} plane` :
+                // name == 'acceptor_OOPA' ? `Angle of ${metadata.labels[i]} and the ${baseNames[1]} (acceptor) plane` :
+                name == 'OOPA1' ? `Angle of ${metadata.labels[i]} and the ${baseNames[0]} plane` :
+                name == 'OOPA2' ? `Angle of ${metadata.labels[i]} and the ${baseNames[1]} plane` :
                 null
             return [label, tooltip]
         }

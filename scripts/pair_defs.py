@@ -23,6 +23,10 @@ class PairType:
             raise ValueError(f"Invalid pair type: PairType({repr(self.type)}, {self.bases})")
     @property
     def full_type(self) -> str:
+        """DEPRECATED"""
+        return f"{'n' if self.n else ''}{self.type}{self.variant}"
+    @property
+    def full_family(self) -> str:
         return f"{'n' if self.n else ''}{self.type}{self.variant}"
     @property
     def bases_str(self) -> str:
