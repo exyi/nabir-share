@@ -98,20 +98,20 @@ hbond_histogram_defs = [
 
 coplanarity_histogram_defs = [
     HistogramDef(
-        "Euler angles, N1-C1' reference frames",
-        "Angle (°)",
-        ["C1_C1_euler_phi", "C1_C1_euler_theta", "C1_C1_euler_psi", "C1_C1_euler_phicospsi"],
-        legend=["φ", "θ", "ψ", "φ-cos(θ)ψ"],
-        # bin_width=0.05,
-        min=-180,
-        max=180
-    ),
-    HistogramDef(
         "Yaw, pitch, left-to-right, N1-C1' reference frames",
         "Angle (°)",
         ["C1_C1_yaw1", "C1_C1_pitch1", "C1_C1_roll1"],
         legend=["Yaw 1", "Pitch 1", "Roll 1"],
         # bin_width=2,
+        min=-180,
+        max=180
+    ),
+    HistogramDef(
+        "Euler angles, N1-C1' reference frames",
+        "Angle (°)",
+        ["C1_C1_euler_phi", "C1_C1_euler_theta", "C1_C1_euler_psi", "C1_C1_euler_phicospsi"],
+        legend=["φ", "θ", "ψ", "φ-cos(θ)ψ"],
+        # bin_width=0.05,
         min=-180,
         max=180
     ),
@@ -122,7 +122,14 @@ coplanarity_histogram_defs = [
         legend=["Yaw 2", "Pitch 2", "Roll 2"],
         min=-180,
         max=180
-    )
+    ),
+    HistogramDef(
+        "RMSD of pairing edges",
+        "Å",
+        ["rmsd_edge1", "rmsd_edge2"],
+        legend=["fit on left base", "fit on right base"],
+    ),
+
 ]
 
 coplanarity_histogram_defs2 = [
@@ -168,6 +175,14 @@ coplanarity_histogram_defs_selection = [
         min=-180,
         max=180
     ),
+    # HistogramDef(
+    #     "H-bond angle to acceptor plane",
+    #     "Angle (°)",
+    #     ["hb_0_acceptor_OOPA", "hb_1_acceptor_OOPA", "hb_2_acceptor_OOPA"],
+    #     pseudomin=-180, pseudomax=180,
+    #     min=-60, max=60
+    # ),
+
     HistogramDef(
         "Edge-to-plane angle",
         "Angle (°)",
@@ -184,12 +199,20 @@ coplanarity_histogram_defs_selection = [
         min=-180,
         max=180
     ),
-    HistogramDef(
-        "RMSD of pairing edges",
-        "Å",
-        ["rmsd_edge1", "rmsd_edge2"],
-        legend=["fit on left base", "fit on right base"],
-    ),
+    # HistogramDef(
+    #     "H-bond angle to donor plane",
+    #     "Angle (°)",
+    #     ["hb_0_donor_OOPA", "hb_1_donor_OOPA", "hb_2_donor_OOPA"],
+    #     pseudomin=-180, pseudomax=180,
+    #     min=-60, max=60
+    # ),
+
+    # HistogramDef(
+    #     "RMSD of pairing edges",
+    #     "Å",
+    #     ["rmsd_edge1", "rmsd_edge2"],
+    #     legend=["fit on left base", "fit on right base"],
+    # ),
 ]
 
 rmsd_histogram_defs = [
@@ -878,7 +901,6 @@ def main(argv):
     all_statistics = []
 
     for pair_type, df in enumerate_pair_types(args.input_file, args.include_nears):
-
         if only_pairtypes is not None and pair_type.without_n() not in only_pairtypes:
             print(f"Skipping {pair_type} because it is not in {only_pairtypes}")
             continue
@@ -937,7 +959,6 @@ def main(argv):
             #     for h in histogram_defs
             #     for f in make_resolution_comparison_page(df, args.output_dir, pair_type, h, images= [ create_pair_image(df[nicest_bp], args.output_dir, pair_type) ] if nicest_bp is not None else [])
             # ]
-            pair_type.
             dna_rna_images = [ create_pair_image(dff[bp], args.output_dir, pair_type) if bp >= 0 else None for bp in nicest_bps ] * len(resolutions) if nicest_bps is not None else []
             dna_rna_highlights = [ dff[bp] if bp >= 0 else None for bp in nicest_bps ] if nicest_bps is not None else []
             output_files = [
@@ -945,11 +966,11 @@ def main(argv):
                 )
             ]
             output_files.extend(
-                make_bond_pages(dff, args.output_dir, pair_type, coplanarity_histogram_defs_selection, highlights=dna_rna_highlights, title_suffix= " - Coplanarity")
+                make_bond_pages(dff, args.output_dir, pair_type, coplanarity_histogram_defs, highlights=dna_rna_highlights, title_suffix= " - Coplanarity")
             )
-            # output_files.extend(
-            #     make_bond_pages(dff, args.output_dir, pair_type, coplanarity_histogram_defs2, highlights=dna_rna_highlights, title_suffix= " - coplanarity2")
-            # )
+            output_files.extend(
+                make_bond_pages(dff, args.output_dir, pair_type, coplanarity_histogram_defs2, highlights=dna_rna_highlights, title_suffix= " - coplanarity2")
+            )
             # output_files.extend(
             #     make_bond_pages(dff, args.output_dir, pair_type, rmsd_histogram_defs, highlights=dna_rna_highlights, title_suffix= " - RMSD to nicest BP")
             # )
