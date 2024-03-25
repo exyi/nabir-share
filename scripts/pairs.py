@@ -302,20 +302,22 @@ def get_residue_posinfo_C1_N(res: AltResidue) -> TranslationThenRotation:
     if c1 is None or n is None or c2 is None:
         raise ResideTransformError(f"Missing atoms in residue {res.res.full_id}")
     translation = -n.coord # tvl copilot toto dal asi, cool priklad do appendix AI
-    x = c1.coord - n.coord
-    x /= np.linalg.norm(x)
-    y = c2.coord - n.coord
-    y -= np.dot(y, x) * x
+    y = n.coord - c1.coord
     y /= np.linalg.norm(y)
+    x = n.coord - c2.coord
+    x -= np.dot(y, x) * y # project X onto Y
+    x /= np.linalg.norm(x)
     z = np.cross(x, y)
     z /= np.linalg.norm(z)
     rotation = np.array([x, y, z]).T
 
+
     test = transform_residue(res, TranslationThenRotation(translation, rotation))
-    assert np.all(test.get_atom(n.name).coord < 0.001)
-    assert np.all(test.get_atom(c1.name).coord[1:] < 0.001)
-    assert 1.2 < test.get_atom(c1.name).coord[0] < 1.9, f"Unexpected C1' coordinates (x is bad): {test.get_atom(c1.name).coord}"
-    assert np.all(test.get_atom(c2.name).coord[2] < 0.001)
+    assert np.all(test.get_atom(n.name).coord ** 2 < 0.001)
+    assert np.all(test.get_atom(c1.name).coord[0:] < 0.001)
+    assert -1.9 < test.get_atom(c1.name).coord[1] < -1.2, f"Unexpected C1' coordinates (x is bad): {test.get_atom(c1.name).coord}"
+    assert np.all(test.get_atom(c2.name).coord[0] < -0.01)
+    assert np.all(test.get_atom(c2.name).coord[1] > 0.01)
 
     return TranslationThenRotation(translation, rotation)
 
