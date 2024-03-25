@@ -28,6 +28,11 @@ export type PairingInfo = {
     originalRow?: any
 }
 
+export function normalizePairType(t: string) {
+    const [family, bases] = parsePairingType(t)
+    return `${normalizePairFamily(family)}-${bases.toUpperCase()}`
+}
+
 export function normalizePairFamily(f: string) {
     return f.replace('s', 'S').replace('w', 'W').replace('h', 'H') as PairingFamily
 }

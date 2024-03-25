@@ -4,8 +4,8 @@
   import { base } from '$app/paths';
   import metadata from '$lib/metadata'
 	import FilterEditor from '$lib/components/filterEditor.svelte';
-	import { aggregateBondParameters, aggregatePdbCountQuery, aggregateTypesQuery, defaultFilter, filterToSqlCondition, makeSqlQuery, parseUrl, type NucleotideFilterModel, filterToUrl, type HistogramSettingsModel, type StatisticsSettingsModel, fillStatsLegends, statPresets, type StatPanelSettingsModel, statsToUrl } from '$lib/dbModels.js';
-	import { parsePairingType, type NucleotideId, type PairId, type PairingInfo, type HydrogenBondInfo, tryParsePairingType, type PairingFamily } from '$lib/pairing.js';
+	import { aggregateBondParameters, aggregatePdbCountQuery, aggregateTypesQuery, defaultFilter, filterToSqlCondition, makeSqlQuery, parseUrl, type NucleotideFilterModel, filterToUrl, type HistogramSettingsModel, type StatisticsSettingsModel, fillStatsLegends, statPresets, type StatPanelSettingsModel, statsToUrl, getDataSourceTable } from '$lib/dbModels.js';
+	import { parsePairingType, type NucleotideId, type PairId, type PairingInfo, type HydrogenBondInfo, tryParsePairingType, type PairingFamily, normalizePairType } from '$lib/pairing.js';
 	import { Modal } from 'svelte-simple-modal';
 	import type { AsyncDuckDBConnection } from '@duckdb/duckdb-wasm';
 	import { AsyncLock } from '$lib/lock.js';
@@ -102,7 +102,8 @@
           await conn.query(`DROP VIEW IF EXISTS selectedpair`)
           await conn.query(`DROP VIEW IF EXISTS selectedpair_f`)
           await conn.query(`DROP VIEW IF EXISTS selectedpair_n`)
-          await conn.query(`DROP VIEW IF EXISTS selectedpair_all_contacts`)
+          await conn.query(`DROP VIEW IF EXISTS selectedpair_allcontacts_f`)
+          await conn.query(`DROP VIEW IF EXISTS selectedpair_allcontacts`)
           // return Promise.all([
           //   conn.query(`CREATE OR REPLACE VIEW 'selectedpair' AS SELECT * FROM parquet_scan('${selectedPairing}')`),
           //   conn.query(`CREATE OR REPLACE VIEW 'selectedpair_f' AS SELECT * FROM parquet_scan('${selectedPairing}-filtered')`),
@@ -129,21 +130,26 @@
     // await conn.
     const queryTables = new Set(await conn.getTableNames(query))
     const existingTables = new Set([...await conn.query("select view_name as name from duckdb_views() union select table_name as name from duckdb_tables()")].map(r => r.name))
+    const selectedNorm = normalizePairType(selectedPairing)
 
     for (const e in existingTables) {
       queryTables.delete(e)
     }
     console.log("missing tables:", [...queryTables])
     if (queryTables.has('selectedpair')) {
-      await addView(selectedPairing, 'selectedpair', `${selectedPairing}`)
+      await addView(selectedNorm, 'selectedpair', `${selectedPairing}`)
       queryTables.delete('selectedpair')
     }
     if (queryTables.has('selectedpair_f')) {
-      await addView(selectedPairing, 'selectedpair_f', `${selectedPairing}-filtered`)
+      await addView(selectedNorm, 'selectedpair_f', `${selectedNorm}-filtered`)
       queryTables.delete('selectedpair_f')
     }
+    if (queryTables.has('selectedpair_allcontacts_f')) {
+      await addView(selectedNorm, 'selectedpair_allcontacts_f', `${selectedNorm}-filtered-allcontacts`)
+      queryTables.delete('selectedpair_allcontacts_f')
+    }
     if (queryTables.has('selectedpair_n')) {
-      await addView(selectedPairing, 'selectedpair_n', `n${selectedPairing}`)
+      await addView(selectedNorm, 'selectedpair_n', `n${selectedNorm}`)
       queryTables.delete('selectedpair_n')
     }
 
@@ -153,7 +159,10 @@
         await addView(pair, t, t)
       } else if ((t.endsWith('_f') || t.endsWith('-f') || t.endsWith('_n') || t.endsWith('-n')) &&
         (pair = tryParsePairingType(t.slice(0, -2))) != null) {
-        await addView(pair, t, (t.endsWith('n') ? 'n' : '') + t.slice(0, -2) + (t.endsWith('f') ? '-filtered' : ''))
+        await addView(pair, t, (t.endsWith('n') ? 'n' : '') + normalizePairType(t.slice(0, -2)) + (t.endsWith('f') ? '-filtered' : ''))
+      } else if (/[_-]allcontacts[_-]f/i.test(t) &&
+        (pair = tryParsePairingType(t.slice(0, -'-allcontacts'.length)))) {
+        await addView(pair, t, normalizePairType(t.slice(0, -'-allcontacts'.length)) + '-filtered-allcontacts')
       } else {
         if (!existingTables.has(t))
           console.warn(`Maybe missing table: ${t}?`)
@@ -226,20 +235,13 @@
 
   const updateResultsLock = new AsyncLock()
 
-  function queryFromTable(filter: NucleotideFilterModel) {
-    let queryTable = `selectedpair` + (filter.filtered ? "_f" : "")
-    if (filter.includeNears) {
-      queryTable = `(select * FROM ${queryTable} UNION ALL BY NAME SELECT * from selectedpair_n)`
-    }
-    return queryTable
-  }
   async function updateResults() {
     async function core(conn: AsyncDuckDBConnection, abort: AbortSignal) {
       let startTime = performance.now()
       const timing = { ensureViews: -1, query: -1, queryConvert: -1, aggPdbId: -1, aggTypes: -1, aggBondParams: -1 }
       
       const metadata = getMetadata(selectedPairing)
-      const sql = filterMode == "sql" ? filter.sql : makeSqlQuery(filter, queryFromTable(filter))
+      const sql = filterMode == "sql" ? filter.sql : makeSqlQuery(filter, getDataSourceTable(filter))
       if (selectedPairing == null || filterMode != "sql" && (metadata == null || metadata.count == 0)) {
         console.warn("Pair type not defined:", selectedPairing)
         resultsPromise = Promise.resolve(undefined)
@@ -386,7 +388,7 @@
           selectedPairing = selectedPairing?.replace(/^[^-]*-/, `${family}-`)
         }
       }}
-    >{family}</button>
+    ><b>{family}</b></button>
   {/each}
 </div>
 
@@ -409,7 +411,7 @@
         } else {
           selectedPairing = `${p.family}-${p.bases}`
         }
-      }}>{selectedFamily == null ? p.family + "-" : ""}{p.bases} ({m?.med_quality + m?.high_quality})</button>
+      }}><b>{selectedFamily == null ? p.family + "-" : ""}{p.bases}</b>{#if m}&nbsp;({m.med_quality + m.high_quality}){/if}</button>
   {/each}
 </div>
 {#if selectedPairing && selectedPairing[1] == selectedPairing[2] && selectedPairing.slice(1) != 'SS'}
@@ -422,7 +424,7 @@
 {:else}
 <div class="filters">
   <FilterEditor bind:filter={filter}
-    selectingFromTable={filter && queryFromTable(filter)}
+    selectingFromTable={filter && getDataSourceTable(filter)}
     metadata={getMetadata(selectedPairing)}
     bind:mode={filterMode} />
 </div>
@@ -523,8 +525,16 @@
   {/if}
 {/await}
 <PairImages pairs={results} rootImages={db.imgDir} imgAttachement={filter.rotX ? "-rotX.png" : ".png"} videoAttachement=".webm" videoOnHover={!!filter.rotX} />
-{#if resultsCount != results?.length && resultsCount > 0}
-  <p style="text-align: center">Loading more... than 100 items is not implemented at the moment</p>
+{#if results && resultsCount != results.length && resultsCount > 0}
+  <div style="margin: 100px; text-align: center">
+    <p>Loading more... than 100 items is not implemented at the moment</p>
+    <!-- <p style="text-align: center">This is the first {results.length} cases, total count is {resultsCount}</p>
+    <button type="button" on:click={() => {
+
+    }}> -->
+      <!-- Load {Math.min(100, resultsCount - results.length)} more cases -->
+    </button>
+  </div>
 {/if}
 {/if}
 

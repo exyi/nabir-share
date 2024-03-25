@@ -16,7 +16,8 @@ export type NucleotideFilterModel = {
     dna?: true | false | undefined
     orderBy?: string
     filtered: boolean
-    includeNears: boolean
+    datasource?: "fr3d" | "fr3d-f" | "fr3d-n" | "fr3d-nf" | "allcontacts-f"
+    includeNears?: boolean
     rotX?: boolean
 }
 
@@ -45,7 +46,7 @@ export type VariableModel = {
 }
 
 export function defaultFilter(): NucleotideFilterModel {
-    return { bond_acceptor_angle: [], bond_donor_angle: [], bond_length: [], filtered: true, includeNears: false }
+    return { bond_acceptor_angle: [], bond_donor_angle: [], bond_length: [], filtered: true }
 }
 
 function rangeToCondition(col: string, range: Range | undefined | null): string[] {
@@ -81,6 +82,20 @@ export function filterToSqlCondition(filter: NucleotideFilterModel) {
             conditions.push(`(res1 NOT LIKE 'D%' OR res2 NOT LIKE 'D%')`)
     }
     return conditions
+}
+
+export function getDataSourceTable(filter: NucleotideFilterModel) {
+    if (filter.datasource == null || filter.datasource == "fr3d-f") {
+        return "selectedpair_f"
+    } else if (filter.datasource == "fr3d") {
+        return "selectedpair"
+    } else if (filter.datasource == "fr3d-n") {
+        return "(select * FROM selectedpair UNION ALL BY NAME SELECT * from selectedpair_n)"
+    } else if (filter.datasource == "fr3d-nf") {
+        return "(select * FROM selectedpair_f UNION ALL BY NAME SELECT * from selectedpair_n where jirka_approves)"
+    } else if (filter.datasource == "allcontacts-f") {
+        return "selectedpair_allcontacts_f"
+    }
 }
 
 export function makeSqlQuery(filter: NucleotideFilterModel, from: string, limit?: number) {
@@ -161,9 +176,15 @@ export function filterToUrl(filter: NucleotideFilterModel, mode = 'ranges') {
         }
     }
     const params = new URLSearchParams()
-    if (!filter.filtered || filter.includeNears || filter.dna != null) {
-        params.set('f', (filter.filtered ? 'f' : '') + (filter.includeNears ? 'n' : '') + (filter.dna == true ? 'D' : filter.dna == false ? 'R' : ''))
+    if (filter.datasource != null && filter.datasource != "fr3d-f" || filter.dna != null) {
+        params.set('ds', (filter.datasource ?? "fr3d-f") + (filter.dna == true ? 'D' : filter.dna == false ? 'R' : ''))
     }
+    // if (filter.dna != null) {
+    //     if (filter.dna)
+    //         addMaybe('dna', null)
+    //     else
+    //         addMaybe('rna', null)
+    // }
     for (let i = 0; i < 3; i++) {
         addMaybe(`hb${i}_L`, range(filter.bond_length[i]))
         addMaybe(`hb${i}_DA`, range(filter.bond_donor_angle[i]))
@@ -216,9 +237,18 @@ export function parseUrl(url: string): UrlParseResult {
     const f = new URLSearchParams(parts[0])
     filter.sql = f.get('sql')
     const mode = filter.sql ? 'sql' : 'ranges'
-    if (f.has('f')) {
+    if (f.has('ds')) {
+        let ds = f.get('ds')
+        if (/[DR]$/.test(ds)) {
+            filter.dna = ds.endsWith('D')
+            ds = ds.slice(0, -1)
+        }
+        filter.datasource = ds as NucleotideFilterModel['datasource']
+    }
+    else if (f.has('f')) { // legacy links
         filter.filtered = f.get('f').includes('f')
         filter.includeNears = f.get('f').includes('n')
+        filter.datasource = filter.filtered ? (filter.includeNears ? "fr3d-nf" : "fr3d-f") : (filter.includeNears ? "fr3d-n" : "fr3d")
         filter.dna = f.get('f').includes('D') ? true : f.get('f').includes('R') ? false : undefined
     }
     filter.bond_length = [{}, {}, {}, {}, {}, {}, {}, {}, {}, {}]

@@ -200,6 +200,39 @@
               Both
             </label>
           </div>
+
+          <div class="field">
+            <label class="label" for="ntfilter-data-source">Data source</label>
+            <div class="control">
+              <div class="select is-small">
+                <select
+                  value={filter.datasource ?? 'fr3d-f'}
+                  id="ntfilter-data-source"
+                  on:change={ev => {
+                    const newDS = ev.currentTarget.value == "fr3d-f" ? undefined : ev.currentTarget.value
+                    const filtered = newDS == null || newDS.endsWith('-f') || newDS.endsWith('-nf')
+                    filter = {...filter, datasource: newDS, filtered: filtered }
+                  }}
+                >
+                  <option value="fr3d-f">FR3D, Representative Set</option>
+                  <option value="fr3d">FR3D, entire PDB</option>
+                  <option value="fr3d-nf">FR3D with nears, RS</option>
+                  <option value="fr3d-n">FR3D with nears, PDB</option>
+                  <option value="allcontacts-f">All polar contacts, RS</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {#if [].includes(filter.datasource)}
+          <div class="control">
+            <label class="checkbox" title="Filter out redundant nucleotides or nucleoties with bad something TODO">
+              <input type="checkbox" checked={filter.filtered} on:change={e => filter = {...filter, filtered: e.currentTarget.checked }}>
+              Representative set only
+            </label>
+          </div>
+          {/if}
+
           <div class="field has-addons">
             {#if filter.resolution.min != null}
               <div class="control">
@@ -212,23 +245,9 @@
             </div>
             &nbsp;Å
           </div>
-
-          <div class="control">
-            <label class="checkbox" title="Filter out redundant nucleotides or nucleoties with bad something TODO">
-              <input type="checkbox" checked={filter.filtered} on:change={e => filter = {...filter, filtered: e.currentTarget.checked }}>
-              Representative set
-            </label>
-
           {#if filter.filtered && filter.resolution.max && filter.resolution.max > 3.5}
             <p class="help is-danger">Representative set only<br> contains structures ≤3.5 Å</p>
           {/if}
-          </div>
-          <div class="control">
-            <label class="checkbox" title="Include 'nearly pairs' as reported by fr3d basepair_detailed function">
-              <input type="checkbox" checked={filter.includeNears} on:change={e => filter = {...filter, includeNears: e.currentTarget.checked }}>
-              Include near-pairs
-            </label>
-          </div>
         </div>
 
         <div class="column">

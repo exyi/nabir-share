@@ -285,12 +285,16 @@
 
     onMount(async () => {
         await 0
-        rerender()
+        try {
+            rerender()
+        } catch (e) {
+            console.warn(e)
+        }
     })
 
     $: {
         if (settings && data && svg) {
-            Promise.resolve().then(rerender)
+            Promise.resolve().then(rerender).catch(console.warn)
         }
     }
 </script>
