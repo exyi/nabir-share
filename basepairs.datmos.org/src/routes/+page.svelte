@@ -4,7 +4,7 @@
   import { base } from '$app/paths';
   import metadata from '$lib/metadata'
 	import FilterEditor from '$lib/components/filterEditor.svelte';
-	import { aggregateBondParameters, aggregatePdbCountQuery, aggregateTypesQuery, defaultFilter, filterToSqlCondition, makeSqlQuery, parseUrl, type NucleotideFilterModel, filterToUrl, type HistogramSettingsModel, type StatisticsSettingsModel, fillStatsLegends, statPresets, type StatPanelSettingsModel, statsToUrl, getDataSourceTable } from '$lib/dbModels.js';
+	import { aggregateBondParameters, aggregatePdbCountQuery, aggregateTypesQuery, defaultFilter, filterToSqlCondition, makeSqlQuery, parseUrl, type NucleotideFilterModel, filterToUrl, type HistogramSettingsModel, type StatisticsSettingsModel, fillStatsLegends, statPresets, type StatPanelSettingsModel, statsToUrl, getDataSourceTable, makeDifferentialSqlQuerySingleTable, makeDifferentialSqlQuery } from '$lib/dbModels.js';
 	import { parsePairingType, type NucleotideId, type PairId, type PairingInfo, type HydrogenBondInfo, tryParsePairingType, type PairingFamily, normalizePairType } from '$lib/pairing.js';
 	import { Modal } from 'svelte-simple-modal';
 	import type { AsyncDuckDBConnection } from '@duckdb/duckdb-wasm';
@@ -23,6 +23,7 @@
 
   let filterMode: "ranges" | "sql" = "ranges"
   let filter: NucleotideFilterModel = defaultFilter()
+  let filterBaseline: NucleotideFilterModel | undefined = undefined
   let miniStats: StatPanelSettingsModel[] = [ statPresets.histL, statPresets.histDA, statPresets.histAA ]
   let testStats: StatisticsSettingsModel = {
     enabled: false,
@@ -32,7 +33,7 @@
   let lastUrlUpdate = 0
 
   function updateUrlNow(opt: {alwaysReplace?:boolean}={}) {
-    const params = filterToUrl(filter, filterMode)
+    const params = filterToUrl(filter, filterBaseline, filterMode)
     statsToUrl(params, testStats)
     const url = selectedPairing == null ? '' : `${selectedPairing}/${params.toString()}`
     if (window.location.hash.replace(/^#/, '') != url) {
@@ -53,6 +54,7 @@
     const x = parseUrl(url)
     filterMode = x.mode
     filter = x.filter
+    filterBaseline = x.baselineFilter
     if (x.stats != null) {
       testStats = x.stats
     } else {
@@ -72,7 +74,7 @@
   window.addEventListener("hashchange", (ev: HashChangeEvent) => setModeFromUrl(window.location.hash))
 
   $: {
-    selectedPairing, filterMode, filter, testStats
+    selectedPairing, filterMode, filter, filterBaseline, testStats
     updateUrl()
   }
 
@@ -117,7 +119,7 @@
     })
   }
 
-  async function ensureViews(conn: AsyncDuckDBConnection, abort: AbortSignal, query: string) {
+  async function ensureViews(conn: AsyncDuckDBConnection, abort: AbortSignal, queryTables: Iterable<string>) {
     async function addView(pairingType: string | [ PairingFamily, string ] | null | undefined, name: string, file: string) {
       pairingType = tryParsePairingType(pairingType)
       if (pairingType && !metadata.some(m => m.pair_type[0].toLowerCase() == pairingType[0].toLowerCase() && m.pair_type[1].toLowerCase() == pairingType[1].toLowerCase())) {
@@ -127,33 +129,32 @@
       abort.throwIfAborted()
       await conn.query(`CREATE OR REPLACE VIEW '${name}' AS SELECT (pdbid || '-' || model || '-' || chain1 || '_' || coalesce(alt1, '') || nr1 || coalesce(ins1, '') || '-' || chain2 || '_' || coalesce(alt2, '') || nr2 || coalesce(ins2, '')) as pairid, * FROM parquet_scan('${file}')`)
     }
-    // await conn.
-    const queryTables = new Set(await conn.getTableNames(query))
+    const tableSet = new Set(queryTables)
     const existingTables = new Set([...await conn.query("select view_name as name from duckdb_views() union select table_name as name from duckdb_tables()")].map(r => r.name))
     const selectedNorm = normalizePairType(selectedPairing)
 
     for (const e in existingTables) {
-      queryTables.delete(e)
+      tableSet.delete(e)
     }
-    console.log("missing tables:", [...queryTables])
-    if (queryTables.has('selectedpair')) {
+    console.log("missing tables:", [...tableSet])
+    if (tableSet.has('selectedpair')) {
       await addView(selectedNorm, 'selectedpair', `${selectedPairing}`)
-      queryTables.delete('selectedpair')
+      tableSet.delete('selectedpair')
     }
-    if (queryTables.has('selectedpair_f')) {
+    if (tableSet.has('selectedpair_f')) {
       await addView(selectedNorm, 'selectedpair_f', `${selectedNorm}-filtered`)
-      queryTables.delete('selectedpair_f')
+      tableSet.delete('selectedpair_f')
     }
-    if (queryTables.has('selectedpair_allcontacts_f')) {
+    if (tableSet.has('selectedpair_allcontacts_f')) {
       await addView(selectedNorm, 'selectedpair_allcontacts_f', `${selectedNorm}-filtered-allcontacts`)
-      queryTables.delete('selectedpair_allcontacts_f')
+      tableSet.delete('selectedpair_allcontacts_f')
     }
-    if (queryTables.has('selectedpair_n')) {
+    if (tableSet.has('selectedpair_n')) {
       await addView(selectedNorm, 'selectedpair_n', `n${selectedNorm}`)
-      queryTables.delete('selectedpair_n')
+      tableSet.delete('selectedpair_n')
     }
 
-    for (const t of queryTables) {
+    for (const t of tableSet) {
       let pair
       if ((pair = tryParsePairingType(t)) != null) {
         await addView(pair, t, t)
@@ -182,7 +183,7 @@
   let resultsAgg: ResultsAggregates = {}
 
   $: {
-    filter, filterMode, selectedPairing
+    filter, filterMode, filterBaseline, selectedPairing
     updateResults()
   }
 
@@ -241,8 +242,22 @@
       const timing = { ensureViews: -1, query: -1, queryConvert: -1, aggPdbId: -1, aggTypes: -1, aggBondParams: -1 }
       
       const metadata = getMetadata(selectedPairing)
-      const sql = filterMode == "sql" ? filter.sql : makeSqlQuery(filter, getDataSourceTable(filter))
-      if (selectedPairing == null || filterMode != "sql" && (metadata == null || metadata.count == 0)) {
+      const limit = null
+      let sql = filterMode == "sql" ? filter.sql : makeSqlQuery(filter, getDataSourceTable(filter), limit)
+      if (filterBaseline != null) {
+        if (filterMode != "sql" && filterBaseline.sql == null && getDataSourceTable(filter) == getDataSourceTable(filterBaseline)) {
+          sql = makeDifferentialSqlQuerySingleTable(filter, filterBaseline, getDataSourceTable(filter), limit, true)
+        } else {
+          const baselineSql = filterBaseline.sql || makeSqlQuery(filterBaseline, getDataSourceTable(filterBaseline))
+          sql = makeDifferentialSqlQuery(sql, baselineSql, limit, filter.orderBy, true)
+        }
+      }
+
+      console.log(sql)
+      abort.throwIfAborted()
+      const queryTables = new Set(await conn.getTableNames(sql))
+      const requiredSelectedPair = [...queryTables].some(t => t.toLowerCase().startsWith("selectedpair"))
+      if (selectedPairing == null || requiredSelectedPair && (metadata == null || metadata.count == 0)) {
         console.warn("Pair type not defined:", selectedPairing)
         resultsPromise = Promise.resolve(undefined)
         results = []
@@ -251,9 +266,7 @@
         resultsAgg = {}
         return
       }
-
-      console.log(sql)
-      abort.throwIfAborted()
+      abort.throwIfAborted();
       await ensureViews(conn, abort, sql)
       timing.ensureViews = performance.now() - startTime
       startTime = performance.now()

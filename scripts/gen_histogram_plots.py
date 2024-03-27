@@ -256,6 +256,78 @@ rmsd_histogram_defs = [
     ),
 ]
 
+def is_angular_modular(column: str):
+    return re.match(r".*(\b|_)(yaw|pitch|roll|euler_theta|euler_psi|euler_phi)\d*$", column) is not None
+
+def angular_modulo(x):
+    return (x + (180 + 2*360)) % 360 - 180
+    #                  ^^^^ polars broken modulo workaround
+
+def angular_modular_mean(data: Union[pl.Series, np.ndarray], throw_if_empty = False) -> Optional[float]:
+    """
+    >>> np.angle(np.mean(np.exp(1j * np.radians([-170, 175]))), deg=True)
+    -177.5
+    """
+    if isinstance(data, pl.Series):
+        data = data.drop_nulls().to_numpy()
+
+    if len(data) == 0:
+        if throw_if_empty:
+            raise ValueError("Empty mean")
+        else:
+            return None
+    
+    return float(np.angle(np.mean(np.exp(1j * np.radians(data))), deg=True))
+
+def angular_modular_std(data: Union[pl.Series, np.ndarray], throw_if_empty = False, mean = None) -> Optional[float]:
+    """
+    """
+    if isinstance(data, pl.Series):
+        data = data.drop_nulls().to_numpy()
+
+    if len(data) <= 1:
+        if throw_if_empty:
+            raise ValueError("STD on empty or singleton set")
+        else:
+            return None
+    on_circle = np.exp(1j * np.radians(data))
+    if mean is None:
+        mean_complex = np.mean(on_circle)
+    else:
+        mean_complex = np.exp(1j * np.radians(mean))
+    around_zero = np.angle(on_circle / mean_complex, deg=True) # multiplication is rotation, division is rotation back
+    return math.sqrt(float(np.mean(around_zero ** 2)))
+
+def angular_modular_minmax(data: Union[pl.Series, np.ndarray], throw_if_empty = False, percentiles = (0, 100)) -> Optional[tuple[float, float]]:
+    """
+    """
+    if isinstance(data, pl.Series):
+        data = data.drop_nulls().to_numpy()
+    if len(data) <= 0:
+        if throw_if_empty:
+            raise ValueError("Empty set has no min/max")
+        else:
+            return None
+
+    on_circle = np.exp(1j * np.radians(data))
+    mean = np.mean(on_circle)
+    mean_angle = np.angle(mean, deg=True)
+    around_zero = np.angle(on_circle / mean, deg=True)
+    min, max = np.percentile(around_zero, percentiles[0], method="lower"), np.percentile(around_zero, percentiles[1], method="higher")
+    return float(angular_modulo(min + mean_angle)), float(angular_modulo(max + mean_angle))
+
+def angular_modular_kde(data:Union[pl.Series, np.ndarray], bw_factor = 1) -> scipy.stats.gaussian_kde:
+    """
+    Computes KDE with 180 degrees repeated padding on both sides - range is -360...360, so the range -180...180 should have somewhat reliable likelihoods
+    """
+    if isinstance(data, pl.Series):
+        data = data.drop_nulls().to_numpy()
+
+    data = np.sort(data)
+    data_left = data[data < 0] + 360
+    data_right = data[data > 0] - 360
+    return scipy.stats.gaussian_kde(np.concatenate([ data_left, data, data_right ]))
+
 def format_angle_label(atoms: tuple[str, str, str], swap=False):
     first = "B" if swap else "A"
     residue0 = atoms[0][0]
@@ -691,28 +763,68 @@ def determine_bp_class(df: pl.DataFrame, pair_type: PairType, is_rna = None, thr
     else:
         return 3
 
+def get_kde_mode(kde: scipy.stats.gaussian_kde, data: np.ndarray):
+    data = np.sort(data)
+    range = np.min(data), np.max(data)
+    coarse_space = np.linspace(range[0], range[1], num=200)
+    coarse_argmax = np.argmax(kde.logpdf(coarse_space))
+    coarse_argmax = min(len(coarse_space)-2, max(1, coarse_argmax))
+
+    fine_range = coarse_space[coarse_argmax-1], coarse_space[coarse_argmax+1]
+    fine_data = data[(data <= fine_range[1]) & (data >= fine_range[0])]
+    if len(fine_data) == 0:
+        return coarse_space[coarse_argmax]
+    data_argmax = np.argmax(kde.logpdf(fine_data))
+    return float(fine_data[data_argmax])
+
 def calculate_stats(df: pl.DataFrame, pair_type, skip_kde: bool):
     if len(df) == 0:
         raise ValueError("No data")
+    def make_kde(data, cname):
+        if is_angular_modular(cname):
+            kde = angular_modular_kde(sample_for_kde(data))
+        else:
+            kde = scipy.stats.gaussian_kde(sample_for_kde(data))
+        kde.set_bandwidth(kde.scotts_factor() * 1.5)
+        return kde
+    def calc_mean(data, cname):
+        if is_angular_modular(cname):
+            return angular_modular_mean(sample_for_kde(data))
+        else:
+            return float(np.mean(data))
+    def calc_std(data, cname, mean=None):
+        if is_angular_modular(cname):
+            return angular_modular_std(sample_for_kde(data), mean=mean)
+        else:
+            return float(np.std(data))
+
+    def calc_diff(data, cname):
+        if is_angular_modular(cname):
+            return angular_modulo(data)
+        else:
+            return data
+
     # columns = df.select(pl.col("^hb_\\d+_(length|donor_angle|acceptor_angle)$")).columns
     # columns = df.select(pl.col("^hb_\\d+_length$"), pl.col("^C1_C1_(yaw|pitch|roll)(1|2)$")).columns
     columns = df.select(pl.col("^hb_\\d+_(length|donor_angle|acceptor_angle)$"), pl.col("^C1_C1_(yaw|pitch|roll)(1|2)$")).columns
     # print(f"{columns=}")
     cdata = [ df[c].drop_nulls().to_numpy() for c in columns ]
-    medians = [ float(np.median(c)) if len(c) > 0 else None for c in cdata ]
-    means = [ float(np.mean(c)) if len(c) > 0 else None for c in cdata ]
-    stds = [ float(np.std(c)) if len(c) > 1 else None for c in cdata ]
+    medians = [ float(np.median(c)) if len(c) > 0 and not is_angular_modular(cname) else None for c, cname in zip(cdata, columns) ]
+    means = [ calc_mean(c, cname) if len(c) > 0 else None for c, cname in zip(cdata, columns) ]
+    stds = [ calc_std(c, cname) if len(c) > 1 else None for c, cname in zip(cdata, columns) ]
+
     if skip_kde:
         kdes = [ None ] * len(columns)
     else:
-        kdes = [ scipy.stats.gaussian_kde(sample_for_kde(c)) if len(c) > 5 else None for c in cdata ]
-    kde_modes = [ None if kde is None else float(c[np.argmax(kde.pdf(c))]) for kde, c in zip(kdes, cdata) ]
-    kde_mode_stds = [ None if kde_mode is None else np.sqrt(np.mean((c - kde_mode) ** 2)) for kde_mode, c in zip(kde_modes, cdata) ]
+        kdes = [ make_kde(c, cname) if len(c) > 5 else None for c, cname in zip(cdata, columns) ]
+
+    kde_modes = [ None if kde is None else float(get_kde_mode(kde, c)) for kde, c in zip(kdes, cdata) ]
+    kde_mode_stds = [ None if kde_mode is None else calc_std(c, cname, mean=kde_mode) for kde_mode, c, cname in zip(kde_modes, cdata, columns) ]
     def calc_datapoint_mode_deviations(df):
         ms = [ median if kde_mode is None else kde_mode for kde_mode, median in zip(kde_modes, medians) ]
         ss = [ std if kde_std is None else kde_std for kde_std, std in zip(kde_mode_stds, stds) ]
         return np.sum([
-            ((df[c] - kde_mode) ** 2 / kde_mode_std ** 2).fill_null(10).to_numpy()
+            (calc_diff(df[c] - kde_mode, c).abs() / abs(kde_mode_std)).fill_null(10).to_numpy()
             for kde_mode, kde_mode_std, c in zip(ms, ss, columns)
             if kde_mode is not None and kde_mode_std
         ] + [ [0] * len(df) ], axis=0)
@@ -916,9 +1028,15 @@ def calculate_boundaries(df: pl.DataFrame, pair_type: PairType):
     def calc_boundary(col, df=df):
         # return df[col].min(), df[col].max()
         if len(df) <= 1 or df[col].is_null().mean() > 0.1:
-            return pl.lit(None, dtype=df[col].dtype), pl.lit(None, dtype=df[col].dtype)
+            return pl.Series([None, None], dtype=df[col].dtype)
+        
+        if is_angular_modular(col):
+            return pl.Series(
+                list(angular_modular_minmax(df[col].drop_nulls(), percentiles=(1, 99)) or []),
+                dtype=pl.Float32
+            )
 
-        return df[col].quantile(0.01), df[col].quantile(0.99)
+        return pl.Series([df[col].quantile(0.01), df[col].quantile(0.99)], dtype=pl.Float32)
 
     boundaries = pl.DataFrame({
         "family_id": [ pt_family_dict.get(pair_type.type.lower(), 99) ] * 2,
@@ -927,8 +1045,8 @@ def calculate_boundaries(df: pl.DataFrame, pair_type: PairType):
         "count": [ len(df) ] * 2,
         "boundary": [ "min", "max" ],
         **{
-            col: calc_boundary(col)
-            for col in boundary_columns.values()
+            key: calc_boundary(col)
+            for key, col in boundary_columns.items()
         }
     })
     return boundaries
@@ -950,6 +1068,7 @@ def main(argv):
     residue_lists = residue_filter.read_id_lists(args.residue_directory)
 
     results = []
+    boundaries = []
     all_statistics = []
 
     for pair_type, df in enumerate_pair_types(args.input_file, args.include_nears):
@@ -974,7 +1093,6 @@ def main(argv):
         }
         nicest_bps: Optional[list[int]] = None
         statistics = []
-        boundaries = []
         for resolution_label, resolution_filter in {
             # "unfiltered": True,
             "1.8 Å": (pl.col("resolution") <= 1.8) & is_some_quality,
@@ -1111,9 +1229,19 @@ def main(argv):
 
     subprocess.run(["gs", "-dBATCH", "-dNOPAUSE", "-q", "-sDEVICE=pdfwrite", "-dPDFSETTINGS=/prepress", f"-sOutputFile={os.path.join(args.output_dir, 'hbonds-merged.pdf')}", *output_files])
     print("Wrote", os.path.join(args.output_dir, 'hbonds-merged.pdf'))
-    boundaries_df: pl.DataFrame = pl.concat(boundaries)
+    boundaries_df: pl.DataFrame = pl.concat(boundaries).sort("family_id", "bases", "family")
     boundaries_df.write_csv(os.path.join(args.output_dir, "boundaries.csv"))
-    boundaries_df.write_excel(os.path.join(args.output_dir, "boundaries.xlsx"), dtype_formats={ pl.Float64: "0.00", pl.Float32: "0.00" })
+
+    boundaries_reformat = boundaries_df.group_by("family_id", "family", "bases").agg(*itertools.chain(*[
+        [pl.col(col).min().alias(col + "_min"), pl.col(col).max().alias(col + "_max")]
+        for col in boundaries_df.columns
+        if col not in ["family", "family_id", "bases", "count", "boundary"]
+    ]))
+    boundaries_reformat.write_csv(os.path.join(args.output_dir, "boundaries2.csv"))
+    import xlsxwriter
+    with xlsxwriter.Workbook(os.path.join(args.output_dir, "boundaries.xlsx")) as workbook:
+        boundaries_df.write_excel(workbook, worksheet="Narrow long table", dtype_formats={ pl.Float64: "0.00", pl.Float32: "0.00" })
+        boundaries_reformat.write_excel(workbook, worksheet="Wider shorter table", dtype_formats={ pl.Float64: "0.00", pl.Float32: "0.00" })
     # save_statistics(all_statistics, args.output_dir)
 
     with open(os.path.join(args.output_dir, "output.json"), "w") as f:

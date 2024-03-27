@@ -11,7 +11,13 @@ export type NucleotideFilterModel = {
     bond_length: (Range)[]
     bond_donor_angle: (Range)[]
     bond_acceptor_angle: (Range)[]
-    coplanarity?: Range
+    bond_plane_angle1: (Range)[]
+    bond_plane_angle2: (Range)[]
+    other_column_range?: {
+        [column: string]: Range
+    }
+    sql_conditions?: string[]
+    coplanarity_angle?: Range
     resolution?: Range
     dna?: true | false | undefined
     orderBy?: string
@@ -46,7 +52,7 @@ export type VariableModel = {
 }
 
 export function defaultFilter(): NucleotideFilterModel {
-    return { bond_acceptor_angle: [], bond_donor_angle: [], bond_length: [], filtered: true }
+    return { bond_acceptor_angle: [], bond_donor_angle: [], bond_length: [], bond_plane_angle1: [], bond_plane_angle2: [], filtered: true }
 }
 
 function rangeToCondition(col: string, range: Range | undefined | null): string[] {
@@ -61,8 +67,8 @@ function rangeToCondition(col: string, range: Range | undefined | null): string[
     return r
 }
 
-export function filterToSqlCondition(filter: NucleotideFilterModel) {
-    const conditions = []
+export function filterToSqlCondition(filter: NucleotideFilterModel): string[] {
+    const conditions: string[] = []
     if (filter.filtered) {
         conditions.push(`jirka_approves`)
     }
@@ -72,8 +78,8 @@ export function filterToSqlCondition(filter: NucleotideFilterModel) {
         conditions.push(...rangeToCondition(`hb_${i}_acceptor_angle`, filter.bond_acceptor_angle[i]))
     }
     conditions.push(...rangeToCondition(`resolution`, filter.resolution))
-    if (filter.coplanarity) {
-        conditions.push(...rangeToCondition(`bogopropeller`, filter.coplanarity))
+    if (filter.coplanarity_angle) {
+        conditions.push(...rangeToCondition(`coplanarity_angle`, filter.coplanarity_angle))
     }
     if (filter.dna != null) {
         if (filter.dna)
@@ -98,22 +104,91 @@ export function getDataSourceTable(filter: NucleotideFilterModel) {
     }
 }
 
-export function makeSqlQuery(filter: NucleotideFilterModel, from: string, limit?: number) {
-    // if (filter.sql) {
-    //     return filter.sql
-    // }
-    const conditions = filterToSqlCondition(filter)
-    const where = conditions.map(c => /\b(select|or)\b/.test(c) ? `(${c})` : c).join(' AND ')
 
-    let query = `SELECT * FROM ${from}`
-    if (where) {
-        query += ` WHERE ${where}`
+function joinConditions(conditions: string[], keyword = 'AND') {
+    if (conditions.length == 0) {
+        return keyword.toUpperCase() != 'or' ? 'true' : 'false'
     }
-    if (filter.orderBy) {
-        query += ` ORDER BY ${filter.orderBy}`
+    return conditions.map(c => /\b(select|or)\b/.test(c) ? `(${c})` : c).join(` ${keyword} `)
+}
+
+function buildSelect(opt: {
+    cols: string,
+    from: string,
+    where?: string[]
+    limit?: number | string
+    orderBy?: string
+}) {
+    let query = `SELECT ${opt.cols} FROM ${opt.from}`
+    if (opt.where && opt.where?.length > 0) {
+        query += ` WHERE ${joinConditions(opt.where)}`
+    }
+    if (opt.orderBy) {
+        query += ` ORDER BY ${opt.orderBy}`
+    }
+    if (opt.limit) {
+        query += ` LIMIT ${opt.limit}`
+    }
+    return query
+}
+
+export function makeSqlQuery(filter: NucleotideFilterModel, from: string, limit?: number) {
+    return buildSelect({
+        cols: "*",
+        from,
+        where: filterToSqlCondition(filter),
+        orderBy: filter.orderBy,
+        limit
+    })
+}
+
+export function makeDifferentialSqlQuerySingleTable(filter: NucleotideFilterModel, filterBaseline: NucleotideFilterModel, from: string, limit?: number, differenceOnly = true) {
+    const conditions = filterToSqlCondition(filter)
+    const baselineConditions = filterToSqlCondition(filterBaseline)
+
+    const commonConditions = conditions.filter(c => baselineConditions.includes(c))
+
+    const queryBase = buildSelect({
+        cols: "*",
+        from,
+        where: commonConditions,
+        orderBy: filter.orderBy
+    })
+
+    let query = `
+        SELECT *,
+            coalesce(${joinConditions(conditions.filter(c => !commonConditions.includes(c)))}, FALSE) AS comparison_in_current,
+            coalesce(${joinConditions(baselineConditions.filter(c => !commonConditions.includes(c)))}, FALSE) AS comparison_in_baseline
+        FROM (${queryBase})
+        WHERE ${differenceOnly ? 'comparison_in_current <> comparison_in_baseline' : 'comparison_in_current OR comparison_in_baseline'}
+    `
+    if (limit) {
+        query += `\nLIMIT ${limit}`
+    }
+    return query
+}
+
+export function makeDifferentialSqlQuery(queryCurrent: string, queryBaseline: string, limit?: number, order?: string, differenceOnly = true) {
+    let query = `
+        SELECT DISTINCT ON (pairid)
+            * EXCLUDE (comparison_in_baseline, comparison_in_current),
+            bool_or(comparison_in_baseline) OVER (PARTITION BY pairid),
+            bool_or(comparison_in_current) OVER (PARTITION BY pairid)
+        FROM (
+            SELECT *, TRUE AS comparison_in_current, FALSE AS comparison_in_baseline FROM (${queryCurrent})
+            UNION ALL BY NAME
+            SELECT *, FALSE AS comparison_in_current, TRUE AS comparison_in_baseline FROM (${queryBaseline})
+            ORDER BY DESC comparison_in_current
+        )
+    `
+    if (differenceOnly) {
+        query += "\nWHERE comparison_in_baseline <> comparison_in_current"
     }
     if (limit) {
-        query += ` LIMIT ${limit}`
+        query += `LIMIT ${limit}`
+    }
+    if (order) {
+        query += `ORDER BY ${order}`
     }
     return query
 }
@@ -162,40 +237,55 @@ export function aggregateBondParameters(query: string, bondColumns: string[]) {
 }
 
 
-export function filterToUrl(filter: NucleotideFilterModel, mode = 'ranges') {
+export function filterToUrl(filter: NucleotideFilterModel, filterBaseline: NucleotideFilterModel | null | undefined = undefined, mode = 'ranges') {
     if (mode == 'sql') {
         return new URLSearchParams({ sql: filter.sql })
     }
 
-    function range(r: Range) {
-        return r && (r.max || r.min) ? `${r.min ?? ''}..${r.max ?? ''}` : null
-    }
-    function addMaybe(k, x: string | null) {
-        if (x) {
-            params.append(k, x)
-        }
-    }
     const params = new URLSearchParams()
-    if (filter.datasource != null && filter.datasource != "fr3d-f" || filter.dna != null) {
-        params.set('ds', (filter.datasource ?? "fr3d-f") + (filter.dna == true ? 'D' : filter.dna == false ? 'R' : ''))
+    return params
+}
+
+export function addFilterParams(params: URLSearchParams, filter: NucleotideFilterModel, mode: string, prefix='') {
+    if (mode == 'sql') {
+        add('sql', filter.sql)
+        return;
     }
-    // if (filter.dna != null) {
-    //     if (filter.dna)
-    //         addMaybe('dna', null)
-    //     else
-    //         addMaybe('rna', null)
-    // }
+
+    if (prefix != '' || filter.datasource != null && filter.datasource != "fr3d-f" || filter.dna != null) {
+        add('ds', (filter.datasource ?? "fr3d-f") + (filter.dna == true ? 'D' : filter.dna == false ? 'R' : ''))
+    }
     for (let i = 0; i < 3; i++) {
         addMaybe(`hb${i}_L`, range(filter.bond_length[i]))
         addMaybe(`hb${i}_DA`, range(filter.bond_donor_angle[i]))
         addMaybe(`hb${i}_AA`, range(filter.bond_acceptor_angle[i]))
+        addMaybe(`hb${i}_OOPA1`, range(filter.bond_plane_angle1[i]))
+        addMaybe(`hb${i}_OOPA2`, range(filter.bond_plane_angle2[i]))
     }
-    addMaybe(`coplanar`, range(filter.coplanarity))
+    addMaybe(`coplanarity_a`, range(filter.coplanarity_angle))
+    for (const c of filter.sql_conditions ?? []) {
+        add('condition', c)
+    }
+    for (const [column, r] of Object.entries(filter.other_column_range ?? {})) {
+        addMaybe("range_" + column, range(r))
+    }
     addMaybe(`resol`, range(filter.resolution))
     if (filter.orderBy) {
         addMaybe(`order`, filter.orderBy)
     }
-    return params
+
+    function range(r: Range) {
+        return r && (r.max != null || r.min != null) ? `${r.min ?? ''}..${r.max ?? ''}` : null
+    }
+    function addMaybe(k: string, x: string | null) {
+        if (x) {
+            params.append(prefix + k, x)
+        }
+    }
+    function add(k: string, x: string) {
+        params.append(prefix + k, x)
+    }
+
 }
 
 type UrlParseResult = {
@@ -203,6 +293,7 @@ type UrlParseResult = {
     pairType: string | null
     mode: 'ranges' | 'sql'
     filter: NucleotideFilterModel
+    baselineFilter: NucleotideFilterModel | null | undefined
     stats: StatisticsSettingsModel | null
 }
 
@@ -233,43 +324,62 @@ export function parseUrl(url: string): UrlParseResult {
         parts.shift()
     }
 
-    const filter = defaultFilter()
     const f = new URLSearchParams(parts[0])
-    filter.sql = f.get('sql')
+    const [filter, mode] = parseFilter(f)
+    const [baselineFilter, _] = f.has('baseline_ds') || f.has('baseline_sql') ? parseFilter(f, undefined, 'baseline_') : null
+
+    const stats = parseStatsFromUrl(f)
+
+    return { pairFamily, pairType, mode, filter, baselineFilter, stats }
+}
+
+function parseFilter(f: URLSearchParams, filter: NucleotideFilterModel | undefined = undefined, prefix=''): [NucleotideFilterModel, UrlParseResult['mode']] {
+    filter ??= defaultFilter()
+    filter.sql = f.get(`${prefix}sql`) ?? filter.sql
     const mode = filter.sql ? 'sql' : 'ranges'
-    if (f.has('ds')) {
-        let ds = f.get('ds')
+    if (f.has(`${prefix}ds`)) {
+        let ds = f.get(`${prefix}ds`)
         if (/[DR]$/.test(ds)) {
             filter.dna = ds.endsWith('D')
             ds = ds.slice(0, -1)
         }
         filter.datasource = ds as NucleotideFilterModel['datasource']
     }
-    else if (f.has('f')) { // legacy links
-        filter.filtered = f.get('f').includes('f')
-        filter.includeNears = f.get('f').includes('n')
+    else if (f.has(`${prefix}f`)) { // legacy links
+        const fParam = f.get(`${prefix}f`)
+        filter.filtered = fParam.includes('f')
+        filter.includeNears = fParam.includes('n')
         filter.datasource = filter.filtered ? (filter.includeNears ? "fr3d-nf" : "fr3d-f") : (filter.includeNears ? "fr3d-n" : "fr3d")
-        filter.dna = f.get('f').includes('D') ? true : f.get('f').includes('R') ? false : undefined
+        filter.dna = fParam.includes('D') ? true : fParam.includes('R') ? false : undefined
     }
     filter.bond_length = [{}, {}, {}, {}, {}, {}, {}, {}, {}, {}]
     filter.bond_donor_angle = [{}, {}, {}, {}, {}, {}, {}, {}, {}, {}]
     filter.bond_acceptor_angle = [{}, {}, {}, {}, {}, {}, {}, {}, {}, {}]
     for (let i = 0; i < 10; i++) {
-        filter.bond_length[i] = parseRange(f.get(`hb${i}_L`))
-        filter.bond_donor_angle[i] = parseRange(f.get(`hb${i}_DA`))
-        filter.bond_acceptor_angle[i] = parseRange(f.get(`hb${i}_AA`))
+        filter.bond_length[i] = parseRange(f.get(`${prefix}hb${i}_L`))
+        filter.bond_donor_angle[i] = parseRange(f.get(`${prefix}hb${i}_DA`))
+        filter.bond_acceptor_angle[i] = parseRange(f.get(`${prefix}hb${i}_AA`))
     }
     trimArray(filter.bond_length)
     trimArray(filter.bond_donor_angle)
     trimArray(filter.bond_acceptor_angle)
 
-    filter.coplanarity = parseRange(f.get(`coplanar`))
-    filter.resolution = parseRange(f.get(`resolution`) || f.get(`resol`))
-    filter.orderBy = f.get(`order`)
+    for (const [k, v] of f.entries()) {
+        if (k.startsWith(`${prefix}range_`)) {
+            const column = k.slice(`${prefix}range_`.length)
+            filter.other_column_range ??= {}
+            filter.other_column_range[column] = parseRange(v)
+        }
+    }
 
-    const stats = parseStatsFromUrl(f)
+    if (f.has(`${prefix}condition`)) {
+        filter.sql_conditions = f.getAll(`${prefix}condition`)
+    }
 
-    return { pairFamily, pairType, mode, filter, stats }
+    filter.coplanarity_angle = parseRange(f.get(`${prefix}coplanar`) || f.get(`${prefix}coplanarity_a`))
+    filter.resolution = parseRange(f.get(`${prefix}resolution`) || f.get(`${prefix}resol`))
+    filter.orderBy = f.get(`${prefix}order`)
+    return [filter, mode]
 }
 
 function statPanelToStrings(params: URLSearchParams, ix: number, stat: StatPanelSettingsModel) {
@@ -289,7 +399,7 @@ function statPanelToStrings(params: URLSearchParams, ix: number, stat: StatPanel
     if (!prototypeVars) {
         params.append(`st_${ix}`, "T" + stat.type)
         if (stat.variables.some(v => v.filterSql)) {
-            stat.variables.forEach((v, vix) => {
+            stat.variables.forEach(v => {
                 params.append(`st_${ix}_v`, v.filterSql ? v.column + " WHERE " + v.filterSql : v.column)
             })
         } else {
