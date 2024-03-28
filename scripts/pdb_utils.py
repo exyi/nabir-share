@@ -16,18 +16,20 @@ def _find_in_cache(pdb_id):
     for cache_dir in pdb_cache_dirs:
         if not os.path.isdir(cache_dir):
             continue
-        if os.path.exists(f := os.path.join(cache_dir, pdb_id + ".cif.gz")):
-            return f
-        if os.path.exists(f := os.path.join(cache_dir, pdb_id + ".cif.zst")):
-            return f
-        if os.path.exists(f := os.path.join(cache_dir, pdb_id + ".cif")):
-            return f
-        subdir = os.path.join(cache_dir, pdb_id[:2].lower())
-        if not os.path.isdir(subdir):
-            subdir = ([ os.path.join(cache_dir, s) for s in os.listdir(cache_dir) if pdb_id.lower().startswith(s.lower())] or [ None ])[0]
+        all_files = os.listdir(cache_dir)
+        all_files = { f.lower(): f for f in all_files }
+        extensions = [ ".cif.gz", ".cif.zst", ".cif" ]
 
+        # try direct file PDBID.cif
+        for ext in extensions:
+            if pdb_id.lower() + ext in all_files:
+                return os.path.join(cache_dir, all_files[pdb_id.lower() + ext])
+
+        # subdirectory PDBID[:2]/PDBID.cif
+        subdir = all_files.get(pdb_id[:2].lower(), None)
         if subdir is not None:
-            file = ([ os.path.join(subdir, s) for s in os.listdir(subdir) if s.lower().startswith(pdb_id.lower() + ".") ] or [None])[0]
+            subdir = os.path.join(cache_dir, subdir)
+            file = next((os.path.join(subdir, pdbfile) for pdbfile in os.listdir(subdir) if pdbfile.lower().startswith(pdb_id.lower() + ".")), None)
             if file is not None:
                 return file
             

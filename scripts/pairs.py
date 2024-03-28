@@ -908,7 +908,9 @@ def remove_duplicate_pairs_phase1(df: pl.DataFrame):
     print(f"Removed duplicates - FR3D small letter is second {len(original)} -> {len(df)}")
 
     base_ordering = { 'A': 1, 'G': 2, 'C': 3, 'U': 4, 'T': 4 }
-    df = core(df, pl.col("res1").replace(resname_map).replace(base_ordering, default=0) > pl.col("res2").replace(resname_map).replace(base_ordering, default=0))
+    df = core(df,
+                family_col.str.to_lowercase().is_in(["tss", "css"]).not_() &
+                (pl.col("res1").replace(resname_map).replace(base_ordering, default=0) > pl.col("res2").replace(resname_map).replace(base_ordering, default=0)))
     print(f"Removed duplicates - base ordering {len(original)} -> {len(df)}")
 
     assert len(df) >= len(original) / 2
@@ -1067,17 +1069,17 @@ def load_inputs(pool: Union[Pool, MockPool], args) -> pl.DataFrame:
         print(f'Loading basepairing CSV files')
         df = scan_pair_csvs(args.inputs).sort('pdbid', 'model', 'nr1', 'nr2')
         df = df.with_columns(
-            alt1=pl.when((pl.col("alt1") == '\0') | (pl.col("alt1") == '?')).then(pl.lit('')).otherwise(pl.col("alt1").str.strip()),
-            alt2=pl.when((pl.col("alt2") == '\0') | (pl.col("alt2") == '?')).then(pl.lit('')).otherwise(pl.col("alt2").str.strip()),
-            ins1=pl.col("ins1").str.strip(),
-            ins2=pl.col("ins2").str.strip(),
+            alt1=pl.when((pl.col("alt1") == '\0') | (pl.col("alt1") == '?')).then(pl.lit('')).otherwise(pl.col("alt1").str.strip_chars()),
+            alt2=pl.when((pl.col("alt2") == '\0') | (pl.col("alt2") == '?')).then(pl.lit('')).otherwise(pl.col("alt2").str.strip_chars()),
+            ins1=pl.col("ins1").str.strip_chars(),
+            ins2=pl.col("ins2").str.strip_chars(),
         )
         if "pdbsymstr" in df.columns:
             df = df.with_columns(
                 symmetry_operation1=pl.lit(None, pl.Utf8),
                 symmetry_operation2=pl.when(pl.col("pdbsymstr") == "1_555").then(pl.lit(None, pl.Utf8)).otherwise(pl.col("pdbsymstr"))
             )
-        df = df.filter(pl.col("res1").is_in(["A", "T", "G", "U", "C"])).filter(pl.col("res2").is_in(["A", "T", "G", "U", "C"]))
+        df = df.filter(pl.col("res1").is_in(["A", "T", "G", "U", "C"])).filter(pl.col("res2").is_in(["A", "T", "G", "U", "C", "DA", "DT", "DG", "DC", "DU"]))
         # if "r11" in df.columns:
         df = df.collect()
     elif inputs[0].endswith("_basepair.txt") or inputs[0].endswith("_basepair_detail.txt"):
@@ -1177,6 +1179,10 @@ def main(pool: Union[Pool, MockPool], args):
 
     validate_missing_columns(result_chunks)
     df = pl.concat(result_chunks)
+    if args.postfilter_hb:
+        df = df.filter(pl.any_horizontal(pl.col("^hb_\\d+_length$") < args.postfilter_hb))
+    if args.postfilter_shift:
+        df = df.filter((pl.col("coplanarity_shift1").abs() < args.postfilter_shift) & (pl.col("coplanarity_shift2").abs() < args.postfilter_shift))
     if args.dedupe:
         df = remove_duplicate_pairs(df)
     df = df.sort('pdbid', 'model', 'nr1', 'nr2')
@@ -1204,6 +1210,8 @@ if __name__ == "__main__":
     parser.add_argument("--metadata", type=bool, default=True, help="Add deposition_date, resolution and structure_method columns")
     parser.add_argument("--dssr-binary", type=str, help="If specified, DSSR --analyze will be invoked for each structure and its results stored as 'dssr_' prefixed columns")
     parser.add_argument("--filter", default=False, action="store_true", help="Filter out rows for which the values could not be calculated")
+    parser.add_argument("--postfilter-hb", default=None, type=float, help="Only include rows with at least 1 hydrogen bond length < X Å")
+    parser.add_argument("--postfilter-shift", default=None, type=float, help="Only include rows with abs(coplanarity_shift) < X Å")
     parser.add_argument("--dedupe", default=False, action="store_true", help="Remove duplicate pairs, keep the one with shorter bonds or lower chain1,nr1")
     parser.add_argument("--reference-basepairs", type=str, help="output of gen_histogram_plots.py with the 'nicest' basepairs, will be used as reference for RMSD calculation")
     parser.add_argument("--disable-cross-symmetry", default=False, action="store_true", help="Do not calculate pairs in different Asymmetrical Units")
