@@ -870,7 +870,8 @@ def remove_duplicate_pairs_phase1(df: pl.DataFrame):
     Removes duplicate symmetric pairs - i.e. cHS-AG and cHS-GA.
     Keeps only the preferred family ordering (WS > SW), and only the preferred base ordering (GC > CG)
     """
-    original = df
+    # original = df
+    original_len = len(df)
     df = df.with_row_index("_tmp_row_nr")
     family_col = pl.col("family" if "family" in df.columns else "type")
     df = df.with_columns(
@@ -902,18 +903,18 @@ def remove_duplicate_pairs_phase1(df: pl.DataFrame):
         return df
 
     df = core(df, family_col.str.contains("^(?i)n?(c|t)(SH|HW|SW|BW)a?$"))
-    print(f"Removed duplicates - family orientation {len(original)} -> {len(df)}")
+    print(f"Removed duplicates - family orientation {original_len} -> {len(df)}")
 
     df = core(df, family_col.str.contains("^n?[ct][whsb][WHSB]a?$"))
-    print(f"Removed duplicates - FR3D small letter is second {len(original)} -> {len(df)}")
+    print(f"Removed duplicates - FR3D small letter is second {original_len} -> {len(df)}")
 
     base_ordering = { 'A': 1, 'G': 2, 'C': 3, 'U': 4, 'T': 4 }
     df = core(df,
                 family_col.str.to_lowercase().is_in(["tss", "css"]).not_() &
                 (pl.col("res1").replace(resname_map).replace(base_ordering, default=0) > pl.col("res2").replace(resname_map).replace(base_ordering, default=0)))
-    print(f"Removed duplicates - base ordering {len(original)} -> {len(df)}")
+    print(f"Removed duplicates - base ordering {original_len} -> {len(df)}")
 
-    assert len(df) >= len(original) / 2
+    assert len(df) >= original_len / 2
 
     return df.drop([ "_tmp_row_nr", "_tmp_family_reversed" ])
 
@@ -975,13 +976,13 @@ def backbone_columns(df: pl.DataFrame, structure: Optional[Bio.PDB.Structure.Str
     pair_set = set(
         (model, chain1, chain_index[(model, chain1)][(nr1, ins1 or ' ')], chain2, chain_index[(model, chain2)][(nr2, ins2 or ' ')])
         for model, chain1, nr1, ins1, chain2, nr2, ins2 in zip(df["model"], df["chain1"], df["nr1"], df["ins1"], df["chain2"], df["nr2"], df["ins2"])
-        if (nr1, ins1 or ' ') in chain_index[(model, chain1)] and (nr2, ins2 or ' ') in chain_index[(model, chain2)]
+        if  (nr1, ins1 or ' ') in chain_index.get((model, chain1), []) and (nr2, ins2 or ' ') in chain_index.get((model, chain2), [])
     )
 
     for i, (pdbid, model, chain1, nr1, ins1, alt1, chain2, nr2, ins2, alt2) in enumerate(zip(df["pdbid"], df["model"], df["chain1"], df["nr1"], df["ins1"], df["alt1"], df["chain2"], df["nr2"], df["ins2"], df["alt2"])):
 
-        res_ix1 = chain_index[(model, chain1)].get((nr1, ins1 or ' '), None)
-        res_ix2 = chain_index[(model, chain2)].get((nr2, ins2 or ' '), None)
+        res_ix1 = chain_index.get((model, chain1), {}).get((nr1, ins1 or ' '), None)
+        res_ix2 = chain_index.get((model, chain2), {}).get((nr2, ins2 or ' '), None)
         if res_ix1 is None or res_ix2 is None:
             continue
         is_dinucleotide[i] = abs(res_ix2 - res_ix1) == 1
@@ -1157,6 +1158,16 @@ def main(pool: Union[Pool, MockPool], args):
             for ((pdbid,), group) in groups # type: ignore
         ])
 
+    def postfilter(df: pl.DataFrame):
+        if args.postfilter_hb:
+            df = df.filter(pl.any_horizontal(pl.col("^hb_\\d+_length$") < args.postfilter_hb))
+        if args.postfilter_shift:
+            df = df.filter((pl.col("coplanarity_shift1").abs() < args.postfilter_shift) & (pl.col("coplanarity_shift2").abs() < args.postfilter_shift))
+        if args.dedupe:
+            df = remove_duplicate_pairs(df)
+        return df
+
+
     result_chunks = []
     for ((_pdbid,), group), ps in zip(groups, zip(*processes)):
         # each group of processes returns a tuple
@@ -1174,17 +1185,13 @@ def main(pool: Union[Pool, MockPool], args):
         if args.filter:
             valid = functools.reduce(np.logical_and, valid)
             chunk = chunk.filter(valid)
+        chunk = postfilter(chunk)
         if len(chunk) > 0:
             result_chunks.append(chunk)
 
     validate_missing_columns(result_chunks)
     df = pl.concat(result_chunks)
-    if args.postfilter_hb:
-        df = df.filter(pl.any_horizontal(pl.col("^hb_\\d+_length$") < args.postfilter_hb))
-    if args.postfilter_shift:
-        df = df.filter((pl.col("coplanarity_shift1").abs() < args.postfilter_shift) & (pl.col("coplanarity_shift2").abs() < args.postfilter_shift))
-    if args.dedupe:
-        df = remove_duplicate_pairs(df)
+    df = postfilter(df)
     df = df.sort('pdbid', 'model', 'nr1', 'nr2')
     if args.output != "/dev/null":
         df.write_csv(args.output if args.output.endswith(".csv") else args.output + ".csv")

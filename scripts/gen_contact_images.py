@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import itertools
 import tempfile
 import time
@@ -59,11 +61,10 @@ def rotate_to_y_axis(bond1, bond2):
     coord2 = transform_to_camera_space(cmd.get_coords(bond2)[0])
     # rotate around z-axis such that coord1 is right above coord2
     angle = np.arctan2(coord2[0] - coord1[0], coord2[1] - coord1[1])
-    angle = angle / math.pi * 180
     # print("the bond coordinate is ", coord1, coord2)
     # print(f"1: {np.arctan2(coord1[1], coord1[0]) / math.pi * 180}, 2: {np.arctan2(coord2[1], coord2[0]) / math.pi * 180}")
     print("rotating by ", angle)
-    cmd.turn("z", angle)
+    cmd.turn("z", math.degrees(angle))
     # cmd.color("red", f"({bond1}) or ({bond2})")
     return abs(angle) > 0.1
 
@@ -125,9 +126,7 @@ def flip_image_to_order(orient_updown = False, orient_left_phosphate_up = False,
 
 def orient_nucleotide_as_main():
     natom = get_n_atom("%rightnt")
-    for i in range(1):
-        # it does not converge instantly, no idea why
-        rotate_to_y_axis("%rightnt and (name C1')", f"%rightnt and (name {natom})")
+    rotate_to_y_axis("%rightnt and (name C1')", f"%rightnt and (name {natom})")
     flip_image_to_order(orient_updown=False)
     rotate_to_y_axis("%rightnt and (name C1')", f"%rightnt and (name {natom})")
 
@@ -517,7 +516,7 @@ def main(argv):
     parser = argparse.ArgumentParser(description="Generate contact images")
     parser.add_argument("input", help="Input CSV file", nargs="+")
     parser.add_argument("--output-dir", "-o", required=True, help="Output directory")
-    parser.add_argument("--threads", "-t", type=int, default=None, help="Number of threads to use")
+    parser.add_argument("--threads", "-t", type=int, default=None, help="Number of threads to use. Each thread will process a different PDB structure, the option has no effect if the provided file only contains one structure. PyMOL renderer always runs single-threaded.")
     parser.add_argument("--cpu_affinity", type=int, nargs="*", default=None, help="Which CPUs to use (list of integers, indexed from 0)")
     parser.add_argument("--niceness", type=int, default=None, help="Run the process with the specified niceness (don't change by default)")
     parser.add_argument("--standard-orientation", type=eval, default=False, help="When set to true, orient the base pair such that the first nucleotide is always left and the N1/N9 - C1' is along the y-axis (N is above C)")

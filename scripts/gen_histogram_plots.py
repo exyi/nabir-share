@@ -1025,7 +1025,7 @@ def calculate_boundaries(df: pl.DataFrame, pair_type: PairType):
         "hb_2_OOPA2": "hb_2_OOPA2",
     }
     pt_family_dict = { pt: ix + 1 for ix, pt in enumerate(pair_defs.pair_types) }
-    def calc_boundary(col, df=df):
+    def calc_boundary(col, df: pl.DataFrame=df):
         # return df[col].min(), df[col].max()
         if len(df) <= 1 or df[col].is_null().mean() > 0.1:
             return pl.Series([None, None], dtype=df[col].dtype)
@@ -1036,7 +1036,7 @@ def calculate_boundaries(df: pl.DataFrame, pair_type: PairType):
                 dtype=pl.Float32
             )
 
-        return pl.Series([df[col].quantile(0.01), df[col].quantile(0.99)], dtype=pl.Float32)
+        return pl.Series([df[col].quantile(0.001, "lower"), df[col].quantile(0.999, "higher")], dtype=pl.Float32)
 
     boundaries = pl.DataFrame({
         "family_id": [ pt_family_dict.get(pair_type.type.lower(), 99) ] * 2,
@@ -1195,6 +1195,7 @@ def main(argv):
             hb_filters = [
                 pl.col(f"hb_{i}_length") <= 4.0 if "C" in hb[1] or "C" in hb[2] else pl.col(f"hb_{i}_length") <= 3.8
                 for i, hb in enumerate(pair_defs.get_hbonds(pair_type, throw=False))
+                if f"hb_{i}_length" in df.columns
             ]
             boundaries.append(calculate_boundaries(
                 df.filter(
