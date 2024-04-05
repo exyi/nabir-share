@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { getColumnLabel, hideColumn, longNucleotideNames } from "$lib/dbModels";
+	import { getColumnLabel, hideColumn, longNucleotideNames, type NucleotideFilterModel, type NumRange } from "$lib/dbModels";
 	import metadata from "$lib/metadata";
 	import type { NucleotideId, PairId, PairingInfo } from "$lib/pairing";
 	import _ from "lodash";
@@ -7,6 +7,65 @@
     export let imageUrl: string
     export let videoUrl: string
     export let pair: PairingInfo
+    export let filter: NucleotideFilterModel | undefined = undefined
+
+    function getRange(column: string) : NumRange | undefined {
+        if (!filter) return undefined
+        if (column in filter?.other_column_range) {
+            return filter.other_column_range[column]
+        }
+        if (column in filter) {
+            return filter[column]
+        }
+
+        if (/^C1_C1_(yaw|pitch|roll)\d*/.test(column)) {
+            return filter[column.slice("C1_C1_".length)]
+        }
+    }
+
+    function isOutOfRange(value: number | null | undefined, range: NumRange | string | null | undefined) {
+        if (value == null)
+            return null
+
+        if (typeof range == "string") {
+            range = getRange(range)
+        }
+
+        if (range?.min == null && range?.max == null)
+            return null
+
+        if (range.min != null && range.max != null && range.min > range.max) {
+            // range in modular arithmetic (angles -180..180)
+            return value < range.min && value > range.max
+        }
+
+        if (range?.min != null && value < range.min)
+            return false
+        if (range?.max != null && value > range.max)
+            return false
+        return true
+    }
+
+    function getRangeValueTitle(value: number | null | undefined, range: NumRange | string | null | undefined) {
+        if (value == null || range == null)
+            return ""
+        if (typeof range == "string") {
+            range = getRange(range)
+        }
+
+        if (range?.min == null && range?.max == null)
+            return null
+
+        const inRange = isOutOfRange(value, range)
+
+        if (inRange === true) {
+            return `Value ${value?.toFixed(2)} is within range ${range.min?.toFixed(2)}..${range.max?.toFixed(2)}`
+        }
+        if (inRange === false) {
+            return `Value ${value?.toFixed(2)} is outside range ${range.min?.toFixed(2)}..${range.max?.toFixed(2)}`
+        }
+        return "???"
+    }
 
     function resSele(r: NucleotideId) {
         let nt = String(r.resnum).replace("-", "\\-")
@@ -66,6 +125,17 @@
         background-color: transparent;
     }
 
+    .filter-pass {
+        color: #006d09;
+        font-weight: bold;
+    }
+
+    .filter-fail {
+        color: rgb(172, 0, 0);
+        font-weight: bold;
+        text-decoration: underline;
+    }
+
 </style>
 <div>
     <div class="imgpane">
@@ -89,20 +159,50 @@
             </tr>
             <tr>
                 <th>Length</th>
-                {#each pair.hbonds as hb}
-                    <td>{hb.length.toFixed(2)} Å</td>
+                {#each pair.hbonds as hb, i}
+                    {@const range = filter?.bond_length?.[i]}
+                    <td class:filter-pass={isOutOfRange(hb.length, range) === true}
+                        class:filter-false={isOutOfRange(hb.length, range) === false}>
+                        {hb.length?.toFixed(2)} Å</td>
                 {/each}
             </tr>
             <tr>
                 <th>Donor angle</th>
-                {#each pair.hbonds as hb}
-                    <td>{(hb.donorAngle).toFixed(0)}°</td>
+                {#each pair.hbonds as hb, i}
+                    {@const range = filter?.bond_donor_angle?.[i]}
+                    <td class:filter-pass={isOutOfRange(hb.donorAngle, range) === true}
+                        class:filter-false={isOutOfRange(hb.donorAngle, range) === false}>
+                        {hb.donorAngle?.toFixed(0)}°
+                    </td>
                 {/each}
             </tr>
             <tr>
                 <th>Acceptor angle</th>
-                {#each pair.hbonds as hb}
-                    <td>{(hb.acceptorAngle).toFixed(0)}°</td>
+                {#each pair.hbonds as hb, i}
+                    {@const range = filter?.bond_acceptor_angle?.[i]}
+                    <td class:filter-pass={isOutOfRange(hb.acceptorAngle, range) === true}
+                        class:filter-false={isOutOfRange(hb.acceptorAngle, range) === false}>
+                        {hb.acceptorAngle?.toFixed(0)}°
+                    </td>
+                {/each}
+            </tr>
+            <tr>
+                <th>Angle to left plane</th>
+                {#each pair.hbonds as hb, i}
+                    {@const range = filter?.bond_plane_angle1?.[i]}
+                    <td class:filter-pass={isOutOfRange(hb.OOPA1, range) === true}
+                        class:filter-fail={isOutOfRange(hb.OOPA1, range) === false}>
+                        {hb.OOPA1?.toFixed(0)}°</td>
+                {/each}
+            </tr>
+            <tr>
+                <th>Angle to right plane</th>
+                {#each pair.hbonds as hb, i}
+                    {@const range = filter?.bond_plane_angle2?.[i]}
+                    <td class:filter-pass={isOutOfRange(hb.OOPA2, range) === true}
+                        class:filter-false={isOutOfRange(hb.OOPA2, range) === false}>
+                        {hb.OOPA2?.toFixed(0)}°
+                    </td>
                 {/each}
             </tr>
         </table>
@@ -161,10 +261,16 @@
             
         <tbody>
         {#each getTableRows(pair?.originalRow) as r}
+            {@const filterRange = getRange(r.colName)}
             <tr>
                 <td><b><code>{r.colName}</code></b></td>
                 <td>{r.label ?? ''}</td>
-                <td colspan={r.colName == 'structure_name' ? '2' : '1'}><strong>{typeof r.value == "number" ? r.value.toPrecision(5) : r.value == null ? "" : "" + r.value}</strong></td>
+                <td colspan={r.colName == 'structure_name' ? 2 : 1}
+                    class:filter-pass={isOutOfRange(r.value, filterRange) === true}
+                    class:filter-false={isOutOfRange(r.value, filterRange) === false}
+                    title={getRangeValueTitle(r.value, filterRange)}>
+                    <strong>{typeof r.value == "number" ? r.value.toPrecision(5) : r.value == null ? "" : "" + r.value}</strong>
+                </td>
                 <td><i>{r.tooltip ?? ''}</i></td>
             </tr>
         {/each}

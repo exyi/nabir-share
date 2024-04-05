@@ -29,8 +29,9 @@ for (const pairMeta of metadata) {
 }
 export const host = window.location.hostname.match(/(^|[.])localhost$/) ? 'localhost' : window.location.hostname
 const defaultHost = "https://pairs.exyi.cz"
-export const fileBase = (new URL('tables/', host == 'localhost' ? defaultHost : document.baseURI)).href
-export const imgDir = host == 'localhost' ? `${defaultHost}/img` : (new URL('pregen-img', document.baseURI)).href
+export const assetBaseUri = host == 'localhost' ? defaultHost : document.baseURI
+export const fileBase = (new URL('tables/', assetBaseUri)).href
+export const imgDir = (new URL('pregen-img', assetBaseUri)).href
 
 export function getConnectionSync(): AsyncDuckDBConnection {
   if (!conn)

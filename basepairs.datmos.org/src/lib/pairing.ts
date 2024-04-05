@@ -19,12 +19,15 @@ export type HydrogenBondInfo = {
     length: number
     acceptorAngle: number
     donorAngle: number
+    OOPA1: number
+    OOPA2: number
 }
 
 export type PairingInfo = {
     id: PairId
     hbonds?: HydrogenBondInfo[]
     coplanarity?: number
+    comparison?: boolean
     originalRow?: any
 }
 

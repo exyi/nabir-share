@@ -1,10 +1,9 @@
 <script lang="ts">
   import PairImages from '$lib/components/pairimages.svelte'
   import Spinner from '$lib/components/Spinner.svelte'
-  import { base } from '$app/paths';
   import metadata from '$lib/metadata'
 	import FilterEditor from '$lib/components/filterEditor.svelte';
-	import { aggregateBondParameters, aggregatePdbCountQuery, aggregateTypesQuery, defaultFilter, filterToSqlCondition, makeSqlQuery, parseUrl, type NucleotideFilterModel, filterToUrl, type HistogramSettingsModel, type StatisticsSettingsModel, fillStatsLegends, statPresets, type StatPanelSettingsModel, statsToUrl, getDataSourceTable, makeDifferentialSqlQuerySingleTable, makeDifferentialSqlQuery } from '$lib/dbModels.js';
+	import { aggregatePdbCountQuery, aggregateTypesQuery, defaultFilter, filterToSqlCondition, makeSqlQuery, parseUrl, type NucleotideFilterModel, filterToUrl, type StatisticsSettingsModel, statPresets, type StatPanelSettingsModel, statsToUrl, getDataSourceTable, makeDifferentialSqlQuerySingleTable, makeDifferentialSqlQuery, type ComparisonMode } from '$lib/dbModels.js';
 	import { parsePairingType, type NucleotideId, type PairId, type PairingInfo, type HydrogenBondInfo, tryParsePairingType, type PairingFamily, normalizePairType } from '$lib/pairing.js';
 	import { Modal } from 'svelte-simple-modal';
 	import type { AsyncDuckDBConnection } from '@duckdb/duckdb-wasm';
@@ -15,15 +14,16 @@
   import HistogramPlot from '$lib/components/HistogramPlot.svelte';
 	import StatsPanel from '$lib/components/StatsPanel.svelte';
   import _ from 'lodash'
-	import { unescape } from 'lodash';
 	import OverviewTable from '$lib/components/OverviewTable.svelte';
 
   let selectedFamily: string | undefined
   let selectedPairing: string | undefined
+  const totalRowLimit = 30_000
 
-  let filterMode: "ranges" | "sql" = "ranges"
+  let filterMode: "basic"|"ranges" | "sql" = "basic"
   let filter: NucleotideFilterModel = defaultFilter()
   let filterBaseline: NucleotideFilterModel | undefined = undefined
+  let comparisonMode: ComparisonMode = "difference"
   let miniStats: StatPanelSettingsModel[] = [ statPresets.histL, statPresets.histDA, statPresets.histAA ]
   let testStats: StatisticsSettingsModel = {
     enabled: false,
@@ -172,6 +172,7 @@
   }
 
   type ResultsAggregates = {
+    count?: number
     types?: { [key: string]: number },
     pdbStructures?: { [key: string]: number },
     bondStats?: { bond: number, stat: "nncount" | "mean" | "min" | "max" | "median" | "p10" | "p25" | "p75" | "p90" | "stddev", param: "length" | "acceptor_angle" | "donor_angle", value: number }[]
@@ -183,7 +184,7 @@
   let resultsAgg: ResultsAggregates = {}
 
   $: {
-    filter, filterMode, filterBaseline, selectedPairing
+    filter, filterMode, filterBaseline, selectedPairing, comparisonMode
     updateResults()
   }
 
@@ -205,9 +206,9 @@
 
     const meta = getMetadata(selectedPairing)
 
-    let c = 0
+    let count = 0
     for (const r of rs) {
-      if (limit != null && c >= limit)
+      if (limit != null && count >= limit)
         break
       const pdbid = r.pdbid, model = Number(r.model ?? 1)
       const nt1: NucleotideId = { pdbid, model, chain: convName(r.chain1), resnum: Number(r.nr1), resname: convName(r.res1), altloc: convName(r.alt1), inscode: convName(r.ins1) }
@@ -220,17 +221,22 @@
         for (let i = 0; i <= 4; i++) {
           const length = r[`hb_${i}_length`]
           if (length == null) break
+          function numberMaybe(x) { return x ? Number(x) : null }
           hbonds.push({
-            length: Number(length),
-            donorAngle: Number(r[`hb_${i}_donor_angle`]),
-            acceptorAngle: Number(r[`hb_${i}_acceptor_angle`]),
+            length: numberMaybe(length),
+            donorAngle: numberMaybe(r[`hb_${i}_donor_angle`]),
+            acceptorAngle: numberMaybe(r[`hb_${i}_acceptor_angle`]),
+            OOPA1: numberMaybe(r[`hb_${i}_OOPA1`]),
+            OOPA2: numberMaybe(r[`hb_${i}_OOPA2`]),
             label: meta?.labels[i],
           })
         }
       }
       const coplanarity = r.bogopropeller ?? r.coplanarity_angle
-      yield { id, hbonds, coplanarity, originalRow: r }
-      c++
+      const { comparison_in_baseline, comparison_in_current } = r
+      const comparison = (comparison_in_baseline || false) != (comparison_in_current || false) ? Boolean(comparison_in_current || false) : undefined
+      yield { id, hbonds, coplanarity, comparison, originalRow: r }
+      count++
     }
   }
 
@@ -242,14 +248,15 @@
       const timing = { ensureViews: -1, query: -1, queryConvert: -1, aggPdbId: -1, aggTypes: -1, aggBondParams: -1 }
       
       const metadata = getMetadata(selectedPairing)
-      const limit = null
-      let sql = filterMode == "sql" ? filter.sql : makeSqlQuery(filter, getDataSourceTable(filter), limit)
+      const limit = testStats.enabled ? totalRowLimit : 3000
+      let sql = filterMode == "sql" ? filter.sql : makeSqlQuery(filter, getDataSourceTable(filter), null)
       if (filterBaseline != null) {
+        // const comparisonMode: ComparisonMode = "missing"
         if (filterMode != "sql" && filterBaseline.sql == null && getDataSourceTable(filter) == getDataSourceTable(filterBaseline)) {
-          sql = makeDifferentialSqlQuerySingleTable(filter, filterBaseline, getDataSourceTable(filter), limit, true)
+          sql = makeDifferentialSqlQuerySingleTable(filter, filterBaseline, getDataSourceTable(filter), null, comparisonMode)
         } else {
           const baselineSql = filterBaseline.sql || makeSqlQuery(filterBaseline, getDataSourceTable(filterBaseline))
-          sql = makeDifferentialSqlQuery(sql, baselineSql, limit, filter.orderBy, true)
+          sql = makeDifferentialSqlQuery(sql, baselineSql, null, filter.orderBy, comparisonMode)
         }
       }
 
@@ -267,7 +274,8 @@
         return
       }
       abort.throwIfAborted();
-      await ensureViews(conn, abort, sql)
+      await ensureViews(conn, abort, queryTables)
+      abort.throwIfAborted()
       timing.ensureViews = performance.now() - startTime
       startTime = performance.now()
 
@@ -276,8 +284,8 @@
       }
 
       abort.throwIfAborted()
-      resultsPromise = conn.query(sql)
-      resultsTable = await resultsPromise
+      resultsTable = await conn.query(`SELECT * FROM (${sql}) LIMIT ${limit}`)
+      abort.throwIfAborted()
       resultsAgg = {}
       timing.query = performance.now() - startTime
       startTime = performance.now()
@@ -292,8 +300,9 @@
       if (cols.includes("type") && cols.includes("res1") && cols.includes("res2")) {
         abort.throwIfAborted()
         resultsAgg.types = Object.fromEntries(
-          Array.from(await conn.query(aggregateTypesQuery(sql))).map(x => [x.type, x.count])
+          Array.from(await conn.query(aggregateTypesQuery(sql))).map(x => [x.type, Number(x.count)])
         )
+        resultsAgg.count = Object.values(resultsAgg.types).reduce((a, b) => a + b, 0)
         console.log("types", resultsAgg.types)
         resultsAgg = resultsAgg
         timing.aggTypes = performance.now() - startTime
@@ -326,15 +335,17 @@
       }
 
       console.log("Loading finished: ", timing)
+
+      return resultsTable
     }
 
     try {
       const conn = await connPromise
       await tableLoadPromise
-      console.log(`Running new query (L0 < ${filter.bond_length[0]?.max})`)
+      console.log(`Running new query`)
       updateResultsLock.abortRunning()
       await conn.cancelSent()
-      return await updateResultsLock.withCancellableLock(abortSignal => core(conn, abortSignal))
+      return await updateResultsLock.withCancellableLock(abortSignal => resultsPromise = core(conn, abortSignal))
 
     } catch (e) {
       resultsPromise = Promise.reject(e)
@@ -436,7 +447,10 @@
   <OverviewTable families={selectedFamily == null ? undefined : [selectedFamily]} />
 {:else}
 <div class="filters">
-  <FilterEditor bind:filter={filter}
+  <FilterEditor
+    bind:filter={filter}
+    bind:filterBaseline={filterBaseline}
+    bind:comparisonMode={comparisonMode}
     selectingFromTable={filter && getDataSourceTable(filter)}
     metadata={getMetadata(selectedPairing)}
     bind:mode={filterMode} />
@@ -459,7 +473,7 @@
         {/if}
       {/each}
     </div>
-    <div>{result.numRows} results</div>
+    <div>{result?.numRows} results</div>
 
     {#if requiredColumns.some(c => !result.schema.fields.some(f => f.name ==c))}
       <table class="table is-narrow is-striped is-fullwidth">
@@ -520,6 +534,11 @@
 </div>
 
 {#if testStats.enabled}
+  {#if resultsCount == totalRowLimit}
+    <div class="notification is-warning">
+      Only the first {resultsCount.toLocaleString("mfe")} rows are counted in the statistics
+    </div>
+  {/if}
   <StatsPanel data={resultsTable} bind:settings={testStats} metadata={getMetadata(selectedPairing)} />
 {/if}
 
@@ -531,22 +550,37 @@
     {#if getMetadata(selectedPairing) == null}
       <h5 class="title is-5" style="text-align: center">Sorry, the base pair is not defined.</h5>
       <!-- TODO: show rotated bases to illustrate that it's probably impossible -->
+    {:else if filterBaseline != null}
+      <h5 class="title is-5" style="text-align: center">The compared datasets are equal.</h5>
+      <p class="subtitle is-6" style="text-align: center">You are in comparison mode - only results missing in the current or the baseline dataset are shown</p>
+      <p class="subtitle is-6" style="text-align: center">
+        <button class="button is-warning" on:click={() => filterBaseline = undefined}>Reset baseline, exit comparison mode</button>
+      </p>
     {:else}
       <h5 class="title is-5" style="text-align: center">Sorry, no results matched your query</h5>
-      <p class="subtitle is-6" style="text-align: center">You can try to loosen the filters {#if filter.mode != 'sql' && filter.filtered}(untick the Representative set, for example){/if}</p>
+      <p class="subtitle is-6" style="text-align: center">You can try to loosen the filters
+        {#if filterMode != 'sql' && filter.filtered && (filter.datasource ?? "fred-f").startsWith("fred-")}
+          (choose "entire PDB" datasource, for example)
+        {/if}
+      </p>
+      {#if filterToSqlCondition(filter).filter(c => c!="jirka_approves").length > 0}
+      <p style="text-align: center">
+        <button class="button is-warning" on:click={() => filter = defaultFilter(filter?.datasource)}>Reset filter</button>
+      </p>
+      {/if}
     {/if}
   {/if}
 {/await}
 <PairImages pairs={results} rootImages={db.imgDir} imgAttachement={filter.rotX ? "-rotX.png" : ".png"} videoAttachement=".webm" videoOnHover={!!filter.rotX} />
 {#if results && resultsCount != results.length && resultsCount > 0}
   <div style="margin: 100px; text-align: center">
-    <p>Loading more... than 100 items is not implemented at the moment</p>
-    <!-- <p style="text-align: center">This is the first {results.length} cases, total count is {resultsCount}</p>
+    <!-- <p>Loading more... than 100 items is not implemented at the moment</p> -->
+    <p style="text-align: center">This is the first {results.length} cases, total count is {resultsAgg.count ?? resultsCount}</p>
     <button type="button" on:click={() => {
-
-    }}> -->
-      <!-- Load {Math.min(100, resultsCount - results.length)} more cases -->
-    <!-- </button> -->
+      results = [...results, ...convertQueryResults(resultsTable.slice(results.length), parsePairingType(selectedPairing), 100) ]
+    }}>
+      Load {Math.min(100, resultsCount - results.length)} more examples
+    </button>
   </div>
 {/if}
 {/if}

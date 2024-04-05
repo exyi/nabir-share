@@ -2,23 +2,33 @@ import type metadataModule from './metadata'
 import _ from 'lodash'
 
 
-export type Range = {
+export type NumRange = {
     min?: number
     max?: number
 }
 export type NucleotideFilterModel = {
     sql?: string
-    bond_length: (Range)[]
-    bond_donor_angle: (Range)[]
-    bond_acceptor_angle: (Range)[]
-    bond_plane_angle1: (Range)[]
-    bond_plane_angle2: (Range)[]
+    bond_length: (NumRange)[]
+    bond_donor_angle: (NumRange)[]
+    bond_acceptor_angle: (NumRange)[]
+    bond_plane_angle1: (NumRange)[]
+    bond_plane_angle2: (NumRange)[]
     other_column_range?: {
-        [column: string]: Range
+        [column: string]: NumRange
     }
     sql_conditions?: string[]
-    coplanarity_angle?: Range
-    resolution?: Range
+    coplanarity_angle?: NumRange
+    yaw1?: NumRange
+    yaw2?: NumRange
+    pitch1?: NumRange
+    pitch2?: NumRange
+    roll1?: NumRange
+    roll2?: NumRange
+    coplanarity_shift1?: NumRange
+    coplanarity_shift2?: NumRange
+    coplanarity_edge_angle1?: NumRange
+    coplanarity_edge_angle2?: NumRange
+    resolution?: NumRange
     dna?: true | false | undefined
     orderBy?: string
     filtered: boolean
@@ -51,20 +61,37 @@ export type VariableModel = {
     filterId?: string
 }
 
-export function defaultFilter(): NucleotideFilterModel {
-    return { bond_acceptor_angle: [], bond_donor_angle: [], bond_length: [], bond_plane_angle1: [], bond_plane_angle2: [], filtered: true }
+export function defaultFilter(datasource: NucleotideFilterModel["datasource"] = undefined): NucleotideFilterModel {
+    return { datasource, bond_acceptor_angle: [], bond_donor_angle: [], bond_length: [], bond_plane_angle1: [], bond_plane_angle2: [], filtered: true }
 }
 
-function rangeToCondition(col: string, range: Range | undefined | null): string[] {
+function rangeToCondition(col: string, range: NumRange | undefined | null): string[] {
     if (range == null) return []
-    const r = []
+
+    function almostEqual(a: number, b: number) {
+        return Math.abs(a - b) < (0.01 * Math.max(Math.abs(a), Math.abs(b)))
+    }
+
+    if (range.min != null && range.max != null) {
+        if (range.min > range.max) {
+            // modular range
+            return [`${col} NOT BETWEEN ${range.max} AND ${range.min}`]
+        }
+        if (range.min == range.max) {
+            return [`${col} = ${range.min}`]
+        }
+        if (almostEqual(range.min, -range.max)) {
+            return [`abs(${col}) <= ${range.min}`]
+        }
+        return [`${col} BETWEEN ${range.min} AND ${range.max}`]
+    }
     if (range.min != null) {
-        r.push(`${col} >= ${range.min}`)
+        return [`${col} >= ${range.min}`]
     }
     if (range.max != null) {
-        r.push(`${col} <= ${range.max}`)
+        return [`${col} <= ${range.max}`]
     }
-    return r
+    return []
 }
 
 export function filterToSqlCondition(filter: NucleotideFilterModel): string[] {
@@ -76,11 +103,44 @@ export function filterToSqlCondition(filter: NucleotideFilterModel): string[] {
         conditions.push(...rangeToCondition(`hb_${i}_length`, filter.bond_length[i]))
         conditions.push(...rangeToCondition(`hb_${i}_donor_angle`, filter.bond_donor_angle[i]))
         conditions.push(...rangeToCondition(`hb_${i}_acceptor_angle`, filter.bond_acceptor_angle[i]))
+        conditions.push(...rangeToCondition(`hb_${i}_OOPA1`, filter.bond_plane_angle1[i]))
+        conditions.push(...rangeToCondition(`hb_${i}_OOPA2`, filter.bond_plane_angle2[i]))
     }
     conditions.push(...rangeToCondition(`resolution`, filter.resolution))
     if (filter.coplanarity_angle) {
         conditions.push(...rangeToCondition(`coplanarity_angle`, filter.coplanarity_angle))
     }
+    if (filter.coplanarity_shift1) {
+        conditions.push(...rangeToCondition(`coplanarity_shift1`, filter.coplanarity_shift1))
+    }
+    if (filter.coplanarity_shift2) {
+        conditions.push(...rangeToCondition(`coplanarity_shift2`, filter.coplanarity_shift2))
+    }
+    if (filter.coplanarity_edge_angle1) {
+        conditions.push(...rangeToCondition(`coplanarity_edge_angle1`, filter.coplanarity_edge_angle1))
+    }
+    if (filter.coplanarity_edge_angle2) {
+        conditions.push(...rangeToCondition(`coplanarity_edge_angle2`, filter.coplanarity_edge_angle2))
+    }
+    if (filter.yaw1) {
+        conditions.push(...rangeToCondition(`C1_C1_yaw1`, filter.yaw1))
+    }
+    if (filter.yaw2) {
+        conditions.push(...rangeToCondition(`C1_C1_yaw2`, filter.yaw2))
+    }
+    if (filter.pitch1) {
+        conditions.push(...rangeToCondition(`C1_C1_pitch1`, filter.pitch1))
+    }
+    if (filter.pitch2) {
+        conditions.push(...rangeToCondition(`C1_C1_pitch2`, filter.pitch2))
+    }
+    if (filter.roll1) {
+        conditions.push(...rangeToCondition(`C1_C1_roll1`, filter.roll1))
+    }
+    if (filter.roll2) {
+        conditions.push(...rangeToCondition(`C1_C1_roll2`, filter.roll2))
+    }
+
     if (filter.dna != null) {
         if (filter.dna)
             conditions.push(`(res1 LIKE 'D%' OR res2 LIKE 'D%')`)
@@ -109,7 +169,7 @@ function joinConditions(conditions: string[], keyword = 'AND') {
     if (conditions.length == 0) {
         return keyword.toUpperCase() != 'or' ? 'true' : 'false'
     }
-    return conditions.map(c => /\b(select|or)\b/.test(c) ? `(${c})` : c).join(` ${keyword} `)
+    return conditions.map(c => /\b(select|or)\b/.test(c) ? `(${c})` : c).join(`\n  ${keyword} `)
 }
 
 function buildSelect(opt: {
@@ -121,13 +181,13 @@ function buildSelect(opt: {
 }) {
     let query = `SELECT ${opt.cols} FROM ${opt.from}`
     if (opt.where && opt.where?.length > 0) {
-        query += ` WHERE ${joinConditions(opt.where)}`
+        query += `\nWHERE ${joinConditions(opt.where)}`
     }
     if (opt.orderBy) {
-        query += ` ORDER BY ${opt.orderBy}`
+        query += `\nORDER BY ${orderToExpr(opt.orderBy)}`
     }
     if (opt.limit) {
-        query += ` LIMIT ${opt.limit}`
+        query += `\nLIMIT ${opt.limit}`
     }
     return query
 }
@@ -142,11 +202,53 @@ export function makeSqlQuery(filter: NucleotideFilterModel, from: string, limit?
     })
 }
 
-export function makeDifferentialSqlQuerySingleTable(filter: NucleotideFilterModel, filterBaseline: NucleotideFilterModel, from: string, limit?: number, differenceOnly = true) {
+export const orderByOptions = [
+    { id:"", expr: "", label: "pdbid" },
+    { id: "pdbidD", expr: "pdbid DESC, model DESC, chain1 DESC, nr1 DESC", title: "", label: "pdbid descending" },
+    { id: "resolutionA", expr: "resolution NULLS LAST, pdbid, model, chain1, nr1", title: "Reported resolution of the source PDB structure", value: "resolution" },
+    { id: "modedevA", expr: "mode_deviations", title: "ASCENDING - best to worst - Number of standard deviations between the H-bond parameters and the modes (peaks) calculated from Kernel Density Estimate. Use to list &quot;nicest&quot; pairs and avoid secondary modes.", label: "Deviation from KDE mode ↓" },
+    { id: "modedevD", expr: "-mode_deviations", title: "DESCENDING - worst to best - Number of standard deviations between the H-bond parameters and the modes (peaks) calculated from Kernel Density Estimate. Use to list &quot;nicest&quot; pairs and avoid secondary modes.", label: "Deviation from KDE mode ↑" },
+    { id: "LLD", expr: "-log_likelihood", title: "↑ DESCENDING - best to worst - Multiplied likelihoods of all H-bond parameters in their Kernel Density Estimate distribution. Use to list &quot;nicest&quot; pairs without disqualifying secondary modes.", label: "KDE likelihood ↑" },
+    { id: "LLA", expr: "log_likelihood", title: "↓ ASCENDING - best to worst - Multiplied likelihoods of all H-bond parameters in their Kernel Density Estimate distribution. Use to list &quot;nicest&quot; pairs without disqualifying secondary modes.", label: "KDE likelihood ↓" },
+    { id: "rmsdA", expr: "(rmsd_edge1+rmsd_edge2)", title: "↓ ASCENDING - edge RMSD to the 'nicest' basepair", label: "Edge RMSD ↓" },
+    { id: "rmsdD", expr: "(rmsd_edge1+rmsd_edge2) DESC", title: "↑ DESCENDING - edge RMSD to the 'nicest' basepair", label: "Edge RMSD ↑" }
+]
+
+function orderToExpr(opt: string | null, prefix = '') {
+    if (!opt) {
+        return null
+    }
+
+    return prefix + (orderByOptions.find(o => o.id == opt)?.expr ?? opt)
+}
+
+export type ComparisonMode = "union" | "difference" | "missing" | "new"
+
+export function makeDifferentialSqlQuerySingleTable(filter: NucleotideFilterModel, filterBaseline: NucleotideFilterModel, from: string, limit?: number, mode: ComparisonMode = "difference") {
     const conditions = filterToSqlCondition(filter)
     const baselineConditions = filterToSqlCondition(filterBaseline)
 
     const commonConditions = conditions.filter(c => baselineConditions.includes(c))
+
+    if (mode == "missing" || mode == "new") {
+        // missing = is in baseline but not in current
+        //         = SELECT * FROM dataset WHERE baseline_filter AND NOT (current_filter)
+        const missing = mode == "new"
+        const not = (mode == "missing" ? conditions : baselineConditions).filter(c => !commonConditions.includes(c))
+        return buildSelect({
+            cols: `*,
+                ${missing} AS comparison_in_baseline,
+                ${!missing} AS comparison_in_current`,
+            from,
+            where: [
+                ...(mode == "missing" ? baselineConditions : conditions),
+                `NOT (${joinConditions(not, 'AND')})`
+            ],
+            orderBy: filter.orderBy,
+            limit
+        })
+    }
+
 
     const queryBase = buildSelect({
         cols: "*",
@@ -160,7 +262,7 @@ export function makeDifferentialSqlQuerySingleTable(filter: NucleotideFilterMode
             coalesce(${joinConditions(conditions.filter(c => !commonConditions.includes(c)))}, FALSE) AS comparison_in_current,
             coalesce(${joinConditions(baselineConditions.filter(c => !commonConditions.includes(c)))}, FALSE) AS comparison_in_baseline
         FROM (${queryBase})
-        WHERE ${differenceOnly ? 'comparison_in_current <> comparison_in_baseline' : 'comparison_in_current OR comparison_in_baseline'}
+        WHERE ${mode == "difference" ? 'comparison_in_current <> comparison_in_baseline' : 'comparison_in_current OR comparison_in_baseline'}
     `
     if (limit) {
         query += `\nLIMIT ${limit}`
@@ -168,27 +270,39 @@ export function makeDifferentialSqlQuerySingleTable(filter: NucleotideFilterMode
     return query
 }
 
-export function makeDifferentialSqlQuery(queryCurrent: string, queryBaseline: string, limit?: number, order?: string, differenceOnly = true) {
-    let query = `
-        SELECT DISTINCT ON (pairid)
-            * EXCLUDE (comparison_in_baseline, comparison_in_current),
-            bool_or(comparison_in_baseline) OVER (PARTITION BY pairid),
-            bool_or(comparison_in_current) OVER (PARTITION BY pairid)
-        FROM (
-            SELECT *, TRUE AS comparison_in_current, FALSE AS comparison_in_baseline FROM (${queryCurrent})
-            UNION ALL BY NAME
-            SELECT *, FALSE AS comparison_in_current, TRUE AS comparison_in_baseline FROM (${queryBaseline})
-            ORDER BY DESC comparison_in_current
-        )
-    `
-    if (differenceOnly) {
-        query += "\nWHERE comparison_in_baseline <> comparison_in_current"
+export function makeDifferentialSqlQuery(queryCurrent: string, queryBaseline: string, limit?: number, order?: string, mode: ComparisonMode = "difference") {
+    let query
+    if (mode == "new" || mode == "missing") {
+        const missing = mode == "missing"
+        query = `
+            SELECT *,
+                ${missing} AS comparison_in_baseline,
+                ${!missing} AS comparison_in_current
+            FROM (${missing ? queryBaseline : queryCurrent})
+            WHERE pairid NOT IN (SELECT pairid FROM (${missing ? queryCurrent : queryBaseline}))
+        `
+    } else {
+        query = `
+            SELECT DISTINCT ON (pairid)
+                * EXCLUDE (comparison_in_baseline, comparison_in_current),
+                bool_or(comparison_in_baseline) OVER (PARTITION BY pairid) as comparison_in_baseline,
+                bool_or(comparison_in_current) OVER (PARTITION BY pairid) as comparison_in_current
+            FROM (
+                SELECT *, TRUE AS comparison_in_current, FALSE AS comparison_in_baseline FROM (${queryCurrent})
+                UNION ALL BY NAME
+                SELECT *, FALSE AS comparison_in_current, TRUE AS comparison_in_baseline FROM (${queryBaseline})
+                ORDER BY comparison_in_current DESC
+            )
+        `
+        if (mode == "difference") {
+            query = `SELECT * FROM (${query})\nWHERE comparison_in_baseline <> comparison_in_current`
+        }
     }
     if (limit) {
         query += `LIMIT ${limit}`
     }
     if (order) {
-        query += `ORDER BY ${order}`
+        query += `ORDER BY ${orderToExpr(order)}`
     }
     return query
 }
@@ -238,11 +352,11 @@ export function aggregateBondParameters(query: string, bondColumns: string[]) {
 
 
 export function filterToUrl(filter: NucleotideFilterModel, filterBaseline: NucleotideFilterModel | null | undefined = undefined, mode = 'ranges') {
-    if (mode == 'sql') {
-        return new URLSearchParams({ sql: filter.sql })
-    }
-
     const params = new URLSearchParams()
+    addFilterParams(params, filter, mode, '')
+    if (filterBaseline != null) {
+        addFilterParams(params, filterBaseline, filterBaseline.sql ? "sql" : "ranges", 'baseline_')
+    }
     return params
 }
 
@@ -263,6 +377,16 @@ export function addFilterParams(params: URLSearchParams, filter: NucleotideFilte
         addMaybe(`hb${i}_OOPA2`, range(filter.bond_plane_angle2[i]))
     }
     addMaybe(`coplanarity_a`, range(filter.coplanarity_angle))
+    addMaybe(`coplanarity_edge_angle1`, range(filter.coplanarity_edge_angle1))
+    addMaybe(`coplanarity_edge_angle2`, range(filter.coplanarity_edge_angle2))
+    addMaybe(`coplanarity_shift1`, range(filter.coplanarity_shift1))
+    addMaybe(`coplanarity_shift2`, range(filter.coplanarity_shift2))
+    addMaybe(`coplanarity_yaw1`, range(filter.yaw1))
+    addMaybe(`coplanarity_yaw2`, range(filter.yaw2))
+    addMaybe(`coplanarity_pitch1`, range(filter.pitch1))
+    addMaybe(`coplanarity_pitch2`, range(filter.pitch2))
+    addMaybe(`coplanarity_roll1`, range(filter.roll1))
+    addMaybe(`coplanarity_roll2`, range(filter.roll2))
     for (const c of filter.sql_conditions ?? []) {
         add('condition', c)
     }
@@ -274,7 +398,7 @@ export function addFilterParams(params: URLSearchParams, filter: NucleotideFilte
         addMaybe(`order`, filter.orderBy)
     }
 
-    function range(r: Range) {
+    function range(r: NumRange) {
         return r && (r.max != null || r.min != null) ? `${r.min ?? ''}..${r.max ?? ''}` : null
     }
     function addMaybe(k: string, x: string | null) {
@@ -291,13 +415,13 @@ export function addFilterParams(params: URLSearchParams, filter: NucleotideFilte
 type UrlParseResult = {
     pairFamily: string | null
     pairType: string | null
-    mode: 'ranges' | 'sql'
+    mode: 'basic' | 'ranges' | 'sql'
     filter: NucleotideFilterModel
     baselineFilter: NucleotideFilterModel | null | undefined
     stats: StatisticsSettingsModel | null
 }
 
-function parseRange(r: string | undefined | null): Range {
+function parseRange(r: string | undefined | null): NumRange {
     if (!r) return {}
     const m = r.match(/^(-?\d+\.?\d*)?\.\.(-?\d+\.?\d*)?$/)
     if (!m) return {}
@@ -305,7 +429,15 @@ function parseRange(r: string | undefined | null): Range {
     return { min: min ? Number(min) : undefined, max: max ? Number(max) : undefined }
 }
 
-function trimArray(array: Range[]) {
+function parseRangeMaybe(r: string | undefined | null): NumRange | undefined {
+    if (!r) return undefined
+    const rr = parseRange(r)
+    if (rr.min == null && rr.max == null)
+        return undefined
+    return rr
+}
+
+function trimArray(array: NumRange[]) {
     while (array.length && array.at(-1).max == null && array.at(-1).min == null) {
         array.pop()
     }
@@ -326,7 +458,7 @@ export function parseUrl(url: string): UrlParseResult {
 
     const f = new URLSearchParams(parts[0])
     const [filter, mode] = parseFilter(f)
-    const [baselineFilter, _] = f.has('baseline_ds') || f.has('baseline_sql') ? parseFilter(f, undefined, 'baseline_') : null
+    const [baselineFilter, _] = f.has('baseline_ds') || f.has('baseline_sql') ? parseFilter(f, undefined, 'baseline_') : [ undefined, "" ]
 
     const stats = parseStatsFromUrl(f)
 
@@ -336,7 +468,6 @@ export function parseUrl(url: string): UrlParseResult {
 function parseFilter(f: URLSearchParams, filter: NucleotideFilterModel | undefined = undefined, prefix=''): [NucleotideFilterModel, UrlParseResult['mode']] {
     filter ??= defaultFilter()
     filter.sql = f.get(`${prefix}sql`) ?? filter.sql
-    const mode = filter.sql ? 'sql' : 'ranges'
     if (f.has(`${prefix}ds`)) {
         let ds = f.get(`${prefix}ds`)
         if (/[DR]$/.test(ds)) {
@@ -368,7 +499,7 @@ function parseFilter(f: URLSearchParams, filter: NucleotideFilterModel | undefin
         if (k.startsWith(`${prefix}range_`)) {
             const column = k.slice(`${prefix}range_`.length)
             filter.other_column_range ??= {}
-            filter.other_column_range[column] = parseRange(v)
+            filter.other_column_range[column] = parseRangeMaybe(v)
         }
     }
 
@@ -376,9 +507,16 @@ function parseFilter(f: URLSearchParams, filter: NucleotideFilterModel | undefin
         filter.sql_conditions = f.getAll(`${prefix}condition`)
     }
 
-    filter.coplanarity_angle = parseRange(f.get(`${prefix}coplanar`) || f.get(`${prefix}coplanarity_a`))
-    filter.resolution = parseRange(f.get(`${prefix}resolution`) || f.get(`${prefix}resol`))
+    filter.coplanarity_angle = parseRangeMaybe(f.get(`${prefix}coplanar`) || f.get(`${prefix}coplanarity_a`))
+    for (const prop in [ "coplanarity_edge_angle1", "coplanarity_edge_angle2", "coplanarity_shift1", "coplanarity_shift2", "yaw1", "yaw2", "pitch1", "pitch2", "roll1", "roll2" ]) {
+        filter[prop] = parseRangeMaybe(f.get(`${prefix}${prop}`))
+    }
+    filter.resolution = parseRangeMaybe(f.get(`${prefix}resolution`) || f.get(`${prefix}resol`))
     filter.orderBy = f.get(`${prefix}order`)
+    if (filter.orderBy) {
+        filter.orderBy = orderByOptions.find(o => o.expr == filter.orderBy)?.id ?? filter.orderBy
+    }
+    const mode = filter.sql ? 'sql' : filter.bond_length.length || filter.bond_acceptor_angle.length || filter.bond_donor_angle.length || filter.coplanarity_angle || filter.bond_plane_angle1.length || filter.bond_plane_angle2.length || filter.coplanarity_edge_angle1 || filter.coplanarity_edge_angle2 || filter.coplanarity_shift1 || filter.coplanarity_shift2 || filter.pitch1 || filter.pitch2 || filter.yaw1 || filter.yaw2 || filter.roll1 || filter.roll2 || filter.resolution ? 'ranges' : 'basic'
     return [filter, mode]
 }
 

@@ -73,6 +73,23 @@
     transition: background-color 0.2s;
     /* box-shadow: 0 0 5px 10px #dceff4; */
   }
+  .pairimage.comparison-added {
+    background-color: #e2f4dc;
+    /* box-shadow: 0 0 5px 10px #e2f4dc; */
+    box-shadow: inset 0 0 20px 10px white;
+  }
+  .pairimage.comparison-removed {
+    background-color: #f4dce2;
+    box-shadow: inset 0 0 10px 10px white;
+  }
+  .pairimage.comparison-added:hover {
+    background-color: #c7e6c0;
+    box-shadow: none;
+  }
+  .pairimage.comparison-removed:hover {
+    background-color: #e6c0c7;
+    box-shadow: none;
+  }
   .header {
     display: flex;
     flex-direction: column;
@@ -118,7 +135,7 @@
   }
 </style>
 
-<div class="pairimage">
+<div class="pairimage" class:comparison-added={pair.comparison === true} class:comparison-removed={pair.comparison === false}>
   <a on:click={() => onClick()} href={linkUrl ?? "javascript:;"}>
 <div class="img-root" class:autosize={!parentSize} class:allow-video={allowHoverVideo && videoUrl != null} class:video-show={videoShow} on:mouseover={() => { videoLoaded = true }} on:focus={() => { videoLoaded = true }}>
   <div class="video">
