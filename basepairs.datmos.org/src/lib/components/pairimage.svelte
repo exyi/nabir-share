@@ -49,8 +49,8 @@
     console.warn("Failed to load image", e)
   }
 
-  const {open} = getContext<Context>('simple-modal');
 	function showModal(): any {
+    const {open} = getContext<Context>('simple-modal');
     const imageUrl = pngFallback ? url : webpFallback ? url.replace(/\.\w+$/, '-1440.webp') : url.replace(/\.\w+$/, '-1440.avif')
     open(DetailModal, { pair, imageUrl, videoUrl }, {
       classContent: "smodal-content",

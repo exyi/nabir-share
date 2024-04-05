@@ -3,9 +3,9 @@
   import Spinner from '$lib/components/Spinner.svelte'
   import metadata from '$lib/metadata'
 	import FilterEditor from '$lib/components/filterEditor.svelte';
-	import { aggregatePdbCountQuery, aggregateTypesQuery, defaultFilter, filterToSqlCondition, makeSqlQuery, parseUrl, type NucleotideFilterModel, filterToUrl, type StatisticsSettingsModel, statPresets, type StatPanelSettingsModel, statsToUrl, getDataSourceTable, makeDifferentialSqlQuerySingleTable, makeDifferentialSqlQuery, type ComparisonMode } from '$lib/dbModels.js';
+	import { aggregatePdbCountQuery, aggregateTypesQuery, defaultFilter, filterToSqlCondition, makeSqlQuery, parseUrl, type NucleotideFilterModel, filterToUrl, type StatisticsSettingsModel, statPresets, type StatPanelSettingsModel, statsToUrl, getDataSourceTable, makeDifferentialSqlQuerySingleTable, makeDifferentialSqlQuery, type ComparisonMode, type DetailModalViewModel } from '$lib/dbModels.js';
 	import { parsePairingType, type NucleotideId, type PairId, type PairingInfo, type HydrogenBondInfo, tryParsePairingType, type PairingFamily, normalizePairType } from '$lib/pairing.js';
-	import { Modal } from 'svelte-simple-modal';
+	import { Modal, type Context } from 'svelte-simple-modal';
 	import type { AsyncDuckDBConnection } from '@duckdb/duckdb-wasm';
 	import { AsyncLock } from '$lib/lock.js';
   import * as db from '$lib/dbInstance';
@@ -15,6 +15,9 @@
 	import StatsPanel from '$lib/components/StatsPanel.svelte';
   import _ from 'lodash'
 	import OverviewTable from '$lib/components/OverviewTable.svelte';
+	import DetailModal from '$lib/components/DetailModal.svelte';
+	import { getContext } from 'svelte';
+	import ContextHack from '$lib/components/ContextHack.svelte';
 
   let selectedFamily: string | undefined
   let selectedPairing: string | undefined
@@ -29,6 +32,10 @@
     enabled: false,
     panels: _.cloneDeep([ statPresets.histL, statPresets.histDA, statPresets.histAA ])
   }
+
+  let modalContext: Context
+  
+  let detailModal : undefined | DetailModalViewModel = undefined
 
   let lastUrlUpdate = 0
 
@@ -391,11 +398,24 @@
       ].join(', ')
   }
 
+  function showDetailModal(d: DetailModalViewModel) {
+    console.log("Opening modal", d)
+    detailModal = d
+    modalContext.open(DetailModal, {pair: d.pair, imageUrl: d.imgUrl, videoUrl: d.videoUrl, rotImageUrl: d.rotImgUrl, filter }, {
+      classContent: "smodal-content",
+      styleWindow: {
+        width: "80vw",
+      }
+    })
+  }
+
   // const imgDir = "http://[2a01:4f8:c2c:bb6c:4::8]:12345/"
   // const imgDir = base+"/img"
 </script>
 
 <Modal>
+
+  <ContextHack name="simple-modal" bind:value={modalContext} />
 
 <div class="selector buttons has-addons is-centered are-small" style="margin-bottom: 0px">
   {#each db.pairFamilies as family}
@@ -571,7 +591,8 @@
     {/if}
   {/if}
 {/await}
-<PairImages pairs={results} rootImages={db.imgDir} imgAttachement={filter.rotX ? "-rotX.png" : ".png"} videoAttachement=".webm" videoOnHover={!!filter.rotX} />
+<PairImages pairs={results} rootImages={db.imgDir} rotImg={filter.rotX} imgAttachement=".png" videoAttachement=".webm" videoOnHover={!!filter.rotX}
+  onClick={d => showDetailModal(d)} />
 {#if results && resultsCount != results.length && resultsCount > 0}
   <div style="margin: 100px; text-align: center">
     <!-- <p>Loading more... than 100 items is not implemented at the moment</p> -->

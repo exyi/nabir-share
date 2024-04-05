@@ -10,6 +10,7 @@ import dataclasses
 from requests import HTTPError
 import multiprocessing
 import scipy.spatial
+from scipy.spatial.transform import Rotation
 from pair_csv_parse import scan_pair_csvs
 import pdb_utils
 import pair_defs as pair_defs
@@ -466,16 +467,22 @@ class PairMetric: # "interface"
 def get_C1_N_yaw_pitch_roll(rot1: np.ndarray, rot2: np.ndarray) -> Tuple[float, float, float]:
     matrix = rot1.T @ rot2
     # https://stackoverflow.com/a/37558238
-    yaw = math.degrees(math.atan2(matrix[1, 0], matrix[0, 0]))
-    pitch = math.degrees(math.atan2(-matrix[2, 0], math.sqrt(matrix[2, 1]**2 + matrix[2, 2]**2)))
-    roll = math.degrees(math.atan2(matrix[2, 1], matrix[2, 2]))
+    # yaw = math.degrees(math.atan2(matrix[1, 0], matrix[0, 0]))
+    # pitch = math.degrees(math.atan2(-matrix[2, 0], math.sqrt(matrix[2, 1]**2 + matrix[2, 2]**2)))
+    # roll = math.degrees(math.atan2(matrix[2, 1], matrix[2, 2]))
+
+    # this function probably the intuitive representation, as it corresponds to:
+    # In [57]: Rotation.from_matrix(Rz(0.33) @ Ry(0.44) @ Rx(0.55)).as_euler("ZYX")
+    # Out[57]: array([0.33, 0.44, 0.55])
+    yaw, pitch, roll = np.degrees(Rotation.from_matrix(matrix).as_euler("ZYX"))
     return yaw, pitch, roll
 def get_C1_N_euler_angles(rot1: np.ndarray, rot2: np.ndarray) -> Tuple[float, float, float]:
     matrix = rot1.T @ rot2
     # https://en.wikipedia.org/wiki/Rotation_formalisms_in_three_dimensions#Rotation_matrix_%E2%86%92_Euler_angles_(z-x-z_extrinsic)
-    eu1 = math.degrees(math.atan2(matrix[2, 0], matrix[2, 1]))
-    eu2 = math.degrees(math.acos(matrix[2, 2]))
-    eu3 = -math.degrees(math.atan2(matrix[0, 2], matrix[1, 2]))
+    # eu1 = math.degrees(math.atan2(matrix[2, 0], matrix[2, 1]))
+    # eu2 = math.degrees(math.acos(matrix[2, 2]))
+    # eu3 = -math.degrees(math.atan2(matrix[0, 2], matrix[1, 2]))
+    eu1, eu2, eu3 = np.degrees(Rotation.from_matrix(matrix).as_euler("zxz"))
     return eu1, eu2, eu3
 
 T = TypeVar('T')
@@ -590,12 +597,27 @@ class EulerAngleMetrics(PairMetric):
         else:
             return self.function(rot_trans1.rotation, -rot_trans2.rotation)
 
+class TranslationMetrics(PairMetric):
+    """
+    x, y, z coordinates in the other residue C1' - N1/N9 coordinate system
+    """
+    def __init__(self, reference: Literal[1, 2]):
+        self.reference = reference
+        self.columns = np.char.add(["x", "y", "z"], str(reference))
+    def get_values(self, pair: PairInformation) -> Sequence[float | None]:
+        ref, other = (pair.rot_trans1, pair.rot_trans2) if self.reference == 1 else (pair.rot_trans1, pair.rot_trans2)
+        if ref is None or other is None:
+            return [ None ] * 3
+        return list(ref.rotation @ (other.translation - ref.translation))
+
 class StandardMetrics:
     Coplanarity = CoplanarityEdgeMetrics()
     Isostericity = IsostericityCoreMetrics()
     EulerClassic = EulerAngleMetrics(["euler_phi", "euler_theta", "euler_psi"], get_C1_N_euler_angles, False)
     YawPitchRoll = EulerAngleMetrics(["yaw1", "pitch1", "roll1"], get_C1_N_yaw_pitch_roll, False)
     YawPitchRoll2 = EulerAngleMetrics(["yaw2", "pitch2", "roll2"], get_C1_N_yaw_pitch_roll, True)
+    Translation1 = TranslationMetrics(1)
+    Translation2 = TranslationMetrics(2)
 
 class RMSDToIdealMetric(PairMetric):
     def __init__(self, name, ideal: dict[pair_defs.PairType, PairInformation],
@@ -1132,7 +1154,9 @@ def main(pool: Union[Pool, MockPool], args):
         StandardMetrics.Isostericity,
         StandardMetrics.EulerClassic,
         StandardMetrics.YawPitchRoll,
-        StandardMetrics.YawPitchRoll2
+        StandardMetrics.YawPitchRoll2,
+        StandardMetrics.Translation1,
+        StandardMetrics.Translation2,
     ]
     if args.reference_basepairs:
         print("Loading metadata from ", args.reference_basepairs)

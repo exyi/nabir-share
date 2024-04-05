@@ -4,14 +4,18 @@
 	import type { NucleotideId, PairId, PairingInfo } from "$lib/pairing";
 	import _ from "lodash";
 
-    export let imageUrl: string
-    export let videoUrl: string
+    export let imageUrl: string | undefined
+    export let rotImageUrl: string | undefined
+    export let videoUrl: string | undefined
     export let pair: PairingInfo
     export let filter: NucleotideFilterModel | undefined = undefined
 
+    let videoError = false
+    $: { videoUrl; videoError = false }
+
     function getRange(column: string) : NumRange | undefined {
         if (!filter) return undefined
-        if (column in filter?.other_column_range) {
+        if (filter.other_column_range && column in filter.other_column_range) {
             return filter.other_column_range[column]
         }
         if (column in filter) {
@@ -59,10 +63,10 @@
         const inRange = isOutOfRange(value, range)
 
         if (inRange === true) {
-            return `Value ${value?.toFixed(2)} is within range ${range.min?.toFixed(2)}..${range.max?.toFixed(2)}`
+            return `Value ${value?.toFixed(2)} is within range ${range.min?.toFixed(2) ?? '-∞'}..${range.max?.toFixed(2) ?? '∞'}`
         }
         if (inRange === false) {
-            return `Value ${value?.toFixed(2)} is outside range ${range.min?.toFixed(2)}..${range.max?.toFixed(2)}`
+            return `Value ${value?.toFixed(2)} is outside range ${range.min?.toFixed(2) ?? '-∞'}..${range.max?.toFixed(2) ?? '∞'}`
         }
         return "???"
     }
@@ -140,15 +144,17 @@
 <div>
     <div class="imgpane">
         <img src={imageUrl} alt='x' />
-        {#if videoUrl}
-            <video src={videoUrl} autoplay muted loop controls />
+        {#if videoUrl && !videoError}
+            <video src={videoUrl} autoplay muted loop controls on:error={() => { videoError = true }} />
+        {:else if rotImageUrl}
+            <img src={rotImageUrl} alt='' />
         {/if}
     </div>
     <div>
         <h4>PyMol script<span style="font-size: 1rem; font-weight: 400"> &nbsp;&nbsp;- copy and paste into PyMol command line</span></h4>
         <pre>{generatePymolScript(pair.id).join("\n")}</pre>
     </div>
-    <div style="display: flex; flex-direction: row;justify-content: space-evenly">
+    <div style="display: flex; flex-direction: row; justify-content: space-evenly; gap: 2rem">
     {#if pair.hbonds}
         <table class="table is-narrow is-striped" style="width: fit-content">
             <tr>
@@ -162,8 +168,9 @@
                 {#each pair.hbonds as hb, i}
                     {@const range = filter?.bond_length?.[i]}
                     <td class:filter-pass={isOutOfRange(hb.length, range) === true}
-                        class:filter-false={isOutOfRange(hb.length, range) === false}>
-                        {hb.length?.toFixed(2)} Å</td>
+                        class:filter-false={isOutOfRange(hb.length, range) === false}
+                        title={getRangeValueTitle(hb.length, range)}>
+                        {hb.length == null ? 'NULL' : hb.length?.toFixed(2) + " Å"}</td>
                 {/each}
             </tr>
             <tr>
@@ -171,8 +178,9 @@
                 {#each pair.hbonds as hb, i}
                     {@const range = filter?.bond_donor_angle?.[i]}
                     <td class:filter-pass={isOutOfRange(hb.donorAngle, range) === true}
-                        class:filter-false={isOutOfRange(hb.donorAngle, range) === false}>
-                        {hb.donorAngle?.toFixed(0)}°
+                        class:filter-fail={isOutOfRange(hb.donorAngle, range) === false}
+                        title={getRangeValueTitle(hb.donorAngle, range)}>
+                        {hb.donorAngle == null ? 'NULL' : hb.donorAngle?.toFixed(0)+"°"}
                     </td>
                 {/each}
             </tr>
@@ -181,8 +189,9 @@
                 {#each pair.hbonds as hb, i}
                     {@const range = filter?.bond_acceptor_angle?.[i]}
                     <td class:filter-pass={isOutOfRange(hb.acceptorAngle, range) === true}
-                        class:filter-false={isOutOfRange(hb.acceptorAngle, range) === false}>
-                        {hb.acceptorAngle?.toFixed(0)}°
+                        class:filter-fail={isOutOfRange(hb.acceptorAngle, range) === false}
+                        title={getRangeValueTitle(hb.acceptorAngle, range)}>
+                        {hb.acceptorAngle == null ? 'NULL' : hb.acceptorAngle?.toFixed(0)+"°"}
                     </td>
                 {/each}
             </tr>
@@ -191,8 +200,9 @@
                 {#each pair.hbonds as hb, i}
                     {@const range = filter?.bond_plane_angle1?.[i]}
                     <td class:filter-pass={isOutOfRange(hb.OOPA1, range) === true}
-                        class:filter-fail={isOutOfRange(hb.OOPA1, range) === false}>
-                        {hb.OOPA1?.toFixed(0)}°</td>
+                        class:filter-fail={isOutOfRange(hb.OOPA1, range) === false}
+                        title={getRangeValueTitle(hb.OOPA1, range)}>
+                        {hb.OOPA1 == null ? 'NULL' : hb.OOPA1?.toFixed(0)+"°"}</td>
                 {/each}
             </tr>
             <tr>
@@ -200,8 +210,9 @@
                 {#each pair.hbonds as hb, i}
                     {@const range = filter?.bond_plane_angle2?.[i]}
                     <td class:filter-pass={isOutOfRange(hb.OOPA2, range) === true}
-                        class:filter-false={isOutOfRange(hb.OOPA2, range) === false}>
-                        {hb.OOPA2?.toFixed(0)}°
+                        class:filter-fail={isOutOfRange(hb.OOPA2, range) === false}
+                        title={getRangeValueTitle(hb.OOPA2, range)}>
+                        {hb.OOPA2 == null ? 'NULL' : hb.OOPA2?.toFixed(0)+"°"}
                     </td>
                 {/each}
             </tr>
@@ -266,10 +277,12 @@
                 <td><b><code>{r.colName}</code></b></td>
                 <td>{r.label ?? ''}</td>
                 <td colspan={r.colName == 'structure_name' ? 2 : 1}
+                    style="font-weigth: 700; text-align: right;"
                     class:filter-pass={isOutOfRange(r.value, filterRange) === true}
-                    class:filter-false={isOutOfRange(r.value, filterRange) === false}
-                    title={getRangeValueTitle(r.value, filterRange)}>
-                    <strong>{typeof r.value == "number" ? r.value.toPrecision(5) : r.value == null ? "" : "" + r.value}</strong>
+                    class:filter-fail={isOutOfRange(r.value, filterRange) === false}
+                    title={getRangeValueTitle(r.value, filterRange)}
+                    data-type={typeof r.value}>
+                    {typeof r.value == "number" ? r.value.toFixed(3) : r.value == null ? "" : "" + r.value}
                 </td>
                 <td><i>{r.tooltip ?? ''}</i></td>
             </tr>

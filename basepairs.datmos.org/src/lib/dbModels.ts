@@ -1,5 +1,6 @@
 import type metadataModule from './metadata'
 import _ from 'lodash'
+import type { PairingInfo } from './pairing'
 
 
 export type NumRange = {
@@ -59,6 +60,14 @@ export type VariableModel = {
     tooltip?: string
     filterSql?: string
     filterId?: string
+}
+
+export type DetailModalViewModel = {
+    pair: PairingInfo
+    imgUrl?: string
+    rotImgUrl?: string
+    videoUrl?: string
+
 }
 
 export function defaultFilter(datasource: NucleotideFilterModel["datasource"] = undefined): NucleotideFilterModel {
@@ -299,10 +308,10 @@ export function makeDifferentialSqlQuery(queryCurrent: string, queryBaseline: st
         }
     }
     if (limit) {
-        query += `LIMIT ${limit}`
+        query += `\nLIMIT ${limit}`
     }
     if (order) {
-        query += `ORDER BY ${orderToExpr(order)}`
+        query += `\nORDER BY ${orderToExpr(order)}`
     }
     return query
 }
