@@ -134,6 +134,8 @@ class TranslationThenRotation:
     def __post_init__(self):
         assert self.rotation.shape == (3, 3)
         assert self.translation.shape == (3,)
+        assert np.isclose(np.linalg.det(self.rotation), 1, atol=1e-4)
+
 
 @dataclass
 class TranslationRotationTranslation:
@@ -144,6 +146,7 @@ class TranslationRotationTranslation:
         assert self.rotation.shape == (3, 3)
         assert self.translation1.shape == (3,)
         assert self.translation2.shape == (3,)
+        assert np.isclose(np.linalg.det(self.rotation), 1, atol=1e-4)
 
 @dataclass
 class ResiduePosition:
@@ -463,6 +466,9 @@ class PairMetric: # "interface"
                 return list(itertools.chain(*[m.get_values(pair) for m in metrics]))
         return ConcatPairMetric()
 
+def Rx(θ): return np.array([ [1, 0, 0], [0, np.cos(θ), -np.sin(θ)], [0, np.sin(θ), np.cos(θ) ]])
+def Rz(θ): return np.array([[ np.cos(θ), -np.sin(θ), 0],[ np.sin(θ), np.cos(θ), 0],[ 0, 0, 1] ])
+def Ry(θ): return np.array([[ np.cos(θ), 0, np.sin(θ)],[ 0, 1, 0],[ -np.sin(θ), 0, np.cos(θ)]])
 
 def get_C1_N_yaw_pitch_roll(rot1: np.ndarray, rot2: np.ndarray) -> Tuple[float, float, float]:
     matrix = rot1.T @ rot2
@@ -475,6 +481,8 @@ def get_C1_N_yaw_pitch_roll(rot1: np.ndarray, rot2: np.ndarray) -> Tuple[float, 
     # In [57]: Rotation.from_matrix(Rz(0.33) @ Ry(0.44) @ Rx(0.55)).as_euler("ZYX")
     # Out[57]: array([0.33, 0.44, 0.55])
     yaw, pitch, roll = np.degrees(Rotation.from_matrix(matrix).as_euler("ZYX"))
+
+    assert np.allclose(matrix, Rz(math.radians(yaw)) @ Ry(math.radians(pitch)) @ Rx(math.radians(roll)), atol=1e-5)
     return yaw, pitch, roll
 def get_C1_N_euler_angles(rot1: np.ndarray, rot2: np.ndarray) -> Tuple[float, float, float]:
     matrix = rot1.T @ rot2
@@ -592,10 +600,11 @@ class EulerAngleMetrics(PairMetric):
         rot_trans1, rot_trans2 = pair.rot_trans1, pair.rot_trans2
         if rot_trans1 is None or rot_trans2 is None:
             return [ None ] * len(self.columns)
+        flip = np.diag([-1, -1, 1])
         if self.swap:
-            return self.function(rot_trans2.rotation, -rot_trans1.rotation)
+            return self.function(rot_trans2.rotation, rot_trans1.rotation @ flip)
         else:
-            return self.function(rot_trans1.rotation, -rot_trans2.rotation)
+            return self.function(rot_trans1.rotation, rot_trans2.rotation @ flip)
 
 class TranslationMetrics(PairMetric):
     """
@@ -841,12 +850,12 @@ def get_residue(structure: Bio.PDB.Structure.Structure, strdata: Optional[Callab
     return AltResidue(found, alt)
 
 
-def get_stats_for_csv(df_: pl.DataFrame, structure: Bio.PDB.Structure.Structure, strdata: Callable[[], pdb_utils.StructureData], global_pair_type: Optional[str], metrics: list[PairMetric]) -> Iterator[tuple[int, list[Optional[HBondStats]], list[Optional[float]]]]:
+def get_stats_for_csv(df_: pl.DataFrame, structure: Bio.PDB.Structure.Structure, strdata: Callable[[], pdb_utils.StructureData], metrics: list[PairMetric]) -> Iterator[tuple[int, list[Optional[HBondStats]], list[Optional[float]]]]:
     """
     Add columns calculated from PDB structure
     """
     df = df_.with_row_count()
-    pair_type_col = df["family" if "family" in df.columns else "type"] if global_pair_type is None else itertools.repeat(global_pair_type)
+    pair_type_col = df["family" if "family" in df.columns else "type"]
     metric_columns = [ tuple(m.get_columns()) for m in metrics ]
     for (pair_family, i, pdbid, model, chain1, res1, ins1, alt1, symop1, chain2, res2, ins2, alt2, symop2) in zip(pair_type_col, df["row_nr"], df["pdbid"], df["model"], df["chain1"], df["nr1"], df["ins1"], df["alt1"], df["symmetry_operation1"], df["chain2"], df["nr2"], df["ins2"], df["alt2"], df["symmetry_operation2"]):
         if (chain1, res1, ins1, alt1) == (chain2, res2, ins2, alt2):
@@ -925,16 +934,16 @@ def remove_duplicate_pairs_phase1(df: pl.DataFrame):
         return df
 
     df = core(df, family_col.str.contains("^(?i)n?(c|t)(SH|HW|SW|BW)a?$"))
-    print(f"Removed duplicates - family orientation {original_len} -> {len(df)}")
+    # print(f"Removed duplicates - family orientation {original_len} -> {len(df)}")
 
     df = core(df, family_col.str.contains("^n?[ct][whsb][WHSB]a?$"))
-    print(f"Removed duplicates - FR3D small letter is second {original_len} -> {len(df)}")
+    # print(f"Removed duplicates - FR3D small letter is second {original_len} -> {len(df)}")
 
     base_ordering = { 'A': 1, 'G': 2, 'C': 3, 'U': 4, 'T': 4 }
     df = core(df,
                 family_col.str.to_lowercase().is_in(["tss", "css"]).not_() &
                 (pl.col("res1").replace(resname_map).replace(base_ordering, default=0) > pl.col("res2").replace(resname_map).replace(base_ordering, default=0)))
-    print(f"Removed duplicates - base ordering {original_len} -> {len(df)}")
+    # print(f"Removed duplicates - base ordering {original_len} -> {len(df)}")
 
     assert len(df) >= original_len / 2
 
@@ -1025,7 +1034,7 @@ def backbone_columns(df: pl.DataFrame, structure: Optional[Bio.PDB.Structure.Str
 
 
 
-def export_stats_csv(pdbid, df: pl.DataFrame, add_metadata_columns: bool, pair_type: Optional[str], max_bond_count: int, metrics: list[PairMetric]) -> Tuple[str, pl.DataFrame, np.ndarray]:
+def export_stats_csv(pdbid, df: pl.DataFrame, add_metadata_columns: bool, max_bond_count: int, metrics: list[PairMetric]) -> Tuple[str, pl.DataFrame, np.ndarray]:
     bond_params = [ x.name for x in dataclasses.fields(HBondStats) ]
     valid = np.zeros(len(df), dtype=np.bool_)
     hb_columns: list[pl.Series] = [
@@ -1053,7 +1062,7 @@ def export_stats_csv(pdbid, df: pl.DataFrame, add_metadata_columns: bool, pair_t
     structure_data = lazy(lambda: pdb_utils.load_sym_data(None, pdbid))
 
     if structure is not None:
-        for i, hbonds, metric_values in get_stats_for_csv(df, structure, structure_data, pair_type, metrics):
+        for i, hbonds, metric_values in get_stats_for_csv(df, structure, structure_data, metrics):
             valid[i] = True
             for j, s in enumerate(hbonds):
                 if s is None:
@@ -1114,11 +1123,12 @@ def load_inputs(pool: Union[Pool, MockPool], args) -> pl.DataFrame:
     else:
         raise ValueError("Unknown input file type")
     if "type" not in df.columns and "family" not in df.columns:
-        if not args.pair_type:
-            raise ValueError("Input does not contain family column and --pair-type was not specified")
+        if not args.override_pair_type:
+            raise ValueError("Input does not contain family column and --override-pair-type was not specified")
+    if args.override_pair_type:
         df = df.select(
-            pl.lit(args.pair_type).alias("type"),
-            pl.lit(args.pair_type).alias("family"),
+            pl.lit(args.override_pair_type).alias("type"),
+            pl.lit(args.override_pair_type).alias("family"),
             pl.col("*"))
     return df
 
@@ -1130,6 +1140,9 @@ def validate_missing_columns(chunks: list[pl.DataFrame]):
 
 def main(pool: Union[Pool, MockPool], args):
     df = load_inputs(pool, args)
+    if args.export_only:
+        print("Exporting metadata only")
+        return save_output(args, df)
     raw_df_len = len(df)
     print(f"Loaded {raw_df_len} raw basepairs")
     if args.disable_cross_symmetry:
@@ -1172,7 +1185,7 @@ def main(pool: Union[Pool, MockPool], args):
         ])
 
     processes.append([ # process per PDB structure
-        pool.apply_async(export_stats_csv, args=[pdbid, group, args.metadata, args.pair_type, max_bond_count, pair_metrics])
+        pool.apply_async(export_stats_csv, args=[pdbid, group, args.metadata, max_bond_count, pair_metrics])
         for (pdbid,), group in groups # type: ignore
     ])
     if args.dssr_binary is not None:
@@ -1216,7 +1229,10 @@ def main(pool: Union[Pool, MockPool], args):
     validate_missing_columns(result_chunks)
     df = pl.concat(result_chunks)
     df = postfilter(df)
-    df = df.sort('pdbid', 'model', 'nr1', 'nr2')
+    return save_output(args, df)
+
+def save_output(args, df):
+    df = df.sort('pdbid', 'model', 'chain1', 'nr1', 'chain2', 'nr2')
     if args.output != "/dev/null":
         df.write_csv(args.output if args.output.endswith(".csv") else args.output + ".csv")
         df.write_parquet(args.output + ".parquet")
@@ -1238,6 +1254,7 @@ if __name__ == "__main__":
     parser.add_argument("--pdbcache", nargs="+", help="Directories to search for PDB files in order to avoid downloading. Last directory will be written to, if the structure is not found and has to be downloaded.")
     parser.add_argument("--output", "-o", required=True, help="Output CSV/Parquet file name")
     parser.add_argument("--threads", type=int, default=1, help="Maximum parallelism - number of worker processes to spawn")
+    parser.add_argument("--export-only", default=False, action="store_true", help="Only re-export the input as CSV+Parquet files, do not calculate anything")
     parser.add_argument("--metadata", type=bool, default=True, help="Add deposition_date, resolution and structure_method columns")
     parser.add_argument("--dssr-binary", type=str, help="If specified, DSSR --analyze will be invoked for each structure and its results stored as 'dssr_' prefixed columns")
     parser.add_argument("--filter", default=False, action="store_true", help="Filter out rows for which the values could not be calculated")
@@ -1246,7 +1263,7 @@ if __name__ == "__main__":
     parser.add_argument("--dedupe", default=False, action="store_true", help="Remove duplicate pairs, keep the one with shorter bonds or lower chain1,nr1")
     parser.add_argument("--reference-basepairs", type=str, help="output of gen_histogram_plots.py with the 'nicest' basepairs, will be used as reference for RMSD calculation")
     parser.add_argument("--disable-cross-symmetry", default=False, action="store_true", help="Do not calculate pairs in different Asymmetrical Units")
-    parser.add_argument("--pair-type", type=str, required=False)
+    parser.add_argument("--override-pair-type", type=str, required=False, help="Ignore the pair type from the input and assume the specified one instead.")
     args = parser.parse_args()
 
     for x in args.pdbcache or []:

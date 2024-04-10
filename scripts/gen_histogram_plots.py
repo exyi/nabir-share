@@ -897,7 +897,7 @@ def create_pair_image(row: pl.DataFrame, output_dir: str, pair_type: PairType) -
     print(p.stderr.decode('utf-8'))
     raise ValueError(f"Could not find PyMOL generated image file")
 
-def reexport_df(df: pl.DataFrame, columns):
+def reexport_df(df: pl.DataFrame, columns, drop: list[str] = []):
     df = df.with_columns(
         is_some_quality.alias("jirka_approves"),
         *[
@@ -906,6 +906,7 @@ def reexport_df(df: pl.DataFrame, columns):
         ]
     )
     df = df.drop([col for col in df.columns if re.match(r"[DR]NA-(0-1[.]8|1[.]8-3[.]5)(-r\d+)?", col)])
+    df = df.drop([col for col in df.columns if col.startswith('^') in drop])
     # round float columns
     df = df.with_columns([
         pl.col(c).round_sig_figs(5).cast(pl.Float32).alias(c) for c in df.columns if df[c].dtype == pl.Float64 or df[c].dtype == pl.Float32
@@ -1032,11 +1033,13 @@ def calculate_boundaries(df: pl.DataFrame, pair_type: PairType):
         
         if is_angular_modular(col):
             return pl.Series(
-                list(angular_modular_minmax(df[col].drop_nulls(), percentiles=(1, 99)) or []),
+                list(angular_modular_minmax(df[col].drop_nulls()) or []),
+                # list(angular_modular_minmax(df[col].drop_nulls(), percentiles=(1, 99)) or []),
                 dtype=pl.Float32
             )
 
-        return pl.Series([df[col].quantile(0.001, "lower"), df[col].quantile(0.999, "higher")], dtype=pl.Float32)
+        # return pl.Series([df[col].quantile(0.001, "lower"), df[col].quantile(0.999, "higher")], dtype=pl.Float32)
+        return pl.Series([df[col].min(), df[col].max()], dtype=pl.Float32)
 
     boundaries = pl.DataFrame({
         "family_id": [ pt_family_dict.get(pair_type.type.lower(), 99) ] * 2,
@@ -1060,6 +1063,7 @@ def main(argv):
     parser.add_argument("--include-nears", default=False, action="store_true", help="If FR3D is run in basepair_detailed mode, it reports near basepairs (denoted as ncWW). By default, we ignore them, but this option includes them in the output.")
     parser.add_argument("--filter-pair-type", default=None, help="Comma separated list of pair types to include in the result (formatted as cWW-AC). By default all are included.")
     parser.add_argument("--skip-kde", default=False, action="store_true", help="")
+    parser.add_argument("--drop-columns", default=[], nargs="*", help="remove the specified columns from the reexport output (regex supported when in ^...$)")
     parser.add_argument("--output-dir", "-o", required=True, help="Output directory")
     args = parser.parse_args(argv)
 
@@ -1204,8 +1208,8 @@ def main(argv):
                 pair_type
             ))
         if args.reexport == "partitioned":
-            reexport_df(df, stat_columns or []).write_parquet(os.path.join(args.output_dir, f"{pair_type.normalize_capitalization()}.parquet"))
-            reexport_df(df.filter(is_some_quality), stat_columns or []).write_parquet(os.path.join(args.output_dir, f"{pair_type.normalize_capitalization()}-filtered.parquet"))
+            reexport_df(df, stat_columns or [], drop=args.drop_columns).write_parquet(os.path.join(args.output_dir, f"{pair_type.normalize_capitalization()}.parquet"))
+            reexport_df(df.filter(is_some_quality), stat_columns or [], drop=args.drop_columns).write_parquet(os.path.join(args.output_dir, f"{pair_type.normalize_capitalization()}-filtered.parquet"))
         results.append({
             # "input_file": file,
             "pair_type": pair_type.to_tuple(),
@@ -1230,14 +1234,15 @@ def main(argv):
 
     subprocess.run(["gs", "-dBATCH", "-dNOPAUSE", "-q", "-sDEVICE=pdfwrite", "-dPDFSETTINGS=/prepress", f"-sOutputFile={os.path.join(args.output_dir, 'hbonds-merged.pdf')}", *output_files])
     print("Wrote", os.path.join(args.output_dir, 'hbonds-merged.pdf'))
-    boundaries_df: pl.DataFrame = pl.concat(boundaries).sort("family_id", "bases", "family")
+    boundaries_df: pl.DataFrame = pl.concat(boundaries)
+    boundaries_df = boundaries_df.sort("family_id", "bases", "family", "boundary", descending=[False, False, False, True])
     boundaries_df.write_csv(os.path.join(args.output_dir, "boundaries.csv"))
 
     boundaries_reformat = boundaries_df.group_by("family_id", "family", "bases").agg(*itertools.chain(*[
-        [pl.col(col).min().alias(col + "_min"), pl.col(col).max().alias(col + "_max")]
+        [pl.col(col).filter(pl.col("boundary") == "min").first().alias(col + "_min"), pl.col(col).filter(pl.col("boundary") == "max").first().alias(col + "_max")]
         for col in boundaries_df.columns
         if col not in ["family", "family_id", "bases", "count", "boundary"]
-    ]))
+    ])).sort("family_id", "bases", "family")
     boundaries_reformat.write_csv(os.path.join(args.output_dir, "boundaries2.csv"))
     import xlsxwriter
     with xlsxwriter.Workbook(os.path.join(args.output_dir, "boundaries.xlsx")) as workbook:
