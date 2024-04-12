@@ -40,7 +40,7 @@
 
         if (range.min != null && range.max != null && range.min > range.max) {
             // range in modular arithmetic (angles -180..180)
-            return value < range.min && value > range.max
+            return value > range.min || value < range.max
         }
 
         if (range?.min != null && value < range.min)
@@ -273,16 +273,17 @@
         <tbody>
         {#each getTableRows(pair?.originalRow) as r}
             {@const filterRange = getRange(r.colName)}
+            {@const val = r.value}
             <tr>
                 <td><b><code>{r.colName}</code></b></td>
                 <td>{r.label ?? ''}</td>
                 <td colspan={r.colName == 'structure_name' ? 2 : 1}
                     style="font-weigth: 700; text-align: right;"
-                    class:filter-pass={isOutOfRange(r.value, filterRange) === true}
-                    class:filter-fail={isOutOfRange(r.value, filterRange) === false}
-                    title={getRangeValueTitle(r.value, filterRange)}
-                    data-type={typeof r.value}>
-                    {typeof r.value == "number" ? r.value.toFixed(3) : r.value == null ? "" : "" + r.value}
+                    class:filter-pass={isOutOfRange(val, filterRange) === true}
+                    class:filter-fail={(val == null && filterRange != null) ||  isOutOfRange(val, filterRange) === false}
+                    title={getRangeValueTitle(val, filterRange)}
+                    data-type={typeof val}>
+                    {typeof val == "number" ? val.toFixed(3) : val == null ? (filterRange != null ? "NULL" : "") : "" + val}
                 </td>
                 <td><i>{r.tooltip ?? ''}</i></td>
             </tr>

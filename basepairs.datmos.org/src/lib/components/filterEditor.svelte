@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { defaultFilter, filterToSqlCondition, getDataSourceTable, makeSqlQuery, type ComparisonMode, type NucleotideFilterModel, type NumRange, orderByOptions } from "$lib/dbModels";
+	import { defaultFilter, filterToSqlCondition, getDataSourceTable, makeSqlQuery, type ComparisonMode, type NucleotideFilterModel, type NumRange, orderByOptions, hasFilters } from "$lib/dbModels";
   import type metadataModule from '$lib/metadata';
   import RangeSlider from 'svelte-range-slider-pips'
   import * as filterfilter from '$lib/predefinedFilterLoader'
@@ -77,7 +77,7 @@
       if (mode=="sql" && !filter.sql) {
         filter = {...filter, sql: currentSqlQuery }
       }
-      if (["ranges", "basic"].includes(mode) && filter.sql.trim() == currentSqlQuery.trim()) {
+      if (["ranges", "basic"].includes(mode) && filter?.sql.trim() == currentSqlQuery.trim()) {
         filter = {...filter, sql: "" }
       }
     }
@@ -199,7 +199,7 @@
         <div class="field">
           <label class="label" for="ntfilter-data-source">Data source</label>
           <div class="control">
-            <div class="select is-small">
+            <div class="select">
               <select
                 value={filter.datasource ?? 'fr3d-f'}
                 id="ntfilter-data-source"
@@ -207,12 +207,12 @@
                   dataSourceChange(ev.currentTarget.value)
                 }}
               >
-                <option value="fr3d-f">FR3D, Representative Set</option>
-                <option value="fr3d">FR3D, entire PDB</option>
-                <option value="fr3d-nf">FR3D with nears, RS</option>
-                <option value="fr3d-n">FR3D with nears, PDB</option>
-                <option value="allcontacts-f">All polar contacts, RS</option>
-                <option value="allcontacts-boundaries-f">All with boundaries, RS</option>
+                <option value="fr3d-f">FR3D</option>
+                <option value="fr3d">FR3D, Entire PDB</option>
+                <!-- <option value="fr3d-nf">FR3D with nears, RS</option>
+                <option value="fr3d-n">FR3D with nears, PDB</option> -->
+                <option value="allcontacts-f">All Polar Contacts</option>
+                <option value="allcontacts-boundaries-f">Pairs Selected by New Parameters</option>
               </select>
             </div>
           </div>
@@ -237,9 +237,9 @@
         <div class="field">
           <label class="label" for="ntfilter-order-by">Order by</label>
           <div class="control">
-            <div class="select is-small">
+            <div class="select">
               <select bind:value={filter.orderBy} id="ntfilter-order-by">
-                {#each getOrderByOptions(filter.orderBy, ["", "pdbidD", "rmsdA", "rmsdD"]) as opt}
+                {#each getOrderByOptions(filter.orderBy, ["", "rmsdA", "rmsdD"]) as opt}
                   <option value={opt.id} title={opt.title}>{opt.label}</option>
                 {/each}
               </select>
@@ -255,7 +255,7 @@
         </div>
       </div>
       <div class="column" style="display: flex; flex-direction: column; justify-content: center">
-        <button class="button is-warning" on:click={() => { filterBaseline = null; filter = defaultFilter() } }>Reset filters</button>
+        <button class="button" class:is-warning={hasFilters(filter, mode)} disabled={!hasFilters(filter, mode)} on:click={() => { filter = defaultFilter() } }>Reset filters</button>
 
         {#if allowFilterBaseline && filterBaseline == null}
           {#if filter.datasource?.startsWith("allcontacts")}
@@ -504,7 +504,7 @@
                   Set to this
                 </button>
                 {:else}
-                  <button class="button is-warning" type="button" on:click={() => setBaseline(null, mode)}
+                  <button class="button is-small is-warning" type="button" on:click={() => setBaseline(null, mode)}
                     title="Exits comparison mode, removed the baseline">
                     ❌ Reset
                   </button>

@@ -54,6 +54,17 @@ export function toNtFilter(allLimits: FilterLimits, pairType: string, baseFilter
 
     for (const [column, [min, max]] of Object.entries(limits)) {
         const range: NumRange | undefined = min == null && max == null ? undefined : { min, max }
+        // extend the range by 0.01
+        if (range && range.min != null && range.max != null && range.min > range.max) {
+            // inverted range
+            range.min += 0.02
+            range.max -= 0.02
+        } else {
+            if (range?.min != null)
+                range.min -= 0.02
+            if (range?.max != null)
+                range.max += 0.02
+        }
         if (/^hb_\d/.test(column)) {
             const [_, hbIndex, hbParam] = /hb_(\d+)_(.+)/.exec(column)
             const hb = Number(hbIndex)

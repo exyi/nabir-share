@@ -219,8 +219,8 @@ export const orderByOptions = [
     { id: "modedevD", expr: "-mode_deviations", title: "DESCENDING - worst to best - Number of standard deviations between the H-bond parameters and the modes (peaks) calculated from Kernel Density Estimate. Use to list &quot;nicest&quot; pairs and avoid secondary modes.", label: "Deviation from KDE mode ↑" },
     { id: "LLD", expr: "-log_likelihood", title: "↑ DESCENDING - best to worst - Multiplied likelihoods of all H-bond parameters in their Kernel Density Estimate distribution. Use to list &quot;nicest&quot; pairs without disqualifying secondary modes.", label: "KDE likelihood ↑" },
     { id: "LLA", expr: "log_likelihood", title: "↓ ASCENDING - best to worst - Multiplied likelihoods of all H-bond parameters in their Kernel Density Estimate distribution. Use to list &quot;nicest&quot; pairs without disqualifying secondary modes.", label: "KDE likelihood ↓" },
-    { id: "rmsdA", expr: "(rmsd_edge1+rmsd_edge2)", title: "↓ ASCENDING - edge RMSD to the 'nicest' basepair", label: "Edge RMSD ↓" },
-    { id: "rmsdD", expr: "(rmsd_edge1+rmsd_edge2) DESC", title: "↑ DESCENDING - edge RMSD to the 'nicest' basepair", label: "Edge RMSD ↑" }
+    { id: "rmsdA", expr: "(rmsd_edge1+rmsd_edge2)", title: "↓ ASCENDING ('best first') - edge RMSD to the 'nicest' basepair", label: "Edge RMSD (best first)" },
+    { id: "rmsdD", expr: "(rmsd_edge1+rmsd_edge2) DESC", title: "↑ DESCENDING ('worst first') - edge RMSD to the 'nicest' basepair", label: "Edge RMSD (worst first)" }
 ]
 
 function orderToExpr(opt: string | null, prefix = '') {
@@ -367,6 +367,14 @@ export function filterToUrl(filter: NucleotideFilterModel, filterBaseline: Nucle
         addFilterParams(params, filterBaseline, filterBaseline.sql ? "sql" : "ranges", 'baseline_')
     }
     return params
+}
+
+export function hasFilters(filter: NucleotideFilterModel, mode: string) {
+    const params = new URLSearchParams()
+    addFilterParams(params, filter, mode)
+    params.delete('ds')
+    params.delete('order')
+    return params.size > 0
 }
 
 export function addFilterParams(params: URLSearchParams, filter: NucleotideFilterModel, mode: string, prefix='') {

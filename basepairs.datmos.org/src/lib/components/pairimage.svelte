@@ -65,7 +65,6 @@
   .pairimage {
     display: flex;
     flex-direction: column;
-    flex-grow: 1;
     border-radius: 15px;
   }
   .pairimage:hover {

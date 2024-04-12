@@ -365,10 +365,10 @@
   }
 
   function getPairTypeList(selectedFamily: string | null) {
-    const isSymetrical = !!selectedFamily && selectedFamily[1] == selectedFamily[2]
+    const isSymmetrical = !!selectedFamily && selectedFamily[1] == selectedFamily[2]
     const allPairTypes = new Set(
       selectedFamily == null ? [] :
-      isSymetrical ? [ 'A-A', 'A-C', 'A-G', 'A-U', 'C-C', 'C-U', 'G-C', 'G-G', 'G-U', 'U-U' ]
+      isSymmetrical ? [ 'A-A', 'A-C', 'A-G', 'A-U', 'C-C', 'C-U', 'G-C', 'G-G', 'G-U', 'U-U' ]
                    : [ 'A-A', 'A-C', 'A-G', 'A-U', 'C-A', 'C-C', 'C-G', 'C-U', 'G-A', 'G-C', 'G-G', 'G-U', 'U-A', 'U-C', 'U-G', 'U-U' ]);
     const pairs =
       db.pairTypes.filter(p => selectedFamily == null || p[0].toLowerCase() == selectedFamily.toLowerCase())
