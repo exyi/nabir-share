@@ -67,9 +67,12 @@ def add_res_filter_columns(df: pl.DataFrame, residue_lists: dict[str, pl.DataFra
     df = df.with_columns(label_condition.alias("label"))
     return df
 
-def _read_inputs(files):
+def _read_inputs(files) -> pl.DataFrame:
     import pair_csv_parse
-    return pl.read_parquet(files[0]) if files[0].endswith(".parquet") else pair_csv_parse.scan_pair_csvs(files, header=False).collect()
+    if files[0].endswith(".parquet"):
+        return pl.concat([pl.read_parquet(f) for f in files ])
+    else:
+        return pair_csv_parse.scan_pair_csvs(files, header=False).collect()
 
 def _stats(df, residue_lists: dict[str, pl.DataFrame]):
     results = {}
