@@ -2,9 +2,9 @@
 	import { defaultFilter, filterToSqlCondition, getDataSourceTable, makeSqlQuery, type ComparisonMode, type NucleotideFilterModel, type NumRange, orderByOptions, hasFilters } from "$lib/dbModels";
   import type metadataModule from '$lib/metadata';
   import RangeSlider from 'svelte-range-slider-pips'
-  import * as filterfilter from '$lib/predefinedFilterLoader'
+  import * as filterLoader from '$lib/predefinedFilterLoader'
 	import RangeEditor from "./RangeEditor.svelte";
-	import _ from "lodash";
+	import _, { slice } from "lodash";
 
     export let filter: NucleotideFilterModel
     export let filterBaseline: NucleotideFilterModel | undefined
@@ -37,13 +37,14 @@
                           f.datasource == "fr3d-nf" ? "FR3D with nears, RS" :
                           f.datasource == "fr3d-n" ? "FR3D with nears, PDB" :
                           f.datasource == "allcontacts-f" ? "All polar contacts, RS" :
+                          f.datasource == "allcontacts-boundaries-f" ? "Pairs Selected by New Parameters, RS" :
                           "dataset???"
       if (clauses.length == 0) return datasetName
 
       return `${datasetName} with other filters`
     }
 
-    function ensureLength(array: NumRange[], index: number) {
+    function ensureLength(array: NumRange[] | any, index: number) {
       while (array.length <= index) {
         array.push({})
       }
@@ -92,7 +93,7 @@
     }
 
     function getOrderByOptions(currentOption: string, allowed: string[] | null) {
-      const virtualOpt = orderByOptions.find(x => x.id == currentOption) ? [] : [{ id: currentOption, expr: currentOption, label: _.truncate(currentOption, {length: 60}), title: "Custom sort expression " + currentOption }]
+      const virtualOpt = orderByOptions.some(x => x.id == currentOption) ? [] : [{ id: currentOption, expr: currentOption, label: _.truncate(currentOption, {length: 60}), title: "Custom sort expression " + currentOption }]
       if (allowed == null) {
         return [...orderByOptions, ...virtualOpt ]
       }
@@ -102,13 +103,11 @@
     }
 
     async function setFr3dObservedBoundaries(sql: boolean) {
-      const f = await filterfilter.defaultFilterLimits.value
-      const newFilter = filterfilter.toNtFilter(f, metadata.pair_type.join("-"), null)
-      const hbLengthLimits = metadata.atoms.map(([_, a, b, __]) =>
-        a.includes("C") || b.includes("C") ? 4 : 3.8)
-      newFilter.bond_length = hbLengthLimits.map(l => ({ min: null, max: l }))
+      const f = await filterLoader.defaultFilterLimits.value
+      const pairType = metadata.pair_type.join("-")
+      const newFilter = filterLoader.addHBondLengthLimits(pairType, filterLoader.toNtFilter(f, pairType, null))
       newFilter.datasource = filter.datasource
-      newFilter.filtered = filter.filtered && !["fr3d-f", "allcontacts-f", "allcontacts-f"].includes(filter.datasource)
+      newFilter.filtered = filter.filtered && !["fr3d-f", "allcontacts-f", "allcontacts-boundaries-f"].includes(filter.datasource)
       if (sql) {
         newFilter.sql = makeSqlQuery(newFilter, getDataSourceTable(newFilter))
       }
@@ -127,13 +126,23 @@
       if (newDS == "fr3d-f" || newDS == null) {
         filter = {...filter, datasource: undefined, filtered: true }
       }
-      else if (newDS == "allcontacts-boundaries-f") {
-        filter = {...filter, datasource: "allcontacts-f", filtered: true }
-        setFr3dObservedBoundaries(false)
-      } else {
+      else {
         const filtered = newDS.endsWith('-f') || newDS.endsWith('-nf')
         filter = {...filter, datasource: newDS as any, filtered: filtered }
       }
+    }
+
+    let hb_params: {k: keyof NucleotideFilterModel, name: string, title: string, step?: number, min?: number, max?: number }[]
+    
+    $: {
+      hb_params = [
+        { k: "bond_length", name: "Length", title: "Length in Å between the donor and acceptor heavy atoms", step: 0.1, min: 0, max: 6 },
+        { k: "bond_acceptor_angle", name: "Acceptor Angle", title: "Angle in degrees between the acceptor, donor and its covalently bound atom.", step: 5, min: 0, max: 180 },
+        { k: "bond_donor_angle", name: "Donor Angle", title: "Angle in degrees between the donor, acceptor and its covalently bound atom", step: 5, min: 0, max: 180 },
+        { k: "bond_plane_angle1", name: "Left Plane Angle", title: "Angle of the left plane with the line connecting the heavy atoms", step: 5, min: -90, max: 90 },
+        { k: "bond_plane_angle2", name: "Right Plane Angle", title: "Angle of the right plane with the line connecting the heavy atoms", step: 5, min: -90, max: 90 }
+      ]
+      hb_params = hb_params.slice(0, filter.bond_plane_angle1.length + filter.bond_plane_angle2.length > 0 ? 5 : 3)
     }
 </script>
 
@@ -239,7 +248,7 @@
           <div class="control">
             <div class="select">
               <select bind:value={filter.orderBy} id="ntfilter-order-by">
-                {#each getOrderByOptions(filter.orderBy, ["", "rmsdA", "rmsdD"]) as opt}
+                {#each getOrderByOptions(filter.orderBy ?? '', ["", "rmsdA", "rmsdD"]) as opt}
                   <option value={opt.id} title={opt.title}>{opt.label}</option>
                 {/each}
               </select>
@@ -279,18 +288,19 @@
     <div class="flex-columns" >
         <div class="column">
           <div class="panel-title"></div>
-          {#each bonds as bond, i}
-            <div class="panel-field">{bond}</div>
+          {#each hb_params as p}
+            <div class="panel-field" title={p.title}><h3>{p.name}</h3></div>
           {/each}
           {#if hasYawPitchRoll}
             <div class="panel-title"></div>
-            <div class="panel-field">Left to right</div>
-            <div class="panel-field">Right to left</div>
+            <div class="panel-title">Left to right</div>
+            <div class="panel-title">Right to left</div>
           {/if}
         </div>
         <div class="column">
-            <h3 class="panel-title" title="Length in Å between the donor and acceptor heavy atoms">Length</h3>
-            {#each bonds as bond, i}
+            <h3 class="panel-title">{bonds[0]}</h3>
+            {#each hb_params as p}
+              {@const i = 0}
               <!-- <div class="panel-field range-slider-wrapper">
                 <RangeSlider min={0} max={6} step={0.1} pushy={true} suffix="Å" float={true}
                             values={[Number(ranges.length[i].min || 0), Number(ranges.length[i].max || 6)]}
@@ -301,10 +311,10 @@
                   <div class="field">
                     <div class="field has-addons">
                       <p class="control">
-                        <input class="input is-small num-input" type="number" step="0.1" min=0 max=6 placeholder="Min" value={filter.bond_length[i]?.min} on:change={ev => { ensureLength(filter.bond_length, i); filter.bond_length[i].min = tryParseNum(ev.currentTarget.value)} }>
+                        <input class="input is-small num-input" type="number" step={p.step} min={p.min} max={p.min} placeholder="Min" value={filter[p.k][i]?.min} on:change={ev => { ensureLength(filter[p.k], i); filter[p.k][i].min = tryParseNum(ev.currentTarget.value)} }>
                       </p>
                       <p class="control">
-                        <input class="input is-small num-input" type="number" step="0.1" min=0 max=6 placeholder="Max" value={filter.bond_length[i]?.max} on:change={ev => { ensureLength(filter.bond_length, i); filter.bond_length[i].max = tryParseNum(ev.currentTarget.value)} }>
+                        <input class="input is-small num-input" type="number" step={p.step} min={p.min} max={p.min} placeholder="Max" value={filter[p.k][i]?.max} on:change={ev => { ensureLength(filter[p.k], i); filter[p.k][i].max = tryParseNum(ev.currentTarget.value)} }>
                       </p>
                     </div>
                   </div>
@@ -329,20 +339,24 @@
             {/if}
         </div>
         <div class="column">
-            <h3 class="panel-title" title="Angle in degrees between the acceptor, donor and its covalently bound atom.">Donor Angle</h3>
-            {#each bonds as bond, i}
-            <div class="panel-field field is-horizontal">
-                <!-- <div class="field-label">Bond {bond}</div> -->
+            <h3 class="panel-title">{bonds[1] ?? ''}</h3>
+            {#each hb_params as p}
+              {@const i = 1}
+              <div class="panel-field field is-horizontal">
+                {#if bonds[1] != null}
                 <div class="field-body">
-                  <div class="field has-addons">
-                    <p class="control">
-                      <input class="input is-small num-input" type="number" step="5" min=0 max=360 placeholder="Min" value={filter.bond_donor_angle[i]?.min} on:change={ev => { ensureLength(filter.bond_donor_angle, i); filter.bond_donor_angle[i].min = tryParseNum(ev.currentTarget.value)} }>
-                    </p>
-                    <p class="control">
-                      <input class="input is-small num-input" type="number" step="5" min=0 max=360 placeholder="Max" value={filter.bond_donor_angle[i]?.max} on:change={ev => { ensureLength(filter.bond_donor_angle, i); filter.bond_donor_angle[i].max = tryParseNum(ev.currentTarget.value)} }>
-                    </p>
+                  <div class="field">
+                    <div class="field has-addons">
+                      <p class="control">
+                        <input class="input is-small num-input" type="number" step={p.step} min={p.min} max={p.min} placeholder="Min" value={filter[p.k][i]?.min} on:change={ev => { ensureLength(filter[p.k], i); filter[p.k][i].min = tryParseNum(ev.currentTarget.value)} }>
+                      </p>
+                      <p class="control">
+                        <input class="input is-small num-input" type="number" step={p.step} min={p.min} max={p.min} placeholder="Max" value={filter[p.k][i]?.max} on:change={ev => { ensureLength(filter[p.k], i); filter[p.k][i].max = tryParseNum(ev.currentTarget.value)} }>
+                      </p>
+                    </div>
                   </div>
                 </div>
+                {/if}
               </div>
             {/each}
             {#if hasYawPitchRoll}
@@ -371,20 +385,24 @@
         </div>
 
         <div class="column">
-            <h3 class="panel-title" title="Angle in degrees between the donor, acceptor and its covalently bound atom">Acceptor Angle</h3>
-            {#each bonds as bond, i}
-            <div class="panel-field field is-horizontal">
-                <!-- <div class="field-label">Bond {bond}</div> -->
+            <h3 class="panel-title">{bonds[2] ?? ''}</h3>
+            {#each hb_params as p}
+              {@const i = 2}
+              <div class="panel-field field is-horizontal">
+                {#if bonds[2] != null}
                 <div class="field-body">
-                  <div class="field has-addons">
-                    <p class="control">
-                      <input class="input is-small num-input" type="number" step="5" min=0 max=360 placeholder="Min" value={filter.bond_acceptor_angle[i]?.min} on:change={ev => { ensureLength(filter.bond_acceptor_angle, i); filter.bond_acceptor_angle[i].min = tryParseNum(ev.currentTarget.value)} }>
-                    </p>
-                    <p class="control">
-                      <input class="input is-small num-input" type="number" step="5" min=0 max=360 placeholder="Max" value={filter.bond_acceptor_angle[i]?.max} on:change={ev => { ensureLength(filter.bond_acceptor_angle, i); filter.bond_acceptor_angle[i].max = tryParseNum(ev.currentTarget.value)} }>
-                    </p>
+                  <div class="field">
+                    <div class="field has-addons">
+                      <p class="control">
+                        <input class="input is-small num-input" type="number" step={p.step} min={p.min} max={p.min} placeholder="Min" value={filter[p.k][i]?.min} on:change={ev => { ensureLength(filter[p.k], i); filter[p.k][i].min = tryParseNum(ev.currentTarget.value)} }>
+                      </p>
+                      <p class="control">
+                        <input class="input is-small num-input" type="number" step={p.step} min={p.min} max={p.min} placeholder="Max" value={filter[p.k][i]?.max} on:change={ev => { ensureLength(filter[p.k], i); filter[p.k][i].max = tryParseNum(ev.currentTarget.value)} }>
+                      </p>
+                    </div>
                   </div>
                 </div>
+                {/if}
               </div>
             {/each}
             {#if hasYawPitchRoll}
@@ -410,6 +428,29 @@
               </div>
             {/if}
         </div>
+
+        {#each bonds.slice(3) as additional_bond, rel_i}
+        <div class="column">
+          <h3 class="panel-title">{additional_bond}</h3>
+          {#each hb_params as p}
+            {@const i = 3 + rel_i}
+            <div class="panel-field field is-horizontal">
+              <div class="field-body">
+                <div class="field">
+                  <div class="field has-addons">
+                    <p class="control">
+                      <input class="input is-small num-input" type="number" step={p.step} min={p.min} max={p.min} placeholder="Min" value={filter[p.k][i]?.min} on:change={ev => { ensureLength(filter[p.k], i); filter[p.k][i].min = tryParseNum(ev.currentTarget.value)} }>
+                    </p>
+                    <p class="control">
+                      <input class="input is-small num-input" type="number" step={p.step} min={p.min} max={p.min} placeholder="Max" value={filter[p.k][i]?.max} on:change={ev => { ensureLength(filter[p.k], i); filter[p.k][i].max = tryParseNum(ev.currentTarget.value)} }>
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          {/each}
+          </div>
+        {/each}
 
         <div class="column">
           <div class="control">
@@ -439,15 +480,29 @@
                   }}
                 >
                   <option value="fr3d-f">FR3D, Representative Set</option>
-                  <option value="fr3d">FR3D, entire PDB</option>
+                  <option value="fr3d">FR3D, Entire PDB</option>
                   <option value="fr3d-nf">FR3D with nears, RS</option>
                   <option value="fr3d-n">FR3D with nears, PDB</option>
-                  <option value="allcontacts-f">All polar contacts, RS</option>
-                  <option value="allcontacts-boundaries-f">All with boundaries, RS</option>
+                  <option value="allcontacts-f">All Polar Contacts</option>
+                  <option value="allcontacts-boundaries-f">Pairs Selected by New Parameters</option>
                 </select>
               </div>
             </div>
           </div>
+          {#if filter.datasource == "allcontacts-boundaries-f"}
+            <div class="field">
+              <button class="button is-small" on:click={async ()=> {
+                await setFr3dObservedBoundaries(false)
+                filter = {...filter, datasource: "allcontacts-f" }
+              } }>Edit the selection boundaries</button>
+            </div>
+          {/if}
+          
+          {#if hasFilters(filter, mode)}
+          <div class="field">
+            <button class="button is-small is-warning" on:click={() => { filter = defaultFilter() } }>Reset filters</button>
+          </div>
+          {/if}
 
           {#if [].includes(filter.datasource)}
           <div class="control">
@@ -481,7 +536,7 @@
             <div class="control">
               <div class="select is-small">
                 <select bind:value={filter.orderBy} id="ntfilter-order-by">
-                  {#each getOrderByOptions(filter.orderBy, null) as opt}
+                  {#each getOrderByOptions(filter.orderBy ?? '', null) as opt}
                     <option value={opt.id} title={opt.title}>{opt.label}</option>
                   {/each}
                 </select>
@@ -546,10 +601,13 @@
       {#if allowFilterBaseline}
         <div style="display: flex; align-items: center; gap: 1rem">
         {#if filter.datasource?.startsWith("allcontacts") && metadata != null}
-          <button class="button" type="button" on:click={()=> {
-            setFr3dObservedBoundaries(true)
+          <button class="button" type="button" on:click={async ()=> {
+            await setFr3dObservedBoundaries(true)
+            if (filter.datasource == "allcontacts-boundaries-f") {
+              filter = {...filter, datasource: "allcontacts-f"}
+            }
           } }>
-            Constrain to FR3D observed ranges
+            {#if filter.datasource == "allcontacts-boundaries-f"}Edit the filter boundaries{:else}Constrain to FR3D observed ranges{/if}
           </button>
         {/if}
         {#if filterBaseline == null}

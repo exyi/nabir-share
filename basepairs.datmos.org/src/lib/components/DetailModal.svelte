@@ -2,28 +2,39 @@
 	import { getColumnLabel, hideColumn, longNucleotideNames, type NucleotideFilterModel, type NumRange } from "$lib/dbModels";
 	import metadata from "$lib/metadata";
 	import type { NucleotideId, PairId, PairingInfo } from "$lib/pairing";
+    import * as filterLoader from '$lib/predefinedFilterLoader'
 	import _ from "lodash";
 
     export let imageUrl: string | undefined
     export let rotImageUrl: string | undefined
     export let videoUrl: string | undefined
     export let pair: PairingInfo
+    export let pairType: string
     export let filter: NucleotideFilterModel | undefined = undefined
+    let realFilter: NucleotideFilterModel | undefined = undefined
+    $: {
+        realFilter = filter
+        if (filter.datasource == "allcontacts-boundaries-f") {
+            filterLoader.defaultFilterLimits.value.then(v => {
+                realFilter = filterLoader.addHBondLengthLimits(pairType, filterLoader.toNtFilter(v, pairType, {...filter }))
+            })
+        }
+    }
 
     let videoError = false
     $: { videoUrl; videoError = false }
 
     function getRange(column: string) : NumRange | undefined {
-        if (!filter) return undefined
-        if (filter.other_column_range && column in filter.other_column_range) {
-            return filter.other_column_range[column]
+        if (!realFilter) return undefined
+        if (realFilter.other_column_range && column in realFilter.other_column_range) {
+            return realFilter.other_column_range[column]
         }
-        if (column in filter) {
-            return filter[column]
+        if (column in realFilter) {
+            return realFilter[column]
         }
 
         if (/^C1_C1_(yaw|pitch|roll)\d*/.test(column)) {
-            return filter[column.slice("C1_C1_".length)]
+            return realFilter[column.slice("C1_C1_".length)]
         }
     }
 
@@ -166,9 +177,9 @@
             <tr>
                 <th>Length</th>
                 {#each pair.hbonds as hb, i}
-                    {@const range = filter?.bond_length?.[i]}
+                    {@const range = realFilter?.bond_length?.[i]}
                     <td class:filter-pass={isOutOfRange(hb.length, range) === true}
-                        class:filter-false={isOutOfRange(hb.length, range) === false}
+                        class:filter-fail={isOutOfRange(hb.length, range) === false}
                         title={getRangeValueTitle(hb.length, range)}>
                         {hb.length == null ? 'NULL' : hb.length?.toFixed(2) + " Å"}</td>
                 {/each}
@@ -176,7 +187,7 @@
             <tr>
                 <th>Donor angle</th>
                 {#each pair.hbonds as hb, i}
-                    {@const range = filter?.bond_donor_angle?.[i]}
+                    {@const range = realFilter?.bond_donor_angle?.[i]}
                     <td class:filter-pass={isOutOfRange(hb.donorAngle, range) === true}
                         class:filter-fail={isOutOfRange(hb.donorAngle, range) === false}
                         title={getRangeValueTitle(hb.donorAngle, range)}>
@@ -187,7 +198,7 @@
             <tr>
                 <th>Acceptor angle</th>
                 {#each pair.hbonds as hb, i}
-                    {@const range = filter?.bond_acceptor_angle?.[i]}
+                    {@const range = realFilter?.bond_acceptor_angle?.[i]}
                     <td class:filter-pass={isOutOfRange(hb.acceptorAngle, range) === true}
                         class:filter-fail={isOutOfRange(hb.acceptorAngle, range) === false}
                         title={getRangeValueTitle(hb.acceptorAngle, range)}>
@@ -198,7 +209,7 @@
             <tr>
                 <th>Angle to left plane</th>
                 {#each pair.hbonds as hb, i}
-                    {@const range = filter?.bond_plane_angle1?.[i]}
+                    {@const range = realFilter?.bond_plane_angle1?.[i]}
                     <td class:filter-pass={isOutOfRange(hb.OOPA1, range) === true}
                         class:filter-fail={isOutOfRange(hb.OOPA1, range) === false}
                         title={getRangeValueTitle(hb.OOPA1, range)}>
@@ -208,7 +219,7 @@
             <tr>
                 <th>Angle to right plane</th>
                 {#each pair.hbonds as hb, i}
-                    {@const range = filter?.bond_plane_angle2?.[i]}
+                    {@const range = realFilter?.bond_plane_angle2?.[i]}
                     <td class:filter-pass={isOutOfRange(hb.OOPA2, range) === true}
                         class:filter-fail={isOutOfRange(hb.OOPA2, range) === false}
                         title={getRangeValueTitle(hb.OOPA2, range)}>

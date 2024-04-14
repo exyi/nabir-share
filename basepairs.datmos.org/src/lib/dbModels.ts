@@ -33,7 +33,7 @@ export type NucleotideFilterModel = {
     dna?: true | false | undefined
     orderBy?: string
     filtered: boolean
-    datasource?: "fr3d" | "fr3d-f" | "fr3d-n" | "fr3d-nf" | "allcontacts-f"
+    datasource?: "fr3d" | "fr3d-f" | "fr3d-n" | "fr3d-nf" | "allcontacts-f" | "allcontacts-boundaries-f"
     includeNears?: boolean
     rotX?: boolean
 }
@@ -170,6 +170,8 @@ export function getDataSourceTable(filter: NucleotideFilterModel) {
         return "(select * FROM selectedpair_f UNION ALL BY NAME SELECT * from selectedpair_n where jirka_approves)"
     } else if (filter.datasource == "allcontacts-f") {
         return "selectedpair_allcontacts_f"
+    } else if (filter.datasource == "allcontacts-boundaries-f") {
+        return "selectedpair_allcontacts_boundaries_f"
     }
 }
 

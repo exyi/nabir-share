@@ -21,19 +21,18 @@ async function loadFilterCSV(url) {
             continue
         }
 
-        const family = line[columns.family]
-        const bases = line[columns.bases]
+        const key = `${line[columns.family]}-${line[columns.bases]}`.toLowerCase()
 
-        if (limits[`${family}-${bases}`] != null) {
-            console.warn(`Pair type ${family}-${bases} already defined`)
+        if (limits[key] != null) {
+            console.warn(`Pair type key already defined`)
             continue
         }
-        limits[`${family}-${bases}`] = {}
+        limits[key] = {}
 
         for (const col of limitColumns) {
             const min = line[columns[`${col}_min`]]
             const max = line[columns[`${col}_max`]]
-            limits[`${family}-${bases}`][col] = [!min ? null : Number(min), !max ? null : Number(max)]
+            limits[key][col] = [!min ? null : Number(min), !max ? null : Number(max)]
         }
     }
     return limits
@@ -41,11 +40,19 @@ async function loadFilterCSV(url) {
 
 export const defaultFilterLimits = new Lazy(async () => loadFilterCSV(new URL("filters/fr3d-data-boundaries.csv", assetBaseUri).href))
 
+export function addHBondLengthLimits(pairType: string, baseFilter: NucleotideFilterModel) {
+    pairType = pairType.toLowerCase()
+    const m = metadata.find(m => m.pair_type.join("-").toLowerCase() == pairType)
+    const hbLengthLimits = m.atoms.map(([_, a, b, __]) =>
+        a.includes("C") || b.includes("C") ? 4.01 : 3.81)
+    return { ...baseFilter, bond_length: hbLengthLimits.map(l => ({ min: null, max: l })) }
+}
+
 export function toNtFilter(allLimits: FilterLimits, pairType: string, baseFilter: NucleotideFilterModel | null | undefined): NucleotideFilterModel {
 
     const filter = baseFilter ? { ...baseFilter } : defaultFilter()
 
-    const limits = allLimits[pairType]
+    const limits = allLimits[pairType.toLowerCase()]
     // const meta = metadata.find(m => m.pair_type.join("-").toLowerCase() == pairType.toLowerCase())
     if (!limits) {
         console.warn(`No limits for pair type ${pairType}`)
@@ -55,16 +62,10 @@ export function toNtFilter(allLimits: FilterLimits, pairType: string, baseFilter
     for (const [column, [min, max]] of Object.entries(limits)) {
         const range: NumRange | undefined = min == null && max == null ? undefined : { min, max }
         // extend the range by 0.01
-        if (range && range.min != null && range.max != null && range.min > range.max) {
-            // inverted range
-            range.min += 0.02
-            range.max -= 0.02
-        } else {
-            if (range?.min != null)
-                range.min -= 0.02
-            if (range?.max != null)
-                range.max += 0.02
-        }
+        if (range?.min != null)
+            range.min -= 0.02
+        if (range?.max != null)
+            range.max += 0.02
         if (/^hb_\d/.test(column)) {
             const [_, hbIndex, hbParam] = /hb_(\d+)_(.+)/.exec(column)
             const hb = Number(hbIndex)

@@ -18,9 +18,10 @@
 	import DetailModal from '$lib/components/DetailModal.svelte';
 	import { getContext } from 'svelte';
 	import ContextHack from '$lib/components/ContextHack.svelte';
+  import * as filterLoader from '$lib/predefinedFilterLoader'
 
-  let selectedFamily: string | undefined
-  let selectedPairing: string | undefined
+  let selectedFamily: string | undefined // 'cWW' / 'tWW' / ... / 'tSS'
+  let selectedPairing: string | undefined // 'cWW-A-A' / 'cWW-A-C' / ...
   const totalRowLimit = 30_000
 
   let filterMode: "basic"|"ranges" | "sql" = "basic"
@@ -108,11 +109,13 @@
           console.log("Dropping existing views, switching to ", selectedPairing)
           updateResultsLock.abortRunning()
           await conn.cancelSent()
-          await conn.query(`DROP VIEW IF EXISTS selectedpair`)
-          await conn.query(`DROP VIEW IF EXISTS selectedpair_f`)
-          await conn.query(`DROP VIEW IF EXISTS selectedpair_n`)
-          await conn.query(`DROP VIEW IF EXISTS selectedpair_allcontacts_f`)
-          await conn.query(`DROP VIEW IF EXISTS selectedpair_allcontacts`)
+          // await conn.query(`DROP VIEW IF EXISTS selectedpair`)
+          // await conn.query(`DROP VIEW IF EXISTS selectedpair_f`)
+          // await conn.query(`DROP VIEW IF EXISTS selectedpair_n`)
+          // await conn.query(`DROP VIEW IF EXISTS selectedpair_allcontacts_f`)
+          // await conn.query(`DROP VIEW IF EXISTS selectedpair_allcontacts`)
+          // await conn.query(`DROP VIEW IF EXISTS selectedpair_allcontacts_boundaries_f`)
+          await conn.query(`DROP VIEW IF EXISTS selectedpair; DROP VIEW IF EXISTS selectedpair_f; DROP VIEW IF EXISTS selectedpair_n; DROP VIEW IF EXISTS selectedpair_allcontacts_f; DROP VIEW IF EXISTS selectedpair_allcontacts; DROP VIEW IF EXISTS selectedpair_allcontacts_boundaries_f;`)
           // return Promise.all([
           //   conn.query(`CREATE OR REPLACE VIEW 'selectedpair' AS SELECT * FROM parquet_scan('${selectedPairing}')`),
           //   conn.query(`CREATE OR REPLACE VIEW 'selectedpair_f' AS SELECT * FROM parquet_scan('${selectedPairing}-filtered')`),
@@ -127,6 +130,7 @@
   }
 
   async function ensureViews(conn: AsyncDuckDBConnection, abort: AbortSignal, queryTables: Iterable<string>) {
+    let pairid
     async function addView(pairingType: string | [ PairingFamily, string ] | null | undefined, name: string, file: string) {
       pairingType = tryParsePairingType(pairingType)
       if (pairingType && !metadata.some(m => m.pair_type[0].toLowerCase() == pairingType[0].toLowerCase() && m.pair_type[1].toLowerCase() == pairingType[1].toLowerCase())) {
@@ -152,9 +156,14 @@
       await addView(selectedNorm, 'selectedpair_f', `${selectedNorm}-filtered`)
       tableSet.delete('selectedpair_f')
     }
-    if (tableSet.has('selectedpair_allcontacts_f')) {
+    if (tableSet.has('selectedpair_allcontacts_f') || tableSet.has('selectedpair_allcontacts_boundaries_f')) {
       await addView(selectedNorm, 'selectedpair_allcontacts_f', `${selectedNorm}-filtered-allcontacts`)
       tableSet.delete('selectedpair_allcontacts_f')
+    }
+    if (tableSet.has('selectedpair_allcontacts_boundaries_f')) {
+      const f = filterLoader.addHBondLengthLimits(selectedNorm, filterLoader.toNtFilter(await filterLoader.defaultFilterLimits.value, selectedNorm, defaultFilter()))
+      console.log("boundaries filter: ", f)
+      await conn.query(`CREATE OR REPLACE VIEW 'selectedpair_allcontacts_boundaries_f' AS ${makeSqlQuery(f, 'selectedpair_allcontacts_f')}`)
     }
     if (tableSet.has('selectedpair_n')) {
       await addView(selectedNorm, 'selectedpair_n', `n${selectedNorm}`)
@@ -291,7 +300,7 @@
       }
 
       abort.throwIfAborted()
-      resultsTable = await conn.query(`SELECT * FROM (${sql}) LIMIT ${limit}`)
+      resultsTable = await conn.query(sql.trim().toLowerCase().startsWith('select') ? `SELECT * FROM (${sql}) LIMIT ${limit}` : sql)
       abort.throwIfAborted()
       resultsAgg = {}
       timing.query = performance.now() - startTime
@@ -401,7 +410,7 @@
   function showDetailModal(d: DetailModalViewModel) {
     console.log("Opening modal", d)
     detailModal = d
-    modalContext.open(DetailModal, {pair: d.pair, imageUrl: d.imgUrl, videoUrl: d.videoUrl, rotImageUrl: d.rotImgUrl, filter }, {
+    modalContext.open(DetailModal, {pair: d.pair, imageUrl: d.imgUrl, videoUrl: d.videoUrl, rotImageUrl: d.rotImgUrl, pairType: selectedPairing, filter }, {
       classContent: "smodal-content",
       styleWindow: {
         width: "80vw",
@@ -458,8 +467,8 @@
       }}><b>{selectedFamily == null ? p.family + "-" : ""}{p.bases}</b>{#if m}&nbsp;({m.med_quality + m.high_quality}){/if}</button>
   {/each}
 </div>
-{#if selectedPairing && selectedPairing[1] == selectedPairing[2] && selectedPairing.slice(1) != 'SS'}
-  <div class="buttons-help">The {selectedFamily} family is symmetrical, for example <b>C-A</b> is equivalent to <b>A-C</b></div>
+{#if selectedPairing && selectedPairing[1] == selectedPairing[2] && selectedPairing.slice(1, 3) != 'SS'}
+  <div class="buttons-help">The {selectedFamily} family is symmetrical, <b>{selectedPairing.slice(4)}</b> is equivalent to <b>{selectedPairing.slice(4).split('-').toReversed().join('-')}</b></div>
 {/if}
 {/if}
 <div style="margin-bottom: 1rem"></div>

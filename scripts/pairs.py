@@ -331,7 +331,7 @@ def fit_trans_rot_to_pairs(atom_pairs: Sequence[Tuple[Optional[Bio.PDB.Atom.Atom
     """
     atom_pairs = [ (a, b) for a, b in atom_pairs if a is not None and b is not None ]
     if len(atom_pairs) < 3:
-        raise ResideTransformError(f"Not enough pairs for fitting: {len(atom_pairs)}")
+        raise ResideTransformError(f"Not enough pairs for fitting: {[ (a.id, b.id) for a, b in atom_pairs]}")
     coord_pairs = [ (a.coord, b.coord) for a, b in atom_pairs ]
     m1, m2 = zip(*coord_pairs)
     trans1 = -np.mean(m1, axis=0)
@@ -858,12 +858,10 @@ def get_stats_for_csv(df_: pl.DataFrame, structure: Bio.PDB.Structure.Structure,
     pair_type_col = df["family" if "family" in df.columns else "type"]
     metric_columns = [ tuple(m.get_columns()) for m in metrics ]
     for (pair_family, i, pdbid, model, chain1, res1, ins1, alt1, symop1, chain2, res2, ins2, alt2, symop2) in zip(pair_type_col, df["row_nr"], df["pdbid"], df["model"], df["chain1"], df["nr1"], df["ins1"], df["alt1"], df["symmetry_operation1"], df["chain2"], df["nr2"], df["ins2"], df["alt2"], df["symmetry_operation2"]):
-        if (chain1, res1, ins1, alt1) == (chain2, res2, ins2, alt2):
-            continue
         try:
             assert structure.id.lower() == pdbid.lower(), f"pdbid mismatch: {structure.id} != {pdbid}"
-            ins1 = ins1.strip()
-            ins2 = ins2.strip()
+            ins1 = (ins1 or '').strip()
+            ins2 = (ins2 or '').strip()
 
             try:
                 r1 = get_residue(structure, strdata, model, chain1, res1, ins1, alt1, symop1)
@@ -911,8 +909,8 @@ def remove_duplicate_pairs_phase1(df: pl.DataFrame):
     def core(df: pl.DataFrame, condition):
         duplicated = df.filter(condition)\
             .join(df,
-                left_on=['type', 'pdbid', 'model', 'chain1', 'res1', 'nr1', 'ins1', 'alt1'],
-                right_on=['_tmp_family_reversed', 'pdbid', 'model', 'chain2', 'res2', 'nr2', 'ins2', 'alt2'],
+                left_on=['type', 'pdbid', 'model', 'chain1', 'res1', 'nr1', 'ins1', 'alt1', 'chain2', 'nr2', 'ins2', 'alt2'],
+                right_on=['_tmp_family_reversed', 'pdbid', 'model', 'chain2', 'res2', 'nr2', 'ins2', 'alt2', 'chain1', 'nr1', 'ins1', 'alt1'],
                 join_nulls=True, how="inner"
             )
         duplicated_f = duplicated.select("_tmp_row_nr", "_tmp_row_nr_right")
@@ -1101,17 +1099,18 @@ def load_inputs(pool: Union[Pool, MockPool], args) -> pl.DataFrame:
         print(f'Loading basepairing CSV files')
         df = scan_pair_csvs(args.inputs).sort('pdbid', 'model', 'nr1', 'nr2')
         df = df.with_columns(
-            alt1=pl.when((pl.col("alt1") == '\0') | (pl.col("alt1") == '?')).then(pl.lit('')).otherwise(pl.col("alt1").str.strip_chars()),
-            alt2=pl.when((pl.col("alt2") == '\0') | (pl.col("alt2") == '?')).then(pl.lit('')).otherwise(pl.col("alt2").str.strip_chars()),
-            ins1=pl.col("ins1").str.strip_chars(),
-            ins2=pl.col("ins2").str.strip_chars(),
+            alt1=pl.when((pl.col("alt1") == '\0') | (pl.col("alt1") == '?')).then(pl.lit('')).otherwise(pl.coalesce(pl.col("alt1"), pl.lit('')).str.strip_chars()),
+            alt2=pl.when((pl.col("alt2") == '\0') | (pl.col("alt2") == '?')).then(pl.lit('')).otherwise(pl.coalesce(pl.col("alt2"), pl.lit('')).str.strip_chars()),
+            ins1=pl.coalesce(pl.col("ins1"), pl.lit('')).str.strip_chars(),
+            ins2=pl.coalesce(pl.col("ins2"), pl.lit('')).str.strip_chars(),
         )
         if "pdbsymstr" in df.columns:
             df = df.with_columns(
                 symmetry_operation1=pl.lit(None, pl.Utf8),
                 symmetry_operation2=pl.when(pl.col("pdbsymstr") == "1_555").then(pl.lit(None, pl.Utf8)).otherwise(pl.col("pdbsymstr"))
             )
-        df = df.filter(pl.col("res1").is_in(["A", "T", "G", "U", "C"])).filter(pl.col("res2").is_in(["A", "T", "G", "U", "C", "DA", "DT", "DG", "DC", "DU"]))
+        allowed_residues = ["A", "T", "G", "U", "C", "DA", "DT", "DG", "DC", "DU"]
+        df = df.filter(pl.col("res1").is_in(allowed_residues)).filter(pl.col("res2").is_in(allowed_residues))
         # if "r11" in df.columns:
         df = df.collect()
     elif inputs[0].endswith("_basepair.txt") or inputs[0].endswith("_basepair_detail.txt"):
@@ -1151,9 +1150,11 @@ def main(pool: Union[Pool, MockPool], args):
     else:
         if 'symmetry_operation1' in df.columns and 'symmetry_operation2' in df.columns:
             # at least one has to be in the primary asymmetric unit
+            old_pdbids = set(df["pdbid"])
             df = df.filter(pl.col("symmetry_operation1").is_null() | pl.col("symmetry_operation2").is_null())
             if len(df) < raw_df_len:
-                print(f"Removed purely cross-symmetry basepairs -> len={len(df)}")
+                print(f"Removed purely cross-symmetry basepairs -> len={len(df)}, removed structs={old_pdbids - set(df['pdbid'])}")
+            del old_pdbids
     if args.dedupe:
         df = remove_duplicate_pairs_phase1(df)
         print(f"Removed duplicates, phase1 -> len={len(df)}")
