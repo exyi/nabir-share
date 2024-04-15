@@ -18,7 +18,7 @@
     function getUrl(pair: PairId, attachement:string, opt = { rotImg }) {
         if (!pair?.nt1.pdbid || !pair?.nt2.pdbid || pair.nt1.chain == null || pair.nt2.chain == null || pair.nt1.resnum == null || pair.nt2.resnum == null)
             return undefined
-        const imgName = `${pair.nt1.model > 1 ? `model${pair.nt1.model}_` : ''})${ntUrlIdentifier(pair.nt1)}-${ntUrlIdentifier(pair.nt2)}`
+        const imgName = `${pair.nt1.model > 1 ? `model${pair.nt1.model}_` : ''}${ntUrlIdentifier(pair.nt1)}-${ntUrlIdentifier(pair.nt2)}`
         return `${rootImages}/${pair.nt1.pdbid}/${imgName}${opt.rotImg ? "-rotX" : ""}${attachement}`
     }
 

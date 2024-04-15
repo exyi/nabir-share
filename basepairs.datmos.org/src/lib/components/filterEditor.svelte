@@ -286,15 +286,15 @@
     
     {:else if mode=="ranges"}
     <div class="flex-columns" >
-        <div class="column">
+        <div class="column" style="font-variant: small-caps; font-weight: bold">
           <div class="panel-title"></div>
           {#each hb_params as p}
-            <div class="panel-field" title={p.title}><h3>{p.name}</h3></div>
+            <div class="panel-field" title={p.title}>{p.name}</div>
           {/each}
           {#if hasYawPitchRoll}
             <div class="panel-title"></div>
-            <div class="panel-title">Left to right</div>
-            <div class="panel-title">Right to left</div>
+            <div class="panel-field">Left to right</div>
+            <div class="panel-field">Right to left</div>
           {/if}
         </div>
         <div class="column">

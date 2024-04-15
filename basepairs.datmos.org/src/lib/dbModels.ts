@@ -78,7 +78,7 @@ function rangeToCondition(col: string, range: NumRange | undefined | null): stri
     if (range == null) return []
 
     function almostEqual(a: number, b: number) {
-        return Math.abs(a - b) < (0.01 * Math.max(Math.abs(a), Math.abs(b)))
+        return Math.abs(a - b) < (0.001 * Math.max(Math.abs(a), Math.abs(b)))
     }
 
     if (range.min != null && range.max != null) {
@@ -90,7 +90,7 @@ function rangeToCondition(col: string, range: NumRange | undefined | null): stri
             return [`${col} = ${range.min}`]
         }
         if (almostEqual(range.min, -range.max)) {
-            return [`abs(${col}) <= ${range.min}`]
+            return [`abs(${col}) <= ${Math.max(Math.abs(range.min), Math.abs(range.max))}`]
         }
         return [`${col} BETWEEN ${range.min} AND ${range.max}`]
     }
@@ -400,12 +400,12 @@ export function addFilterParams(params: URLSearchParams, filter: NucleotideFilte
     addMaybe(`coplanarity_edge_angle2`, range(filter.coplanarity_edge_angle2))
     addMaybe(`coplanarity_shift1`, range(filter.coplanarity_shift1))
     addMaybe(`coplanarity_shift2`, range(filter.coplanarity_shift2))
-    addMaybe(`coplanarity_yaw1`, range(filter.yaw1))
-    addMaybe(`coplanarity_yaw2`, range(filter.yaw2))
-    addMaybe(`coplanarity_pitch1`, range(filter.pitch1))
-    addMaybe(`coplanarity_pitch2`, range(filter.pitch2))
-    addMaybe(`coplanarity_roll1`, range(filter.roll1))
-    addMaybe(`coplanarity_roll2`, range(filter.roll2))
+    addMaybe(`yaw1`, range(filter.yaw1))
+    addMaybe(`yaw2`, range(filter.yaw2))
+    addMaybe(`pitch1`, range(filter.pitch1))
+    addMaybe(`pitch2`, range(filter.pitch2))
+    addMaybe(`roll1`, range(filter.roll1))
+    addMaybe(`roll2`, range(filter.roll2))
     for (const c of filter.sql_conditions ?? []) {
         add('condition', c)
     }
@@ -505,14 +505,20 @@ function parseFilter(f: URLSearchParams, filter: NucleotideFilterModel | undefin
     filter.bond_length = [{}, {}, {}, {}, {}, {}, {}, {}, {}, {}]
     filter.bond_donor_angle = [{}, {}, {}, {}, {}, {}, {}, {}, {}, {}]
     filter.bond_acceptor_angle = [{}, {}, {}, {}, {}, {}, {}, {}, {}, {}]
+    filter.bond_plane_angle1 = [{}, {}, {}, {}, {}, {}, {}, {}, {}, {}]
+    filter.bond_plane_angle2 = [{}, {}, {}, {}, {}, {}, {}, {}, {}, {}]
     for (let i = 0; i < 10; i++) {
         filter.bond_length[i] = parseRange(f.get(`${prefix}hb${i}_L`))
         filter.bond_donor_angle[i] = parseRange(f.get(`${prefix}hb${i}_DA`))
         filter.bond_acceptor_angle[i] = parseRange(f.get(`${prefix}hb${i}_AA`))
+        filter.bond_plane_angle1[i] = parseRange(f.get(`${prefix}hb${i}_OOPA1`))
+        filter.bond_plane_angle2[i] = parseRange(f.get(`${prefix}hb${i}_OOPA2`))
     }
     trimArray(filter.bond_length)
     trimArray(filter.bond_donor_angle)
     trimArray(filter.bond_acceptor_angle)
+    trimArray(filter.bond_plane_angle1)
+    trimArray(filter.bond_plane_angle2)
 
     for (const [k, v] of f.entries()) {
         if (k.startsWith(`${prefix}range_`)) {
@@ -527,7 +533,7 @@ function parseFilter(f: URLSearchParams, filter: NucleotideFilterModel | undefin
     }
 
     filter.coplanarity_angle = parseRangeMaybe(f.get(`${prefix}coplanar`) || f.get(`${prefix}coplanarity_a`))
-    for (const prop in [ "coplanarity_edge_angle1", "coplanarity_edge_angle2", "coplanarity_shift1", "coplanarity_shift2", "yaw1", "yaw2", "pitch1", "pitch2", "roll1", "roll2" ]) {
+    for (const prop of [ "coplanarity_edge_angle1", "coplanarity_edge_angle2", "coplanarity_shift1", "coplanarity_shift2", "yaw1", "yaw2", "pitch1", "pitch2", "roll1", "roll2" ]) {
         filter[prop] = parseRangeMaybe(f.get(`${prefix}${prop}`))
     }
     filter.resolution = parseRangeMaybe(f.get(`${prefix}resolution`) || f.get(`${prefix}resol`))
