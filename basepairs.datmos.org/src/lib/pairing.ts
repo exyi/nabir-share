@@ -1,11 +1,12 @@
 export type NucleotideId = {
-    pdbid: string;
-    model: number;
-    chain: string;
-    resname?: string;
-    resnum: number;
-    altloc: string;
-    inscode: string;
+    pdbid: string
+    model: number
+    chain: string
+    resname?: string
+    resnum: number
+    altloc: string
+    inscode: string
+    symop?: string
 }
 export type PairingFamily = `${'n' | ''}${'t' | 'c'}${'W' | 'H' | 'S'}${'W' | 'H' | 'S'}${'a' | ''}`
 export type PairId = {

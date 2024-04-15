@@ -94,7 +94,13 @@
     
     function generatePymolScript(s: PairId): string[] {
         const script = []
+        if (s.nt1.symop || s.nt2.symop) {
+            script.push(`set assembly = 1`)
+        }
         script.push(`fetch ${s.nt1?.pdbid}`)
+        if (s.nt1.model > 1) {
+            script.push(`set state, ${s.nt1.model}`)
+        }
         const pairSelection =
             String(s.nt1?.chain) != String(s.nt2?.chain) ?
                 `${s.nt1?.pdbid} and (chain ${s.nt1.chain} and ${resSele(s.nt1)} or chain ${s.nt2.chain} and ${resSele(s.nt2)})` :

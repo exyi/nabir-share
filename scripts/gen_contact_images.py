@@ -34,7 +34,7 @@ def load(file, pdbid):
         cmd.load(file)
     else:
         if len(pdb_utils.pdb_cache_dirs) == 0:
-            cmd.fetch(pdbid)
+            cmd.fetch(pdbid, async_=0)
         else:
             file = pdb_utils.get_pdb_file(None, pdbid)
             print(file)
@@ -203,19 +203,21 @@ def highlight_bonds(res1, res2, hbonds: Optional[list[tuple[str, str, str, str]]
             for a in labels
         ]) + ")", "name")
 
-def orient_pair(pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2,
+def orient_pair(state1, state2, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2,
     standard_orientation,
     hbonds: Optional[list[tuple[str, str, str, str]]] = None,
     label_atoms=True,
     grey_context=False,
     find_water=True,
     pair_type: Optional[pair_defs.PairType] = None):
-    cmd.hide("everything", f"%{pdbid}")
-    pair_selection =f"%{pdbid} and ({residue_selection(chain1, nt1, ins1, alt1)} or {residue_selection(chain2, nt2, ins2, alt2)})"
-    print(pair_selection)
-    cmd.select("pair", pair_selection)
-    cmd.select("leftnt", f"%pair and ({residue_selection(chain1, nt1, ins1, alt1)})")
-    cmd.select("rightnt", f"%pair and ({residue_selection(chain2, nt2, ins2, alt2)})")
+    cmd.hide("everything")
+    cmd.select("leftnt", f"{state1} and ({residue_selection(chain1, nt1, ins1, alt1)})")
+    print("leftnt", f"{state1} and ({residue_selection(chain1, nt1, ins1, alt1)})")
+    assert cmd.count_atoms("leftnt") > 0, f"Residue {state1}/{chain1}-{nt1}_{ins1 or ''}_{alt1 or ''} not found"
+    cmd.select("rightnt", f"{state2} and ({residue_selection(chain2, nt2, ins2, alt2)})")
+    assert cmd.count_atoms("rightnt") > 0, f"Residue {state2}/{chain2}-{nt2}_{ins2 or ''}_{alt2 or ''} not found"
+    print("rightnt", f"{state2} and ({residue_selection(chain2, nt2, ins2, alt2)})")
+    cmd.select("pair", f"%leftnt or %rightnt")
     cmd.show("sticks", "%pair")
     cmd.delete("pair_contacts")
     cmd.delete("pair_w_contacts")
@@ -256,11 +258,11 @@ def orient_pair(pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2,
     # cmd.set("label_position", (0, 0, 0))
     cmd.set("label_font_id", 7)
     if grey_context:
-        cmd.show("sticks", f"%{pdbid} and not %pair")
-        cmd.set_bond("stick_radius", 0.07, f"%{pdbid} and not %pair and not resname HOH")
-        cmd.set_bond("stick_transparency", 0.4, f"%{pdbid} and not %pair and not resname HOH")
+        cmd.show("sticks", f"({state1} or {state2}) and not %pair")
+        cmd.set_bond("stick_radius", 0.07, f"({state1} or {state2}) and not %pair and not resname HOH")
+        cmd.set_bond("stick_transparency", 0.4, f"({state1} or {state2}) and not %pair and not resname HOH")
         cmd.clip("slab", 12, "%pair")
-        cmd.color("0xeeeeee", f"%{pdbid} and not %pair and not resname HOH")
+        cmd.color("0xeeeeee", f"({state1} or {state2}) and not %pair and not resname HOH")
 
     cmd.h_add("%pair")
 
@@ -288,14 +290,14 @@ class BPArgs:
     ignore_basepair_type: bool
     ffmpeg_background: int
 
-def make_pair_image(output_file, pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2, bpargs: BPArgs, hbonds: Optional[list[tuple[str, str, str, str]]], pair_type: Optional[pair_defs.PairType]):
+def make_pair_image(output_file, state1, state2, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2, bpargs: BPArgs, hbonds: Optional[list[tuple[str, str, str, str]]], pair_type: Optional[pair_defs.PairType]):
     print(bpargs)
-    orient_pair(pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2, standard_orientation=bpargs.standard_orientation, hbonds=hbonds, pair_type=pair_type)
+    orient_pair(state1, state2, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2, standard_orientation=bpargs.standard_orientation, hbonds=hbonds, pair_type=pair_type)
     cmd.png(output_file, width=2560, height=1440, ray=1)
     print(f"Saved basepair image {output_file}")
 
-def make_pair_rotX_image(output_file, pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2, bpargs: BPArgs, hbonds: Optional[list[tuple[str, str, str, str]]], pair_type: Optional[pair_defs.PairType]):
-    orient_pair(pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2, standard_orientation=True, pair_type=pair_type, find_water=True, grey_context=True)
+def make_pair_rotX_image(output_file, state1, state2, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2, bpargs: BPArgs, hbonds: Optional[list[tuple[str, str, str, str]]], pair_type: Optional[pair_defs.PairType]):
+    orient_pair(state1, state2, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2, standard_orientation=True, pair_type=pair_type, find_water=True, grey_context=True)
     cmd.turn("x", 90)
     cmd.png(output_file, width=2560, height=1440, ray=1)
     print(f"Saved basepair-rotX image {output_file}")
@@ -340,12 +342,12 @@ def run_ffmpeg(output_file, input_dir, *args, background=0, after=lambda: None):
         t.start()
         background_jobs.append(t)
 
-def make_pair_rot_movie(output_file, pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2, bpargs: BPArgs, hbonds: Optional[list[tuple[str, str, str, str]]], pair_type: Optional[pair_defs.PairType]):
+def make_pair_rot_movie(output_file, state1, state2, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2, bpargs: BPArgs, hbonds: Optional[list[tuple[str, str, str, str]]], pair_type: Optional[pair_defs.PairType]):
     length = bpargs.movie
     if length == 0:
         return
 
-    orient_pair(pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2, standard_orientation=bpargs.standard_orientation, hbonds=hbonds, label_atoms=False, grey_context=True, find_water=True, pair_type=pair_type)
+    orient_pair(state1, state2, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2, standard_orientation=bpargs.standard_orientation, hbonds=hbonds, label_atoms=False, grey_context=True, find_water=True, pair_type=pair_type)
     try:
         cmd.mset("1", length)
         cmd.mview("store", 1)
@@ -412,6 +414,7 @@ def can_skip(file, bpargs: BPArgs):
     return False
 
 def process_group(pdbid, group: pl.DataFrame, output_dir: str, bpargs: BPArgs):
+    cmd.reinitialize()
     if bpargs.skip_bad:
         orig_len = len(group)
         bond_length_cols = [pl.col(f"hb_{i}_length") for i in range(5) if f"hb_{i}_length" in group.columns]
@@ -423,54 +426,86 @@ def process_group(pdbid, group: pl.DataFrame, output_dir: str, bpargs: BPArgs):
 
     if len(group) == 0:
         return
+    
     pdbid = str(pdbid)
     loaded = False
+    states = []
     def load_if_needed() -> None:
-        nonlocal loaded
+        nonlocal loaded, states
         if not loaded:
+            cmd.set("assembly", 1)
             load(None, pdbid)
+            cmd.split_states(f"%{pdbid}")
+            states = [ x for x in cmd.get_names() if x.startswith(pdbid + '_')]
+            assert len(states) > 0, f"no states found for {pdbid}: {cmd.get_names()}"
+            states.sort()
+            cmd.delete(f"%{pdbid}")
+            cmd.hide("everything")
             loaded = True
     pdbdir = os.path.join(output_dir, pdbid)
     os.makedirs(pdbdir, exist_ok=True)
     cmd.set("orthoscopic", bpargs.ortho)
-    type_column = group["type"] if "type" in group.columns else itertools.repeat(None)
-    for pair_type, res1, chain1, nt1, ins1, alt1, res2, chain2, nt2, ins2, alt2 in zip(type_column, group["res1"], group["chain1"], group["nr1"], group["ins1"], group["alt1"], group["res2"], group["chain2"], group["nr2"], group["ins2"], group["alt2"]):
+    type_column = group["family"] if "family" in group.columns else group['type'] if 'type' in group.columns else itertools.repeat(None)
+    symop1_column = group["symmetry_operation1"] if "symmetry_operation1" in group.columns else itertools.repeat(None)
+    symop2_column = group["symmetry_operation2"] if "symmetry_operation2" in group.columns else itertools.repeat(None)
+    for pair_family, model, res1, chain1, nr1, ins1, alt1, symop1, res2, chain2, nr2, ins2, alt2, symop2 in zip(type_column, group['model'], group["res1"], group["chain1"], group["nr1"], group["ins1"], group["alt1"], symop1_column, group["res2"], group["chain2"], group["nr2"], group["ins2"], group["alt2"], symop2_column):
+        row_description = f"{pdbid}:{model} {chain1}-{nr1}{alt1 or ''}{ins1 or ''}{symop1 or ''}...{chain2}-{nr2}{alt2 or ''}{ins2 or ''}{symop2 or ''}"
+        assert symop1 != '1_555' and symop2 != '1_555'
         try:
+            print(row_description)
             ins1 = None if ins1 == ' ' else ins1
             ins2 = None if ins2 == ' ' else ins2
             alt1 = None if alt1 == '?' else alt1
             alt2 = None if alt2 == '?' else alt2
-            if pair_type and not bpargs.ignore_basepair_type:
-                pt = pair_defs.PairType.create(pair_type, pair_defs.map_resname(res1), pair_defs.map_resname(res2))
+            if pair_family and not bpargs.ignore_basepair_type:
+                pt = pair_defs.PairType.create(pair_family, pair_defs.map_resname(res1), pair_defs.map_resname(res2))
                 hbonds = pair_defs.get_hbonds(pt)
                 hbonds = [ b for b in hbonds if not pair_defs.is_bond_hidden(pt, b) ]
             else:
                 hbonds = None
                 pt = None
+            
+            state1, state2 = None, None
+            def not_skipped():
+                nonlocal state1, state2
+                load_if_needed()
+                state1, state2 = itertools.repeat("%" + states[0], 2)
+                if model is not None and model > 1:
+                    state1, state2 = itertools.repeat("%" + states[model - 1], 2)
+                if symop1 is not None:
+                    if len(states) != 2:
+                        print(f"WARNING: {pdbid} has {len(states)} states and symmetry operation {symop1=} is specified")
+                    state1 = "%" + states[-1] # TODO: can we recognize multiple symmetry different symmetry operations?
+                if symop2 is not None:
+                    if len(states) != 2:
+                        print(f"WARNING: {pdbid} has {len(states)} states and symmetry operation {symop2=} is specified")
+                    state2 = "%" + states[-1]
 
-            output_file = os.path.join(pdbdir, f"{chain1}_{nt1}{ins1 or ''}{alt1 or ''}-{chain2}_{nt2}{ins2 or ''}{alt2 or ''}")
+            output_file = os.path.join(pdbdir, f"{'' if model is None or model <= 1 else f'model{model}_'}{chain1}_{nr1}{ins1 or ''}{alt1 or ''}{f'_S{symop1}' if symop1 else ''}-{chain2}_{nr2}{ins2 or ''}{alt2 or ''}{f'_S{symop2}' if symop2 else ''}")
 
             if not can_skip(output_file + ".png", bpargs):
-                load_if_needed()
-                make_pair_image(output_file + ".png", pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2, bpargs, hbonds, pt)
+                not_skipped()
+                make_pair_image(output_file + ".png", state1, state2, chain1, nr1, ins1, alt1, chain2, nr2, ins2, alt2, bpargs, hbonds, pt)
             if not can_skip(output_file + "-rotX.png", bpargs):
-                load_if_needed()
-                make_pair_rotX_image(output_file + "-rotX.png", pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2, bpargs, hbonds, pt)
+                not_skipped()
+                make_pair_rotX_image(output_file + "-rotX.png", state1, state2, chain1, nr1, ins1, alt1, chain2, nr2, ins2, alt2, bpargs, hbonds, pt)
             # save_str(output_file + ".xyz", cmd.exporting.get_xyzstr("%pair"))
             # save_str(output_file + ".cif", cmd.exporting.get_cifstr("%pair"))
             # save_str(output_file + ".pdb", cmd.exporting.get_pdbstr("%pair"))
             # save_str(output_file + ".sdf", cmd.exporting.get_sdfstr("%pair"))
             if bpargs.movie and bpargs.movie > 0:
                 if not can_skip(output_file + "." + bpargs.movie_format, bpargs):
-                    load_if_needed()
-                    make_pair_rot_movie(output_file, pdbid, chain1, nt1, ins1, alt1, chain2, nt2, ins2, alt2, bpargs, hbonds, pt)
+                    not_skipped()
+                    make_pair_rot_movie(output_file, state1, state2, chain1, nr1, ins1, alt1, chain2, nr2, ins2, alt2, bpargs, hbonds, pt)
         except Exception as e:
-            print(f"ERROR in {pdbid} {chain1}-{res1}{alt1}{ins1}...{chain2}-{res2}{alt2}{ins2}: {e}")
+            print(f"ERROR in {row_description}: {e}")
+            # raise
 
     cmd.reinitialize()
 
 def make_images(df: pl.DataFrame, output_dir: str, bpargs: BPArgs):
-    for pdbid, group in sorted(df.groupby("pdbid")):
+    for (pdbid,), group in sorted(df.group_by(["pdbid"])):
+        assert isinstance(pdbid, str)
         process_group(pdbid, group, output_dir, bpargs)
     # if cmd.is_gui_thread():
         # cmd.quit()
@@ -506,7 +541,7 @@ def make_images_mp(df: pl.DataFrame, output_dir: str, threads: int, affinity: Op
         processes = [
             pool.apply_async(process_group, (pdbid, group, output_dir, bpargs))
 
-            for pdbid, group in sorted(df.groupby("pdbid"))
+            for (pdbid,), group in sorted(df.group_by(["pdbid"]))
         ]
         for p in processes:
             p.get()

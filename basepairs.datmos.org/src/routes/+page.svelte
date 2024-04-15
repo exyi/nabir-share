@@ -227,8 +227,8 @@
       if (limit != null && count >= limit)
         break
       const pdbid = r.pdbid, model = Number(r.model ?? 1)
-      const nt1: NucleotideId = { pdbid, model, chain: convName(r.chain1), resnum: Number(r.nr1), resname: convName(r.res1), altloc: convName(r.alt1), inscode: convName(r.ins1) }
-      const nt2: NucleotideId = { pdbid, model, chain: convName(r.chain2), resnum: Number(r.nr2), resname: convName(r.res2), altloc: convName(r.alt2), inscode: convName(r.ins2) }
+      const nt1: NucleotideId = { pdbid, model, chain: convName(r.chain1), resnum: Number(r.nr1), resname: convName(r.res1), altloc: convName(r.alt1), inscode: convName(r.ins1), symop: r.symmetry_operation1 }
+      const nt2: NucleotideId = { pdbid, model, chain: convName(r.chain2), resnum: Number(r.nr2), resname: convName(r.res2), altloc: convName(r.alt2), inscode: convName(r.ins2), symop: r.symmetry_operation2 }
 
       const id: PairId = { nt1, nt2, pairingType }
       let hbonds: HydrogenBondInfo[] | undefined
