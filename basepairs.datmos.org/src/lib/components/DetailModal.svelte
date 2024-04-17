@@ -12,11 +12,14 @@
     export let pairType: string
     export let filter: NucleotideFilterModel | undefined = undefined
     let realFilter: NucleotideFilterModel | undefined = undefined
-    $: {
+    $: { filter; updateRealFilter() }
+
+    function updateRealFilter() {
         realFilter = filter
         if (filter.datasource == "allcontacts-boundaries-f") {
             filterLoader.defaultFilterLimits.value.then(v => {
                 realFilter = filterLoader.addHBondLengthLimits(pairType, filterLoader.toNtFilter(v, pairType, {...filter }))
+                console.log("realFilter", realFilter)
             })
         }
     }
@@ -24,27 +27,23 @@
     let videoError = false
     $: { videoUrl; videoError = false }
 
-    function getRange(column: string) : NumRange | undefined {
-        if (!realFilter) return undefined
-        if (realFilter.other_column_range && column in realFilter.other_column_range) {
-            return realFilter.other_column_range[column]
+    function getRange(f: NucleotideFilterModel, column: string) : NumRange | undefined {
+        if (!f) return undefined
+        if (f.other_column_range && column in f.other_column_range) {
+            return f.other_column_range[column]
         }
-        if (column in realFilter) {
-            return realFilter[column]
+        if (column in f) {
+            return f[column]
         }
 
         if (/^C1_C1_(yaw|pitch|roll)\d*/.test(column)) {
-            return realFilter[column.slice("C1_C1_".length)]
+            return f[column.slice("C1_C1_".length)]
         }
     }
 
-    function isOutOfRange(value: number | null | undefined, range: NumRange | string | null | undefined) {
+    function isOutOfRange(value: number | null | undefined, range: NumRange | null | undefined) {
         if (value == null)
             return null
-
-        if (typeof range == "string") {
-            range = getRange(range)
-        }
 
         if (range?.min == null && range?.max == null)
             return null
@@ -61,12 +60,9 @@
         return true
     }
 
-    function getRangeValueTitle(value: number | null | undefined, range: NumRange | string | null | undefined) {
+    function getRangeValueTitle(value: number | null | undefined, range: NumRange | null | undefined) {
         if (value == null || range == null)
             return ""
-        if (typeof range == "string") {
-            range = getRange(range)
-        }
 
         if (range?.min == null && range?.max == null)
             return null
@@ -289,13 +285,15 @@
             
         <tbody>
         {#each getTableRows(pair?.originalRow) as r}
-            {@const filterRange = getRange(r.colName)}
+            {@const filterRange = getRange(realFilter, r.colName)}
             {@const val = r.value}
             <tr>
                 <td><b><code>{r.colName}</code></b></td>
                 <td>{r.label ?? ''}</td>
                 <td colspan={r.colName == 'structure_name' ? 2 : 1}
                     style="font-weigth: 700; text-align: right;"
+                    data-debug-filter-range={JSON.stringify(filterRange)}
+                    data-debug-nofilter={filterRange == null}
                     class:filter-pass={isOutOfRange(val, filterRange) === true}
                     class:filter-fail={(val == null && filterRange != null) ||  isOutOfRange(val, filterRange) === false}
                     title={getRangeValueTitle(val, filterRange)}
