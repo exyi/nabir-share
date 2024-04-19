@@ -56,7 +56,7 @@ class PairType:
     def order_key(self):
         t = self.type.lower()
         return (
-            pair_types.index(t) if t in pair_types else 1000,
+            pair_families.index(t) if t in pair_families else 1000,
             t,
             self.bases[1],
             self.bases[0],
@@ -204,10 +204,10 @@ def is_preferred_pair_type_orientation(pair_type: Union[PairType, tuple[str, str
         return preference.index(bases[0]) <= preference.index(bases[1])
     else:
         # non-symetric pair type like cWH, cWS, ...
-        return pair_type.type.lower() in pair_types
+        return pair_type.type.lower() in pair_families
 
 # all pair type ordered according to The Paper
-pair_types = [
+pair_families = [
     "cww", "tww",
     "cwh", "twh",
     "cws", "tws",
@@ -410,6 +410,14 @@ def get_hbonds(pair_type: Union[tuple[str, str], PairType], throw=True) -> list[
         raise KeyError(f"Pair type {pair_type} not found in hbonding_atoms")
     else:
         return []
+    
+def has_symmetrical_definition(pair_type: PairType):
+    hb = set(get_hbonds(pair_type))
+    hb_swap = set(hbond_swap_nucleotides(x) for x in hb)
+    return hb == hb_swap
+
+def defined_pair_types() -> list[PairType]:
+    return [ PairType.from_tuple(k) for k in hbonding_atoms.keys() ]
 
 _resname_map = {
     'DT': 'U',

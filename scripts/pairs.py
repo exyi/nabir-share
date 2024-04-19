@@ -93,7 +93,7 @@ class ResideTransformError(Exception):
 
 def filter_atoms(c1, atoms):
     arr = np.array([ a.coord for a in atoms ]) - c1.coord
-    c1_bonded = np.linalg.norm(arr, axis=1) <= 1.6
+    c1_bonded = np.linalg.norm(arr, axis=1) <= 1.8
     if not np.any(c1_bonded):
         raise ResideTransformError(f"No bonding atom found at {c1.full_id}")
     adj_matrix = np.linalg.norm(arr[:, None, :] - arr[None, :, :], axis=2) <= 1.6
@@ -376,8 +376,8 @@ def load_pair_information_by_idtuple(pair_type: Union[tuple[str, str], pair_defs
     print(f"Loading ideal basepair:", *identifier)
     structure = pdb_utils.load_pdb(None, pdbid)
 
-    res1 = get_residue(structure, None, model, chain1, nr1, ins1, alt1, None)
-    res2 = get_residue(structure, None, model, chain2, nr2, ins2, alt2, None)
+    res1 = get_residue(structure, None, model, chain1, resname1, nr1, ins1, alt1, None)
+    res2 = get_residue(structure, None, model, chain2, resname2, nr2, ins2, alt2, None)
     # detach parent to lower memory usage (all structures would get replicated to all workers)
     res1 = res1.copy()
     res2 = res2.copy()
@@ -828,16 +828,16 @@ def lazy(create: Callable[..., T], *args) -> Callable[[], T]:
         return cache
     return core
 
-def get_residue(structure: Bio.PDB.Structure.Structure, strdata: Optional[Callable[[], pdb_utils.StructureData]], model, chain, res, ins, alt, symop) -> AltResidue:
-    res = int(res)
+def get_residue(structure: Bio.PDB.Structure.Structure, strdata: Optional[Callable[[], pdb_utils.StructureData]], model, chain, resname, nr, ins, alt, symop) -> AltResidue:
+    nr = int(nr)
     ins = ins or ' '
     alt = alt or ''
     ch: Bio.PDB.Chain.Chain = structure[model-1][chain]
-    found: Bio.PDB.Residue.Residue = ch.child_dict.get((' ', res, ins), None)
+    found: Bio.PDB.Residue.Residue = ch.child_dict.get((' ', nr, ins), None)
     if found is None:
-        found = next((r for r in ch.get_residues() if r.id[1] == res and r.id[2] == ins), None)
+        found = next((r for r in ch.get_residues() if r.id[1] == nr and r.id[2] == ins), None)
     if found is None:
-        raise KeyError(f"{chain}.{res}{ins}")
+        raise KeyError(f"{chain}.{nr}{ins}")
     
     if symop:
         assert strdata is not None
@@ -847,6 +847,12 @@ def get_residue(structure: Bio.PDB.Structure.Structure, strdata: Optional[Callab
             found.transform(sym_transform.rotation, sym_transform.translation)
         else:
             raise KeyError(f"Symmetry operation {symop} is not defined {structure.id}")
+        
+    if isinstance(found, Bio.PDB.Residue.DisorderedResidue):
+        disordered_residues: list[Bio.PDB.Residue.Residue] = list(found.child_dict.values())
+        disordered_residues.sort(key=lambda x: (resname == x.resname, len([ 0 for a in x.get_atoms() if alt in a.disordered_get_id_list() ])))
+        found = disordered_residues[-1]
+
     return AltResidue(found, alt)
 
 
@@ -857,21 +863,21 @@ def get_stats_for_csv(df_: pl.DataFrame, structure: Bio.PDB.Structure.Structure,
     df = df_.with_row_count()
     pair_type_col = df["family" if "family" in df.columns else "type"]
     metric_columns = [ tuple(m.get_columns()) for m in metrics ]
-    for (pair_family, i, pdbid, model, chain1, res1, ins1, alt1, symop1, chain2, res2, ins2, alt2, symop2) in zip(pair_type_col, df["row_nr"], df["pdbid"], df["model"], df["chain1"], df["nr1"], df["ins1"], df["alt1"], df["symmetry_operation1"], df["chain2"], df["nr2"], df["ins2"], df["alt2"], df["symmetry_operation2"]):
+    for (pair_family, i, pdbid, model, chain1, resname1, nr1, ins1, alt1, symop1, chain2, resname2, nr2, ins2, alt2, symop2) in zip(pair_type_col, df["row_nr"], df["pdbid"], df["model"], df["chain1"], df['res1'], df["nr1"], df["ins1"], df["alt1"], df["symmetry_operation1"], df["chain2"], df['res2'], df["nr2"], df["ins2"], df["alt2"], df["symmetry_operation2"]):
         try:
             assert structure.id.lower() == pdbid.lower(), f"pdbid mismatch: {structure.id} != {pdbid}"
             ins1 = (ins1 or '').strip()
             ins2 = (ins2 or '').strip()
 
             try:
-                r1 = get_residue(structure, strdata, model, chain1, res1, ins1, alt1, symop1)
+                r1 = get_residue(structure, strdata, model, chain1, resname1, nr1, ins1, alt1, symop1)
             except KeyError as keyerror:
-                print(f"Could not find residue1 {pdbid}.{model}.{chain1}.{str(res1)+ins1} ({keyerror=})")
+                print(f"Could not find residue1 {pdbid}.{model}.{chain1}.{str(nr1)+ins1} ({keyerror=})")
                 continue
             try:
-                r2 = get_residue(structure, strdata, model, chain2, res2, ins2, alt2, symop2)
+                r2 = get_residue(structure, strdata, model, chain2, resname2, nr2, ins2, alt2, symop2)
             except KeyError as keyerror:
-                print(f"Could not find residue2 {pdbid}.{model}.{chain2}.{str(res2)+ins2} in {pdbid} ({keyerror=})")
+                print(f"Could not find residue2 {pdbid}.{model}.{chain2}.{str(nr2)+ins2} in {pdbid} ({keyerror=})")
                 continue
             pair_type = pair_defs.PairType.create(pair_family, r1.resname, r2.resname, name_map=resname_map)
             pair_info = calc_pair_information(pair_type, r1, r2)
@@ -964,15 +970,20 @@ def remove_duplicate_pairs(df: pl.DataFrame):
         pl.Series(pair_ids, dtype=pl.Utf8).alias("_tmp_pair_id")
     ).with_row_count("_tmp_row_nr")
     score = pl.lit(0, dtype=pl.Float64)
+    null_count = pl.lit(0, dtype=pl.Int64)
     for col in df.columns:
         if col.startswith("hb_") and col.endswith("_length"):
-            score += pl.col(col).fill_null(100)
+            score += pl.col(col).fill_null(0)
+            null_count += pl.col(col).is_null().cast(pl.Int64)
         if col.startswith("dssr_"):
             score += pl.col(col).is_null().cast(pl.Float64) * 0.03
-        if col == "coplanarity_angle":
-            score += pl.col(col).is_null().cast(pl.Float64)
 
-    df = df.sort([score, "chain1", "nr1", "ins1", "alt1", "chain2", "nr2", "ins2", "alt2"])
+    sym_pt = [ x for x in pair_defs.defined_pair_types() if pair_defs.has_symmetrical_definition(x) ]
+    is_symmetrical_definition = (pl.col("family") + "-" + pl.col("res1").replace(resname_map) + "-" + pl.col("res2").replace(resname_map)).str.to_lowercase().is_in(set(sym_pt.__str__().lower()))
+
+    score = pl.when(is_symmetrical_definition).then(pl.lit(0.0)).otherwise(score)
+
+    df = df.sort([null_count, score, "chain1", "nr1", "ins1", "alt1", "chain2", "nr2", "ins2", "alt2"], descending=False)
     df = df.unique([family_col, "pdbid", "model", "_tmp_pair_id"], keep="first", maintain_order=True)
     df = df.sort("_tmp_row_nr")
     df = df.drop(["_tmp_pair_id", "_tmp_row_nr"])

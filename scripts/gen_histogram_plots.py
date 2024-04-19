@@ -382,7 +382,7 @@ def get_label(col: str, pair_type: PairType, throw=True):
 
 def is_swapped(pair_type: PairType):
     symtype = pair_type.type in ["cWW", "tWW", "cHH", "tHH", "cSS", "tSS"]
-    return pair_type.bases_str == "C-G" and symtype or pair_type.type.lower() not in pair_defs.pair_types
+    return pair_type.bases_str == "C-G" and symtype or pair_type.type.lower() not in pair_defs.pair_families
 def format_pair_type(pair_type: PairType, is_dna = False, is_rna=False):
     pair_kind, pair_bases = pair_type.to_tuple()
     if is_dna == True:
@@ -907,6 +907,7 @@ def reexport_df(df: pl.DataFrame, columns, drop: list[str] = []):
     )
     df = df.drop([col for col in df.columns if re.match(r"[DR]NA-(0-1[.]8|1[.]8-3[.]5)(-r\d+)?", col)])
     df = df.drop([col for col in df.columns if col.startswith('^') in drop])
+    df = df.drop(["label"])
     # round float columns
     df = df.with_columns([
         pl.col(c).round_sig_figs(5).cast(pl.Float32).alias(c) for c in df.columns if df[c].dtype == pl.Float64 or df[c].dtype == pl.Float32
@@ -949,7 +950,7 @@ def save_statistics(all_statistics, output_dir):
     df = pl.DataFrame(all_statistics, infer_schema_length=100_000)
     df.write_csv(os.path.join(output_dir, "statistics.csv"))
     bond_count = 10
-    pt_family_dict = { pt: ix + 1 for ix, pt in enumerate(pair_defs.pair_types) }
+    pt_family_dict = { pt: ix + 1 for ix, pt in enumerate(pair_defs.pair_families) }
     df2 = pl.concat([
         df.select(
             pl.col("bp_class").alias("Class"),
@@ -1025,7 +1026,7 @@ def calculate_boundaries(df: pl.DataFrame, pair_type: PairType):
         "hb_2_OOPA1": "hb_2_OOPA1",
         "hb_2_OOPA2": "hb_2_OOPA2",
     }
-    pt_family_dict = { pt: ix + 1 for ix, pt in enumerate(pair_defs.pair_types) }
+    pt_family_dict = { pt: ix + 1 for ix, pt in enumerate(pair_defs.pair_families) }
     def calc_boundary(col, df: pl.DataFrame=df):
         # return df[col].min(), df[col].max()
         if len(df) <= 1 or df[col].is_null().mean() > 0.1:
