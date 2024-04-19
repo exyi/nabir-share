@@ -50,7 +50,7 @@ export function addHBondLengthLimits(pairType: string, baseFilter: NucleotideFil
 
 export function toNtFilter(allLimits: FilterLimits, pairType: string, baseFilter: NucleotideFilterModel | null | undefined): NucleotideFilterModel {
 
-    const filter = baseFilter ? { ...baseFilter } : defaultFilter()
+    const filter = baseFilter ? structuredClone(baseFilter) : defaultFilter()
 
     const limits = allLimits[pairType.toLowerCase()]
     // const meta = metadata.find(m => m.pair_type.join("-").toLowerCase() == pairType.toLowerCase())
@@ -58,6 +58,8 @@ export function toNtFilter(allLimits: FilterLimits, pairType: string, baseFilter
         console.warn(`No limits for pair type ${pairType}`)
         return filter
     }
+
+    filter.other_column_range
 
     for (const [column, [min, max]] of Object.entries(limits)) {
         const range: NumRange | undefined = min == null && max == null ? undefined : { min, max }

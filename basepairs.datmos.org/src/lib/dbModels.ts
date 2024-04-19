@@ -1,6 +1,7 @@
 import type metadataModule from './metadata'
 import _ from 'lodash'
 import type { PairingInfo } from './pairing'
+import config from '$lib/config'
 
 
 export type NumRange = {
@@ -31,7 +32,7 @@ export type NucleotideFilterModel = {
     coplanarity_edge_angle2?: NumRange
     resolution?: NumRange
     dna?: true | false | undefined
-    orderBy?: string
+    orderBy: string
     filtered: boolean
     datasource?: "fr3d" | "fr3d-f" | "fr3d-n" | "fr3d-nf" | "allcontacts-f" | "allcontacts-boundaries-f"
     includeNears?: boolean
@@ -70,8 +71,8 @@ export type DetailModalViewModel = {
 
 }
 
-export function defaultFilter(datasource: NucleotideFilterModel["datasource"] = undefined): NucleotideFilterModel {
-    return { datasource, bond_acceptor_angle: [], bond_donor_angle: [], bond_length: [], bond_plane_angle1: [], bond_plane_angle2: [], filtered: true }
+export function defaultFilter(datasource: NucleotideFilterModel["datasource"] = config.defaultDataSource): NucleotideFilterModel {
+    return { datasource, bond_acceptor_angle: [], bond_donor_angle: [], bond_length: [], bond_plane_angle1: [], bond_plane_angle2: [], filtered: true, orderBy: config.defaultOrderBy }
 }
 
 function rangeToCondition(col: string, range: NumRange | undefined | null): string[] {
@@ -160,18 +161,22 @@ export function filterToSqlCondition(filter: NucleotideFilterModel): string[] {
 }
 
 export function getDataSourceTable(filter: NucleotideFilterModel) {
-    if (filter.datasource == null || filter.datasource == "fr3d-f") {
+    const ds = filter.datasource ?? config.defaultDataSource
+    if (ds == "fr3d-f") {
         return "selectedpair_f"
-    } else if (filter.datasource == "fr3d") {
+    } else if (ds == "fr3d") {
         return "selectedpair"
-    } else if (filter.datasource == "fr3d-n") {
+    } else if (ds == "fr3d-n") {
         return "(select * FROM selectedpair UNION ALL BY NAME SELECT * from selectedpair_n)"
-    } else if (filter.datasource == "fr3d-nf") {
+    } else if (ds == "fr3d-nf") {
         return "(select * FROM selectedpair_f UNION ALL BY NAME SELECT * from selectedpair_n where jirka_approves)"
-    } else if (filter.datasource == "allcontacts-f") {
+    } else if (ds == "allcontacts-f") {
         return "selectedpair_allcontacts_f"
-    } else if (filter.datasource == "allcontacts-boundaries-f") {
+    } else if (ds == "allcontacts-boundaries-f") {
         return "selectedpair_allcontacts_boundaries_f"
+    } else {
+        console.error("Unknown datasource", ds)
+        return "selectedpair_allcontacts"
     }
 }
 
@@ -214,15 +219,15 @@ export function makeSqlQuery(filter: NucleotideFilterModel, from: string, limit?
 }
 
 export const orderByOptions = [
-    { id:"", expr: "", label: "pdbid" },
+    { id: "pdbid", expr: "", label: "pdbid" },
     { id: "pdbidD", expr: "pdbid DESC, model DESC, chain1 DESC, nr1 DESC", title: "", label: "pdbid descending" },
     { id: "resolutionA", expr: "resolution NULLS LAST, pdbid, model, chain1, nr1", title: "Reported resolution of the source PDB structure", value: "resolution" },
     { id: "modedevA", expr: "mode_deviations", title: "ASCENDING - best to worst - Number of standard deviations between the H-bond parameters and the modes (peaks) calculated from Kernel Density Estimate. Use to list &quot;nicest&quot; pairs and avoid secondary modes.", label: "Deviation from KDE mode ↓" },
     { id: "modedevD", expr: "-mode_deviations", title: "DESCENDING - worst to best - Number of standard deviations between the H-bond parameters and the modes (peaks) calculated from Kernel Density Estimate. Use to list &quot;nicest&quot; pairs and avoid secondary modes.", label: "Deviation from KDE mode ↑" },
     { id: "LLD", expr: "-log_likelihood", title: "↑ DESCENDING - best to worst - Multiplied likelihoods of all H-bond parameters in their Kernel Density Estimate distribution. Use to list &quot;nicest&quot; pairs without disqualifying secondary modes.", label: "KDE likelihood ↑" },
     { id: "LLA", expr: "log_likelihood", title: "↓ ASCENDING - best to worst - Multiplied likelihoods of all H-bond parameters in their Kernel Density Estimate distribution. Use to list &quot;nicest&quot; pairs without disqualifying secondary modes.", label: "KDE likelihood ↓" },
-    { id: "rmsdA", expr: "(rmsd_edge1+rmsd_edge2)", title: "↓ ASCENDING ('best first') - edge RMSD to the 'nicest' basepair", label: "Edge RMSD (best first)" },
-    { id: "rmsdD", expr: "(rmsd_edge1+rmsd_edge2) DESC", title: "↑ DESCENDING ('worst first') - edge RMSD to the 'nicest' basepair", label: "Edge RMSD (worst first)" }
+    { id: "rmsdA", expr: "(rmsd_edge1+rmsd_edge2)", title: "↓ ASCENDING ('best first') - edge RMSD to the 'nicest' basepair", label: "Smallest Edge RMSD" },
+    { id: "rmsdD", expr: "(rmsd_edge1+rmsd_edge2) DESC", title: "↑ DESCENDING ('worst first') - edge RMSD to the 'nicest' basepair", label: "Largest Edge RMSD" }
 ]
 
 function orderToExpr(opt: string | null, prefix = '') {
@@ -235,7 +240,7 @@ function orderToExpr(opt: string | null, prefix = '') {
 
 export type ComparisonMode = "union" | "difference" | "missing" | "new"
 
-export function makeDifferentialSqlQuerySingleTable(filter: NucleotideFilterModel, filterBaseline: NucleotideFilterModel, from: string, limit?: number, mode: ComparisonMode = "difference") {
+export function makeDifferentialSqlQuerySingleTable(filter: NucleotideFilterModel, filterBaseline: NucleotideFilterModel, from: string, limit: number | null, mode: ComparisonMode) {
     const conditions = filterToSqlCondition(filter)
     const baselineConditions = filterToSqlCondition(filterBaseline)
 
@@ -385,8 +390,8 @@ export function addFilterParams(params: URLSearchParams, filter: NucleotideFilte
         return;
     }
 
-    if (prefix != '' || filter.datasource != null && filter.datasource != "fr3d-f" || filter.dna != null) {
-        add('ds', (filter.datasource ?? "fr3d-f") + (filter.dna == true ? 'D' : filter.dna == false ? 'R' : ''))
+    if (prefix != '' || filter.datasource != null && filter.datasource != config.defaultDataSource || filter.dna != null) {
+        add('ds', (filter.datasource ?? config.defaultDataSource) + (filter.dna == true ? 'D' : filter.dna == false ? 'R' : ''))
     }
     for (let i = 0; i < 3; i++) {
         addMaybe(`hb${i}_L`, range(filter.bond_length[i]))
@@ -413,7 +418,7 @@ export function addFilterParams(params: URLSearchParams, filter: NucleotideFilte
         addMaybe("range_" + column, range(r))
     }
     addMaybe(`resol`, range(filter.resolution))
-    if (filter.orderBy) {
+    if (filter.orderBy != null && filter.orderBy != config.defaultOrderBy) {
         addMaybe(`order`, filter.orderBy)
     }
 
@@ -537,8 +542,9 @@ function parseFilter(f: URLSearchParams, filter: NucleotideFilterModel | undefin
         filter[prop] = parseRangeMaybe(f.get(`${prefix}${prop}`))
     }
     filter.resolution = parseRangeMaybe(f.get(`${prefix}resolution`) || f.get(`${prefix}resol`))
-    filter.orderBy = f.get(`${prefix}order`)
+    filter.orderBy = f.get(`${prefix}order`) ?? filter.orderBy
     if (filter.orderBy) {
+        // map expression back to orderBy ID
         filter.orderBy = orderByOptions.find(o => o.expr == filter.orderBy)?.id ?? filter.orderBy
     }
     const mode = filter.sql ? 'sql' : filter.bond_length.length || filter.bond_acceptor_angle.length || filter.bond_donor_angle.length || filter.coplanarity_angle || filter.bond_plane_angle1.length || filter.bond_plane_angle2.length || filter.coplanarity_edge_angle1 || filter.coplanarity_edge_angle2 || filter.coplanarity_shift1 || filter.coplanarity_shift2 || filter.pitch1 || filter.pitch2 || filter.yaw1 || filter.yaw2 || filter.roll1 || filter.roll2 || filter.resolution ? 'ranges' : 'basic'

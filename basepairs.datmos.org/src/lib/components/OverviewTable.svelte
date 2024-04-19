@@ -1,4 +1,4 @@
-A<script lang="ts">
+<script lang="ts">
     import { pairFamilies, pairTypes } from "$lib/dbInstance";
     import metadata from "$lib/metadata";
 	import Pairimage from "./pairimage.svelte";

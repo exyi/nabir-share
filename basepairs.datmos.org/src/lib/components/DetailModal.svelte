@@ -18,7 +18,7 @@
         realFilter = filter
         if (filter.datasource == "allcontacts-boundaries-f") {
             filterLoader.defaultFilterLimits.value.then(v => {
-                realFilter = filterLoader.addHBondLengthLimits(pairType, filterLoader.toNtFilter(v, pairType, {...filter }))
+                realFilter = filterLoader.addHBondLengthLimits(pairType, filterLoader.toNtFilter(v, pairType, filter))
                 console.log("realFilter", realFilter)
             })
         }
@@ -84,7 +84,7 @@
             nt += String(r.inscode)
         }
 
-        const alt = r.altloc ? ` alt ${r.altloc}` : ""
+        const alt = r.altloc ? ` and alt ${r.altloc}` : ""
         return `resi ${nt}${alt}`
     }
     
@@ -111,7 +111,7 @@
         return script
     }
 
-    const columnBlacklist = [ "pdbid", "model", "chain1", "chain2", "res1", "res2", "nr1", "nr2", "alt1", "alt2", "ins1", "ins2" ]
+    const columnBlacklist = [ "pdbid", "model", "chain1", "chain2", "res1", "res2", "nr1", "nr2", "alt1", "alt2", "ins1", "ins2", "type", "C1_C1_euler_phi", "C1_C1_euler_theta", "C1_C1_euler_psi", "C1_C1_euler_phicospsi", "x1", "x2", "y1", "y2", "z1", "z2", "rmsd_edge_C1N_frame", "label", "pair_bases" ]
 
     function getTableRows(tuple: object | null) {
         if (!tuple)  return []
@@ -291,7 +291,7 @@
                 <td><b><code>{r.colName}</code></b></td>
                 <td>{r.label ?? ''}</td>
                 <td colspan={r.colName == 'structure_name' ? 2 : 1}
-                    style="font-weigth: 700; text-align: right;"
+                    style="font-weigth: 700; text-align: {[ "bigint", "number", "boolean" ].includes(typeof r.value) ? 'right' : 'left'};"
                     data-debug-filter-range={JSON.stringify(filterRange)}
                     data-debug-nofilter={filterRange == null}
                     class:filter-pass={isOutOfRange(val, filterRange) === true}

@@ -19,6 +19,7 @@
 	import { getContext } from 'svelte';
 	import ContextHack from '$lib/components/ContextHack.svelte';
   import * as filterLoader from '$lib/predefinedFilterLoader'
+  import config from '$lib/config'
 
   let selectedFamily: string | undefined // 'cWW' / 'tWW' / ... / 'tSS'
   let selectedPairing: string | undefined // 'cWW-A-A' / 'cWW-A-C' / ...
@@ -27,7 +28,7 @@
   let filterMode: "basic"|"ranges" | "sql" = "basic"
   let filter: NucleotideFilterModel = defaultFilter()
   let filterBaseline: NucleotideFilterModel | undefined = undefined
-  let comparisonMode: ComparisonMode = "difference"
+  let comparisonMode: ComparisonMode = config.defaultComparisonMode
   let miniStats: StatPanelSettingsModel[] = [ statPresets.histL, statPresets.histDA, statPresets.histAA ]
   let testStats: StatisticsSettingsModel = {
     enabled: false,
@@ -40,10 +41,14 @@
 
   let lastUrlUpdate = 0
 
-  function updateUrlNow(opt: {alwaysReplace?:boolean}={}) {
+  function getUrlParams(filter: NucleotideFilterModel, filterBaseline: NucleotideFilterModel | undefined, filterMode: string, testStats: StatisticsSettingsModel) {
     const params = filterToUrl(filter, filterBaseline, filterMode)
     statsToUrl(params, testStats)
-    const url = selectedPairing == null ? '' : `${selectedPairing}/${params.toString()}`
+    return params.toString()
+  }
+
+  function updateUrlNow(opt: {alwaysReplace?:boolean}={}) {
+    const url = selectedPairing == null ? '' : `${selectedPairing}/${getUrlParams(filter, filterBaseline, filterMode, testStats)}`
     if (window.location.hash.replace(/^#/, '') != url) {
       if (!opt.alwaysReplace && lastUrlUpdate + 1000 < performance.now()) {
         history.pushState({}, "", '#' + url)
@@ -161,7 +166,7 @@
       tableSet.delete('selectedpair_allcontacts_f')
     }
     if (tableSet.has('selectedpair_allcontacts_boundaries_f')) {
-      const f = filterLoader.addHBondLengthLimits(selectedNorm, filterLoader.toNtFilter(await filterLoader.defaultFilterLimits.value, selectedNorm, defaultFilter()))
+      const f = filterLoader.addHBondLengthLimits(selectedNorm, filterLoader.toNtFilter(await filterLoader.defaultFilterLimits.value, selectedNorm, null))
       console.log("boundaries filter: ", f)
       await conn.query(`CREATE OR REPLACE VIEW 'selectedpair_allcontacts_boundaries_f' AS ${makeSqlQuery(f, 'selectedpair_allcontacts_f')}`)
     }
@@ -267,7 +272,6 @@
       const limit = testStats.enabled ? totalRowLimit : 3000
       let sql = filterMode == "sql" ? filter.sql : makeSqlQuery(filter, getDataSourceTable(filter), null)
       if (filterBaseline != null) {
-        // const comparisonMode: ComparisonMode = "missing"
         if (filterMode != "sql" && filterBaseline.sql == null && getDataSourceTable(filter) == getDataSourceTable(filterBaseline)) {
           sql = makeDifferentialSqlQuerySingleTable(filter, filterBaseline, getDataSourceTable(filter), null, comparisonMode)
         } else {
@@ -307,7 +311,7 @@
       startTime = performance.now()
 
       resultsCount = resultsTable.numRows
-      results = Array.from(convertQueryResults(resultsTable, parsePairingType(selectedPairing), 100));
+      results = Array.from(convertQueryResults(resultsTable, parsePairingType(selectedPairing), config.imgLimit));
       timing.queryConvert = performance.now() - startTime
       startTime = performance.now()
 
@@ -426,7 +430,20 @@
 
   <ContextHack name="simple-modal" bind:value={modalContext} />
 
-<div class="selector buttons has-addons is-centered are-small" style="margin-bottom: 0px">
+<!-- <div style="float:left; padding: 0.5rem">
+  <h1 class="title is-1"><a href="/">Home</a></h1>
+</div> -->
+
+<nav class="selector buttons has-addons is-centered" style="margin-bottom: 0px">
+  <a class="button" href="/"
+    on:click={() => {
+      location.hash = ''
+      window.location.reload()
+    } }
+    class:is-info={selectedFamily == null}
+    class:is-selected={selectedFamily == null}
+    style="color: {selectedFamily == null ? "white" : "red"}; font-weight: bold;"
+    >Home</a>
   {#each db.pairFamilies as family}
     <button
       class="button"
@@ -443,30 +460,33 @@
       }}
     ><b>{family}</b></button>
   {/each}
-</div>
+</nav>
 
 {#if selectedFamily != null}
-<div class="selector buttons has-addons is-centered are-small" style="margin-bottom: 0px">
+<nav class="selector buttons has-addons is-centered" style="margin-bottom: 0px">
   {#each getPairTypeList(selectedFamily) as p}
   <!-- class:is-light={selectedPairing.toLowerCase() != `${p.family}-${p.bases}`.toLowerCase()} -->
     {@const m = metadata.find(m => m.pair_type[0] == p.family && m.pair_type[1] == p.bases)}
-    <button
+    <a
       class="button"
+      href={`#${p.family}-${p.bases}/${getUrlParams(filter, filterBaseline, filterMode, testStats)}`}
       class:is-light-warning={!p.conventional && selectedPairing?.toLowerCase() != `${p.family}-${p.bases}`.toLowerCase()}
       class:is-success={selectedPairing?.toLowerCase() == `${p.family}-${p.bases}`.toLowerCase()}
       class:is-selected={selectedPairing?.toLowerCase() == `${p.family}-${p.bases}`.toLowerCase()}
       class:is-static={!p.real}
-      disabled={!p.real}
+      class:is-disabled={!p.real}
       title={formatTitleForPair(p.family, p.bases, p.real, p.conventional)}
-      on:click={() => {
+      on:click={ev => {
         if (selectedPairing?.toLowerCase() == `${p.family}-${p.bases}`.toLowerCase()) {
           selectedPairing = null
         } else {
           selectedPairing = `${p.family}-${p.bases}`
         }
-      }}><b>{selectedFamily == null ? p.family + "-" : ""}{p.bases}</b>{#if m}&nbsp;({m.med_quality + m.high_quality}){/if}</button>
+        ev.preventDefault()
+        return false
+      }}><b>{selectedFamily == null ? p.family + "-" : ""}{p.bases}</b>{#if m && location.host != "basepairs.datmos.org"}&nbsp;({m.med_quality + m.high_quality}){/if}</a>
   {/each}
-</div>
+</nav>
 {#if selectedPairing && selectedPairing[1] == selectedPairing[2] && selectedPairing.slice(1, 3) != 'SS'}
   <div class="buttons-help">The {selectedFamily} family is symmetrical, <b>{selectedPairing.slice(4)}</b> is equivalent to <b>{selectedPairing.slice(4).split('-').toReversed().join('-')}</b></div>
 {/if}
@@ -588,7 +608,7 @@
     {:else}
       <h5 class="title is-5" style="text-align: center">Sorry, no results matched your query</h5>
       <p class="subtitle is-6" style="text-align: center">You can try to loosen the filters
-        {#if filterMode != 'sql' && filter.filtered && (filter.datasource ?? "fred-f").startsWith("fred-")}
+        {#if filterMode != 'sql' && filter.filtered && (filter.datasource ?? config.defaultDataSource).startsWith("fr3d-")}
           (choose "entire PDB" datasource, for example)
         {/if}
       </p>
@@ -604,12 +624,11 @@
   onClick={d => showDetailModal(d)} />
 {#if results && resultsCount != results.length && resultsCount > 0}
   <div style="margin: 100px; text-align: center">
-    <!-- <p>Loading more... than 100 items is not implemented at the moment</p> -->
     <p style="text-align: center">This is the first {results.length} cases, total count is {resultsAgg.count ?? resultsCount}</p>
     <button type="button" on:click={() => {
-      results = [...results, ...convertQueryResults(resultsTable.slice(results.length), parsePairingType(selectedPairing), 100) ]
+      results = [...results, ...convertQueryResults(resultsTable.slice(results.length), parsePairingType(selectedPairing), config.imgLimit) ]
     }}>
-      Load {Math.min(100, resultsCount - results.length)} more examples
+      Load {Math.min(config.imgLimit, resultsCount - results.length)} more examples
     </button>
   </div>
 {/if}

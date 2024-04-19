@@ -4,7 +4,9 @@
   import RangeSlider from 'svelte-range-slider-pips'
   import * as filterLoader from '$lib/predefinedFilterLoader'
 	import RangeEditor from "./RangeEditor.svelte";
-	import _, { slice } from "lodash";
+	import _, { slice, startsWith } from "lodash";
+	import config from "$lib/config";
+	import Pairimage from "./pairimage.svelte";
 
     export let filter: NucleotideFilterModel
     export let filterBaseline: NucleotideFilterModel | undefined
@@ -75,10 +77,10 @@
       mode = e.currentTarget.value as any
 
       const currentSqlQuery = makeSqlQuery(selectingFromTable.endsWith('_f') ? {... filter, filtered: false} : filter, selectingFromTable)
-      if (mode=="sql" && !filter.sql) {
+      if (mode == "sql" && !filter.sql) {
         filter = {...filter, sql: currentSqlQuery }
       }
-      if (["ranges", "basic"].includes(mode) && filter?.sql.trim() == currentSqlQuery.trim()) {
+      if (mode != "sql" && filter?.sql?.trim() == currentSqlQuery.trim()) {
         filter = {...filter, sql: "" }
       }
     }
@@ -123,13 +125,11 @@
     $: hasYawPitchRoll = Boolean(filter.yaw1 || filter.pitch1 || filter.roll1 || filter.yaw2 || filter.pitch2 || filter.roll2)
 
     function dataSourceChange(newDS: string) {
-      if (newDS == "fr3d-f" || newDS == null) {
-        filter = {...filter, datasource: undefined, filtered: true }
+      if (newDS == null) {
+        newDS = config.defaultDataSource
       }
-      else {
-        const filtered = newDS.endsWith('-f') || newDS.endsWith('-nf')
-        filter = {...filter, datasource: newDS as any, filtered: filtered }
-      }
+      const filtered = newDS.endsWith('-f') || newDS.endsWith('-nf')
+      filter = {...filter, datasource: newDS as any, filtered }
     }
 
     let hb_params: {k: keyof NucleotideFilterModel, name: string, title: string, step?: number, min?: number, max?: number }[]
@@ -203,24 +203,23 @@
 
     {#if mode=="basic"}
     
-    <div class="flex-columns" >
+    <div class="flex-columns">
       <div class="column">
         <div class="field">
           <label class="label" for="ntfilter-data-source">Data source</label>
           <div class="control">
             <div class="select">
               <select
-                value={filter.datasource ?? 'fr3d-f'}
+                value={filter.datasource ?? config.defaultDataSource}
                 id="ntfilter-data-source"
                 on:change={ev => {
                   dataSourceChange(ev.currentTarget.value)
-                }}
-              >
-                <option value="fr3d-f">FR3D</option>
-                <option value="fr3d">FR3D, Entire PDB</option>
+                }}>
+                <option value="fr3d-f">FR3D — Reference Set</option>
+                <option value="fr3d">FR3D — Entire PDB</option>
                 <!-- <option value="fr3d-nf">FR3D with nears, RS</option>
                 <option value="fr3d-n">FR3D with nears, PDB</option> -->
-                <option value="allcontacts-f">All Polar Contacts</option>
+                <option value="allcontacts-f" title="All polar contacts reminiscent of the basepair - nucleotide pair with <= 4 Å between any polar atoms, <= 4.2 Å on at least one defined H-bond, and <= 2.5 Å edge to plane distance">All Polar Contacts — Reference Set</option>
                 <option value="allcontacts-boundaries-f">Pairs Selected by New Parameters</option>
               </select>
             </div>
@@ -248,7 +247,7 @@
           <div class="control">
             <div class="select">
               <select bind:value={filter.orderBy} id="ntfilter-order-by">
-                {#each getOrderByOptions(filter.orderBy ?? '', ["", "rmsdA", "rmsdD"]) as opt}
+                {#each getOrderByOptions(filter.orderBy ?? '', ["pdbid", "rmsdA", "rmsdD"]) as opt}
                   <option value={opt.id} title={opt.title}>{opt.label}</option>
                 {/each}
               </select>
@@ -269,7 +268,7 @@
         {#if allowFilterBaseline && filterBaseline == null}
           {#if filter.datasource?.startsWith("allcontacts")}
             <button class="button" type="button" on:click={() => setBaseline({ ...defaultFilter(), datasource: filter.filtered ? "fr3d-f" : "fr3d" }, "ranges")}>
-              Compare with FR3D
+              Enable FR3D comparison
             </button>
           {:else}
             <!-- <button class="button" type="button" on:click={() => setBaseline({...filter}, mode)}>
@@ -277,6 +276,17 @@
             </button> -->
           {/if}
         {:else if filterBaseline != null}
+          {#if comparisonMode != null}
+          <div class="select">
+            <select bind:value={comparisonMode}>
+              <option value="union">Show all matches</option>
+              <option value="difference">Only differences</option>
+              <option value="new">Absent in {filterBaseline.datasource?.startsWith("fr3d") && !filter.datasource?.startsWith("fr3d") ? "FR3D" : "baseline"} (green)</option>
+              <option value="missing">Only in {filterBaseline.datasource?.startsWith("fr3d") && !filter.datasource?.startsWith("fr3d") ? "FR3D" : "baseline"} (red)</option>
+            </select>
+          </div>
+          {/if}
+          
           <button class="button is-warning" type="button" on:click={() => setBaseline(null, mode)}>
             Exit comparison
           </button>
@@ -473,7 +483,7 @@
             <div class="control">
               <div class="select is-small">
                 <select
-                  value={filter.datasource ?? 'fr3d-f'}
+                  value={filter.datasource ?? config.defaultDataSource}
                   id="ntfilter-data-source"
                   on:change={ev => {
                     dataSourceChange(ev.currentTarget.value)
