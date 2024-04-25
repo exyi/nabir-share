@@ -321,10 +321,10 @@
                   <div class="field">
                     <div class="field has-addons">
                       <p class="control">
-                        <input class="input is-small num-input" type="number" step={p.step} min={p.min} max={p.min} placeholder="Min" value={filter[p.k][i]?.min} on:change={ev => { ensureLength(filter[p.k], i); filter[p.k][i].min = tryParseNum(ev.currentTarget.value)} }>
+                        <input class="input is-small num-input" type="number" step={p.step} min={p.min} max={p.max} placeholder="Min" value={filter[p.k][i]?.min} on:change={ev => { ensureLength(filter[p.k], i); filter[p.k][i].min = tryParseNum(ev.currentTarget.value)} }>
                       </p>
                       <p class="control">
-                        <input class="input is-small num-input" type="number" step={p.step} min={p.min} max={p.min} placeholder="Max" value={filter[p.k][i]?.max} on:change={ev => { ensureLength(filter[p.k], i); filter[p.k][i].max = tryParseNum(ev.currentTarget.value)} }>
+                        <input class="input is-small num-input" type="number" step={p.step} min={p.min} max={p.max} placeholder="Max" value={filter[p.k][i]?.max} on:change={ev => { ensureLength(filter[p.k], i); filter[p.k][i].max = tryParseNum(ev.currentTarget.value)} }>
                       </p>
                     </div>
                   </div>
@@ -358,10 +358,10 @@
                   <div class="field">
                     <div class="field has-addons">
                       <p class="control">
-                        <input class="input is-small num-input" type="number" step={p.step} min={p.min} max={p.min} placeholder="Min" value={filter[p.k][i]?.min} on:change={ev => { ensureLength(filter[p.k], i); filter[p.k][i].min = tryParseNum(ev.currentTarget.value)} }>
+                        <input class="input is-small num-input" type="number" step={p.step} min={p.min} max={p.max} placeholder="Min" value={filter[p.k][i]?.min} on:change={ev => { ensureLength(filter[p.k], i); filter[p.k][i].min = tryParseNum(ev.currentTarget.value)} }>
                       </p>
                       <p class="control">
-                        <input class="input is-small num-input" type="number" step={p.step} min={p.min} max={p.min} placeholder="Max" value={filter[p.k][i]?.max} on:change={ev => { ensureLength(filter[p.k], i); filter[p.k][i].max = tryParseNum(ev.currentTarget.value)} }>
+                        <input class="input is-small num-input" type="number" step={p.step} min={p.min} max={p.max} placeholder="Max" value={filter[p.k][i]?.max} on:change={ev => { ensureLength(filter[p.k], i); filter[p.k][i].max = tryParseNum(ev.currentTarget.value)} }>
                       </p>
                     </div>
                   </div>
@@ -404,10 +404,10 @@
                   <div class="field">
                     <div class="field has-addons">
                       <p class="control">
-                        <input class="input is-small num-input" type="number" step={p.step} min={p.min} max={p.min} placeholder="Min" value={filter[p.k][i]?.min} on:change={ev => { ensureLength(filter[p.k], i); filter[p.k][i].min = tryParseNum(ev.currentTarget.value)} }>
+                        <input class="input is-small num-input" type="number" step={p.step} min={p.min} max={p.max} placeholder="Min" value={filter[p.k][i]?.min} on:change={ev => { ensureLength(filter[p.k], i); filter[p.k][i].min = tryParseNum(ev.currentTarget.value)} }>
                       </p>
                       <p class="control">
-                        <input class="input is-small num-input" type="number" step={p.step} min={p.min} max={p.min} placeholder="Max" value={filter[p.k][i]?.max} on:change={ev => { ensureLength(filter[p.k], i); filter[p.k][i].max = tryParseNum(ev.currentTarget.value)} }>
+                        <input class="input is-small num-input" type="number" step={p.step} min={p.min} max={p.max} placeholder="Max" value={filter[p.k][i]?.max} on:change={ev => { ensureLength(filter[p.k], i); filter[p.k][i].max = tryParseNum(ev.currentTarget.value)} }>
                       </p>
                     </div>
                   </div>
@@ -449,10 +449,10 @@
                 <div class="field">
                   <div class="field has-addons">
                     <p class="control">
-                      <input class="input is-small num-input" type="number" step={p.step} min={p.min} max={p.min} placeholder="Min" value={filter[p.k][i]?.min} on:change={ev => { ensureLength(filter[p.k], i); filter[p.k][i].min = tryParseNum(ev.currentTarget.value)} }>
+                      <input class="input is-small num-input" type="number" step={p.step} min={p.min} max={p.max} placeholder="Min" value={filter[p.k][i]?.min} on:change={ev => { ensureLength(filter[p.k], i); filter[p.k][i].min = tryParseNum(ev.currentTarget.value)} }>
                     </p>
                     <p class="control">
-                      <input class="input is-small num-input" type="number" step={p.step} min={p.min} max={p.min} placeholder="Max" value={filter[p.k][i]?.max} on:change={ev => { ensureLength(filter[p.k], i); filter[p.k][i].max = tryParseNum(ev.currentTarget.value)} }>
+                      <input class="input is-small num-input" type="number" step={p.step} min={p.min} max={p.max} placeholder="Max" value={filter[p.k][i]?.max} on:change={ev => { ensureLength(filter[p.k], i); filter[p.k][i].max = tryParseNum(ev.currentTarget.value)} }>
                     </p>
                   </div>
                 </div>
