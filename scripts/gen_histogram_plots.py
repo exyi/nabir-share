@@ -1006,7 +1006,25 @@ def save_statistics(all_statistics, output_dir):
         for r in resolutions:
             df2.filter(pl.col("Resolution cutoff") == r)\
                 .write_excel(workbook, worksheet=f"{r}", dtype_formats={ pl.Float64: "0.00", pl.Float32: "0.00" }, hidden_columns=["hb_ix", "Pair bases", "Resolution cutoff"])
+
+
+def round_boundary(column: str, down: bool, value: Optional[float]):
+    if value is None:
+        return None
+    value = value if down else -value
+    if column.endswith("_length") or column.startswith("rmsd_") or column in ["coplanarity_shift1", "coplanarity_shift2"]:
+        value = math.floor(value * 10) / 10
+    else:
+        value = math.floor(value / 5) * 5
+    return value if down else -value
+
 def calculate_boundaries(df: pl.DataFrame, pair_type: PairType):
+    hbonds = pair_defs.get_hbonds(pair_type)
+    hb_is_o2prime = [ "O2'" in hb for hb in hbonds ]
+    blacklisted_columns = [
+        *[ f"hb_{i}_OOPA1" for i in range(len(hbonds)) if hb_is_o2prime[i] ],
+        *[ f"hb_{i}_OOPA2" for i in range(len(hbonds)) if hb_is_o2prime[i] ],
+    ]
     boundary_columns = {
         "yaw1": "C1_C1_yaw1",
         "pitch1": "C1_C1_pitch1",
@@ -1019,6 +1037,12 @@ def calculate_boundaries(df: pl.DataFrame, pair_type: PairType):
         "coplanarity_edge_angle2": "coplanarity_edge_angle2",
         "coplanarity_shift1": "coplanarity_shift1",
         "coplanarity_shift2": "coplanarity_shift2",
+        "hb_0_acceptor_angle": "hb_0_acceptor_angle",
+        "hb_1_acceptor_angle": "hb_1_acceptor_angle",
+        "hb_2_acceptor_angle": "hb_2_acceptor_angle",
+        "hb_0_donor_angle": "hb_0_donor_angle",
+        "hb_1_donor_angle": "hb_1_donor_angle",
+        "hb_2_donor_angle": "hb_2_donor_angle",
         "hb_0_OOPA1": "hb_0_OOPA1",
         "hb_0_OOPA2": "hb_0_OOPA2",
         "hb_1_OOPA1": "hb_1_OOPA1",
@@ -1029,18 +1053,23 @@ def calculate_boundaries(df: pl.DataFrame, pair_type: PairType):
     pt_family_dict = { pt: ix + 1 for ix, pt in enumerate(pair_defs.pair_families) }
     def calc_boundary(col, df: pl.DataFrame=df):
         # return df[col].min(), df[col].max()
-        if len(df) <= 1 or df[col].is_null().mean() > 0.1:
-            return pl.Series([None, None], dtype=df[col].dtype)
+        if col in blacklisted_columns:
+            min, max = None, None
+        elif len(df) <= 1 or df[col].is_null().mean() > 0.1:
+            min, max = None, None
         
-        if is_angular_modular(col):
-            return pl.Series(
-                list(angular_modular_minmax(df[col].drop_nulls()) or []),
-                # list(angular_modular_minmax(df[col].drop_nulls(), percentiles=(1, 99)) or []),
-                dtype=pl.Float32
-            )
+        elif is_angular_modular(col):
+            min, max = angular_modular_minmax(df[col].drop_nulls()) or [None, None]
+            # min, max = angular_modular_minmax(df[col].drop_nulls(), percentiles=(1, 99)) or [None, None]
+        else:
+            min, max = df[col].min(), df[col].max()
+            # min, max = df[col].quantile(0.001, "lower"), df[col].quantile(0.999, "higher")
+        
+        min = round_boundary(col, True, min)
+        max = round_boundary(col, False, max)
 
-        # return pl.Series([df[col].quantile(0.001, "lower"), df[col].quantile(0.999, "higher")], dtype=pl.Float32)
-        return pl.Series([df[col].min(), df[col].max()], dtype=pl.Float32)
+        # return pl.Series([], dtype=pl.Float32)
+        return pl.Series([min, max], dtype=pl.Float32)
 
     boundaries = pl.DataFrame({
         "family_id": [ pt_family_dict.get(pair_type.type.lower(), 99) ] * 2,
