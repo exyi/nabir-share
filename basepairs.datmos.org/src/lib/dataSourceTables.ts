@@ -36,7 +36,7 @@ export async function ensureViews(conn: AsyncDuckDBConnection, abort: AbortSigna
       tableSet.delete('selectedpair_allcontacts_f')
     }
     if (tableSet.has('selectedpair_allcontacts_boundaries_f')) {
-      const f = filterLoader.addHBondLengthLimits(selectedNorm, filterLoader.toNtFilter(await filterLoader.defaultFilterLimits.value, selectedNorm, null))
+      const f = filterLoader.addHBondLengthLimits(selectedNorm, 0.01, filterLoader.toNtFilter(await filterLoader.defaultFilterLimits.value, 0.02, selectedNorm, null))
       console.log("boundaries filter: ", f)
       await conn.query(`CREATE OR REPLACE VIEW 'selectedpair_allcontacts_boundaries_f' AS ${makeSqlQuery(f, 'selectedpair_allcontacts_f')}`)
       tableSet.delete('selectedpair_allcontacts_boundaries_f')

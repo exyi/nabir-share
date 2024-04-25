@@ -23,7 +23,7 @@
         realFilter = filter
         if (filter.datasource == "allcontacts-boundaries-f") {
             await filterLoader.defaultFilterLimits.value.then(v => {
-                realFilter = filterLoader.addHBondLengthLimits(pairType, filterLoader.toNtFilter(v, pairType, filter))
+                realFilter = filterLoader.addHBondLengthLimits(pairType, 0.01, filterLoader.toNtFilter(v, 0, pairType, filter))
                 console.log("realFilter", realFilter)
             })
         }
@@ -228,6 +228,11 @@
                         title={getRangeValueTitle(hb.length, range)}>
                         {hb.length == null ? 'NULL' : hb.length?.toFixed(2) + " Å"}</td>
                 {/each}
+                {#if realFilter?.min_bond_length?.max != null && pairDB.hbonds.every(hb => hb.length == null || hb.length > realFilter.min_bond_length.max)}
+                    <td class="filter-fail" title="All bonds are shorter than the minimum allowed length">
+                        <i>All ≥ {realFilter.min_bond_length.max}</i>
+                    </td>
+                {/if}
             </tr>
             <tr>
                 <th>Donor angle</th>

@@ -40,15 +40,15 @@ async function loadFilterCSV(url) {
 
 export const defaultFilterLimits = new Lazy(async () => loadFilterCSV(new URL("filters/fr3d-data-boundaries.csv", assetBaseUri).href))
 
-export function addHBondLengthLimits(pairType: string, baseFilter: NucleotideFilterModel) {
+export function addHBondLengthLimits(pairType: string, extendBy: number, baseFilter: NucleotideFilterModel) {
     pairType = pairType.toLowerCase()
     const m = metadata.find(m => m.pair_type.join("-").toLowerCase() == pairType)
-    const hbLengthLimits = m.atoms.map(([_, a, b, __]) =>
-        a.includes("C") || b.includes("C") ? 4.01 : 3.81)
-    return { ...baseFilter, bond_length: hbLengthLimits.map(l => ({ min: null, max: l })) }
+    const hbLengthLimits = m.atoms.map(([_, a, b, __], i) =>
+        (a.includes("C") || b.includes("C") || b.includes("O2'") || a.includes("O2'") || i >= 2 ? 4.2 : 4) + extendBy)
+    return { ...baseFilter, min_bond_length: {max: 3.8}, bond_length: hbLengthLimits.map(l => ({ min: null, max: l })) }
 }
 
-export function toNtFilter(allLimits: FilterLimits, pairType: string, baseFilter: NucleotideFilterModel | null | undefined): NucleotideFilterModel {
+export function toNtFilter(allLimits: FilterLimits, extendBy: number, pairType: string, baseFilter: NucleotideFilterModel | null | undefined): NucleotideFilterModel {
 
     const filter = baseFilter ? structuredClone(baseFilter) : defaultFilter()
 
@@ -59,15 +59,13 @@ export function toNtFilter(allLimits: FilterLimits, pairType: string, baseFilter
         return filter
     }
 
-    filter.other_column_range
-
     for (const [column, [min, max]] of Object.entries(limits)) {
         const range: NumRange | undefined = min == null && max == null ? undefined : { min, max }
         // extend the range by 0.01
         if (range?.min != null)
-            range.min -= 0.02
+            range.min -= extendBy
         if (range?.max != null)
-            range.max += 0.02
+            range.max += extendBy
         if (/^hb_\d/.test(column)) {
             const [_, hbIndex, hbParam] = /hb_(\d+)_(.+)/.exec(column)
             const hb = Number(hbIndex)

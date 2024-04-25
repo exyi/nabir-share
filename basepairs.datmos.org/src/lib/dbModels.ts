@@ -10,6 +10,7 @@ export type NumRange = {
 }
 export type NucleotideFilterModel = {
     sql?: string
+    min_bond_length?: NumRange
     bond_length: (NumRange)[]
     bond_donor_angle: (NumRange)[]
     bond_acceptor_angle: (NumRange)[]
@@ -116,40 +117,22 @@ export function filterToSqlCondition(filter: NucleotideFilterModel): string[] {
         conditions.push(...rangeToCondition(`hb_${i}_OOPA1`, filter.bond_plane_angle1[i]))
         conditions.push(...rangeToCondition(`hb_${i}_OOPA2`, filter.bond_plane_angle2[i]))
     }
+    if (filter.min_bond_length) {
+        const c = [...rangeToCondition(`hb_0_length`, filter.min_bond_length), ...rangeToCondition(`hb_1_length`, filter.min_bond_length), ...rangeToCondition(`hb_2_length`, filter.min_bond_length)]
+        conditions.push(c.join(' OR '))
+    }
     conditions.push(...rangeToCondition(`resolution`, filter.resolution))
-    if (filter.coplanarity_angle) {
-        conditions.push(...rangeToCondition(`coplanarity_angle`, filter.coplanarity_angle))
-    }
-    if (filter.coplanarity_shift1) {
-        conditions.push(...rangeToCondition(`coplanarity_shift1`, filter.coplanarity_shift1))
-    }
-    if (filter.coplanarity_shift2) {
-        conditions.push(...rangeToCondition(`coplanarity_shift2`, filter.coplanarity_shift2))
-    }
-    if (filter.coplanarity_edge_angle1) {
-        conditions.push(...rangeToCondition(`coplanarity_edge_angle1`, filter.coplanarity_edge_angle1))
-    }
-    if (filter.coplanarity_edge_angle2) {
-        conditions.push(...rangeToCondition(`coplanarity_edge_angle2`, filter.coplanarity_edge_angle2))
-    }
-    if (filter.yaw1) {
-        conditions.push(...rangeToCondition(`C1_C1_yaw1`, filter.yaw1))
-    }
-    if (filter.yaw2) {
-        conditions.push(...rangeToCondition(`C1_C1_yaw2`, filter.yaw2))
-    }
-    if (filter.pitch1) {
-        conditions.push(...rangeToCondition(`C1_C1_pitch1`, filter.pitch1))
-    }
-    if (filter.pitch2) {
-        conditions.push(...rangeToCondition(`C1_C1_pitch2`, filter.pitch2))
-    }
-    if (filter.roll1) {
-        conditions.push(...rangeToCondition(`C1_C1_roll1`, filter.roll1))
-    }
-    if (filter.roll2) {
-        conditions.push(...rangeToCondition(`C1_C1_roll2`, filter.roll2))
-    }
+    conditions.push(...rangeToCondition(`coplanarity_angle`, filter.coplanarity_angle))
+    conditions.push(...rangeToCondition(`coplanarity_shift1`, filter.coplanarity_shift1))
+    conditions.push(...rangeToCondition(`coplanarity_shift2`, filter.coplanarity_shift2))
+    conditions.push(...rangeToCondition(`coplanarity_edge_angle1`, filter.coplanarity_edge_angle1))
+    conditions.push(...rangeToCondition(`coplanarity_edge_angle2`, filter.coplanarity_edge_angle2))
+    conditions.push(...rangeToCondition(`C1_C1_yaw1`, filter.yaw1))
+    conditions.push(...rangeToCondition(`C1_C1_yaw2`, filter.yaw2))
+    conditions.push(...rangeToCondition(`C1_C1_pitch1`, filter.pitch1))
+    conditions.push(...rangeToCondition(`C1_C1_pitch2`, filter.pitch2))
+    conditions.push(...rangeToCondition(`C1_C1_roll1`, filter.roll1))
+    conditions.push(...rangeToCondition(`C1_C1_roll2`, filter.roll2))
 
     if (filter.dna != null) {
         if (filter.dna)
@@ -183,9 +166,9 @@ export function getDataSourceTable(filter: NucleotideFilterModel) {
 
 function joinConditions(conditions: string[], keyword = 'AND') {
     if (conditions.length == 0) {
-        return keyword.toUpperCase() != 'or' ? 'true' : 'false'
+        return keyword.toUpperCase() != 'OR' ? 'true' : 'false'
     }
-    return conditions.map(c => /\b(select|or)\b/.test(c) ? `(${c})` : c).join(`\n  ${keyword} `)
+    return conditions.map(c => /\b(select|or)\b/i.test(c) ? `(${c})` : c).join(`\n  ${keyword} `)
 }
 
 function buildSelect(opt: {
@@ -200,7 +183,10 @@ function buildSelect(opt: {
         query += `\nWHERE ${joinConditions(opt.where)}`
     }
     if (opt.orderBy) {
-        query += `\nORDER BY ${orderToExpr(opt.orderBy)}`
+        const expr = orderToExpr(opt.orderBy)
+        if (expr) {
+            query += `\nORDER BY ${expr}`
+        }
     }
     if (opt.limit) {
         query += `\nLIMIT ${opt.limit}`
@@ -320,7 +306,10 @@ export function makeDifferentialSqlQuery(queryCurrent: string, queryBaseline: st
         query += `\nLIMIT ${limit}`
     }
     if (order) {
-        query += `\nORDER BY ${orderToExpr(order)}`
+        const expr = orderToExpr(order)
+        if (expr) {
+            query += `\nORDER BY ${expr}`
+        }
     }
     return query
 }
@@ -427,6 +416,7 @@ export function addFilterParams(params: URLSearchParams, filter: NucleotideFilte
         addMaybe(`hb${i}_OOPA1`, range(filter.bond_plane_angle1[i]))
         addMaybe(`hb${i}_OOPA2`, range(filter.bond_plane_angle2[i]))
     }
+    addMaybe(`min_bond_length`, range(filter.min_bond_length))
     addMaybe(`coplanarity_a`, range(filter.coplanarity_angle))
     addMaybe(`coplanarity_edge_angle1`, range(filter.coplanarity_edge_angle1))
     addMaybe(`coplanarity_edge_angle2`, range(filter.coplanarity_edge_angle2))
@@ -564,6 +554,7 @@ function parseFilter(f: URLSearchParams, filter: NucleotideFilterModel | undefin
         filter.sql_conditions = f.getAll(`${prefix}condition`)
     }
 
+    filter.min_bond_length = parseRangeMaybe(f.get(`${prefix}min_bond_length`))
     filter.coplanarity_angle = parseRangeMaybe(f.get(`${prefix}coplanar`) || f.get(`${prefix}coplanarity_a`))
     for (const prop of [ "coplanarity_edge_angle1", "coplanarity_edge_angle2", "coplanarity_shift1", "coplanarity_shift2", "yaw1", "yaw2", "pitch1", "pitch2", "roll1", "roll2" ]) {
         filter[prop] = parseRangeMaybe(f.get(`${prefix}${prop}`))

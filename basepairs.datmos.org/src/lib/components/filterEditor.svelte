@@ -351,6 +351,12 @@
                 <RangeEditor bind:range={filter.coplanarity_angle} step={1} min={-180} max={180} />
               </div>
             {/if}
+            {#if filter.min_bond_length}
+              <h3 class="panel-title" title="At least one H-bond must satisfy this length constraint">Minimal bond length</h3>
+              <div class="panel-field field is-horizontal">
+                <RangeEditor bind:range={filter.min_bond_length} step={1} min={0} max={4.2} />
+              </div>
+            {/if}
         </div>
         <div class="column">
             <h3 class="panel-title">{bonds[1] ?? ''}</h3>
