@@ -1,9 +1,10 @@
 <script lang="ts">
-	import { getColumnLabel, hideColumn, longNucleotideNames, type NucleotideFilterModel, type NumRange } from "$lib/dbModels";
+	import { getColumnLabel, getDataSourceTable, hideColumn, longNucleotideNames, type NucleotideFilterModel, type NumRange } from "$lib/dbModels";
 	import metadata from "$lib/metadata";
-	import type { NucleotideId, PairId, PairingInfo } from "$lib/pairing";
+	import { convertQueryResults, type NucleotideId, type PairId, type PairingInfo } from "$lib/pairing";
     import * as filterLoader from '$lib/predefinedFilterLoader'
 	import _ from "lodash";
+    import * as dbInstance from '$lib/dbInstance'
 
     export let imageUrl: string | undefined
     export let rotImageUrl: string | undefined
@@ -11,7 +12,9 @@
     export let pair: PairingInfo
     export let pairType: string
     export let filter: NucleotideFilterModel | undefined = undefined
+    export let requeryDB: boolean = true
     let realFilter: NucleotideFilterModel | undefined = undefined
+    let pairDB: PairingInfo | undefined = undefined
     $: { filter; updateRealFilter() }
 
     function updateRealFilter() {
@@ -22,6 +25,34 @@
                 console.log("realFilter", realFilter)
             })
         }
+    }
+
+    $: { imageUrl; pair; pairType; filter; requeryDB; updatePairFromDb() }
+
+    async function updatePairFromDb() {
+        if (!requeryDB || filter == null || pair == null || pairType == null) {
+            pairDB = pair;
+            return
+        }
+
+        const db = dbInstance.getConnectionSync()
+        const query = `
+            SELECT * FROM ${getDataSourceTable(filter)}
+            WHERE pdbid = '${pair.id.nt1.pdbid}'
+              AND model = ${pair.id.nt1.model}
+              AND chain1 = '${pair.id.nt1.chain}'
+              AND nr1 = ${pair.id.nt1.resnum}
+              AND coalesce(alt1,'') = '${pair.id.nt1.altloc ?? ''}'
+              AND coalesce(ins1, '') = '${pair.id.nt1.inscode ?? ''}'
+              AND chain2 = '${pair.id.nt2.chain}'
+              AND nr2 = ${pair.id.nt2.resnum}
+              AND coalesce(alt2,'') = '${pair.id.nt2.altloc ?? ''}'
+              AND coalesce(ins2, '') = '${pair.id.nt2.inscode ?? ''}'
+              AND coalesce(symmetry_operation1,'') = '${pair.id.nt1.symop ?? ''}'
+              AND coalesce(symmetry_operation2,'') = '${pair.id.nt2.symop ?? ''}'
+            LIMIT 1`
+        const table = await db.query(query)
+        pairDB = [...convertQueryResults(table, pairType, 1)][0]
     }
 
     let videoError = false
@@ -168,17 +199,17 @@
         <pre>{generatePymolScript(pair.id).join("\n")}</pre>
     </div>
     <div style="display: flex; flex-direction: row; justify-content: space-evenly; gap: 2rem">
-    {#if pair.hbonds}
+    {#if pairDB?.hbonds}
         <table class="table is-narrow is-striped" style="width: fit-content">
             <tr>
                 <th></th>
-                {#each pair.hbonds as hb, ix}
+                {#each pairDB.hbonds as hb, ix}
                     <th>{hb.label ?? `H-Bond ${ix}`}</th>
                 {/each}
             </tr>
             <tr>
                 <th>Length</th>
-                {#each pair.hbonds as hb, i}
+                {#each pairDB.hbonds as hb, i}
                     {@const range = realFilter?.bond_length?.[i]}
                     <td class:filter-pass={isOutOfRange(hb.length, range) === true}
                         class:filter-fail={isOutOfRange(hb.length, range) === false}
@@ -188,7 +219,7 @@
             </tr>
             <tr>
                 <th>Donor angle</th>
-                {#each pair.hbonds as hb, i}
+                {#each pairDB.hbonds as hb, i}
                     {@const range = realFilter?.bond_donor_angle?.[i]}
                     <td class:filter-pass={isOutOfRange(hb.donorAngle, range) === true}
                         class:filter-fail={isOutOfRange(hb.donorAngle, range) === false}
@@ -199,7 +230,7 @@
             </tr>
             <tr>
                 <th>Acceptor angle</th>
-                {#each pair.hbonds as hb, i}
+                {#each pairDB.hbonds as hb, i}
                     {@const range = realFilter?.bond_acceptor_angle?.[i]}
                     <td class:filter-pass={isOutOfRange(hb.acceptorAngle, range) === true}
                         class:filter-fail={isOutOfRange(hb.acceptorAngle, range) === false}
@@ -210,7 +241,7 @@
             </tr>
             <tr>
                 <th>Angle to left plane</th>
-                {#each pair.hbonds as hb, i}
+                {#each pairDB.hbonds as hb, i}
                     {@const range = realFilter?.bond_plane_angle1?.[i]}
                     <td class:filter-pass={isOutOfRange(hb.OOPA1, range) === true}
                         class:filter-fail={isOutOfRange(hb.OOPA1, range) === false}
@@ -220,7 +251,7 @@
             </tr>
             <tr>
                 <th>Angle to right plane</th>
-                {#each pair.hbonds as hb, i}
+                {#each pairDB.hbonds as hb, i}
                     {@const range = realFilter?.bond_plane_angle2?.[i]}
                     <td class:filter-pass={isOutOfRange(hb.OOPA2, range) === true}
                         class:filter-fail={isOutOfRange(hb.OOPA2, range) === false}
@@ -231,7 +262,7 @@
             </tr>
         </table>
     {/if}
-    {#if pair.id.nt1.pdbid}
+    {#if pair?.id?.nt1?.pdbid}
     <div>
         <p>
             {_.capitalize(longNucleotideNames[pair.id.nt1.resname] ?? pair.id.nt1.resname)} <strong>{pair.id.nt1.resnum}{pair.id.nt1.inscode ? '.' + pair.id.nt1.inscode : ''}</strong> in chain <strong>{pair.id.nt1.chain}</strong>
@@ -248,9 +279,9 @@
             <div class="media-content">
             <div class="content">
                 <p>
-                <strong>{pair.originalRow?.structure_method ?? ''}</strong> <small> at {pair.originalRow?.resolution?.toFixed(2) ?? '?'} Å</small> <small>(published {pair.originalRow?.deposition_date ? new Date(pair.originalRow.deposition_date).toLocaleDateString('en', {month: 'long', day: 'numeric',  year: 'numeric'}) : ''})</small>
+                <strong>{pairDB?.originalRow?.structure_method ?? ''}</strong> <small> at {pairDB?.originalRow?.resolution?.toFixed(2) ?? '?'} Å</small> <small>(published {pairDB?.originalRow?.deposition_date ? new Date(pairDB?.originalRow.deposition_date).toLocaleDateString('en', {month: 'long', day: 'numeric',  year: 'numeric'}) : ''})</small>
                 <br>
-                {pair.originalRow?.structure_name ?? ''}
+                {pairDB?.originalRow?.structure_name ?? ''}
                 </p>
             </div>
             </div>
@@ -260,23 +291,23 @@
     <!-- <table class="table is-narrow is-striped" style="width: fit-content">
         <tr>
             <th>Structure ID</th>
-            <td>{pair.id.nt1.pdbid}</td>
+            <td>{pairDB?.id.nt1.pdbid}</td>
         </tr>
         <tr>
             <th>Structure Name</th>
-            <td>{pair.originalRow?.structure_name ?? ''}</td>
+            <td>{pairDB?.originalRow?.structure_name ?? ''}</td>
         </tr>
         <tr>
             <th>Structure Method</th>
-            <td>{pair.originalRow?.structure_method ?? ''}</td>
+            <td>{pairDB?.originalRow?.structure_method ?? ''}</td>
         </tr>
         <tr>
             <th>Resolution </th>
-            <td>{pair.originalRow?.resolution ?? '?'} Å</td>
+            <td>{pairDB?.originalRow?.resolution ?? '?'} Å</td>
         </tr>
         <tr>
             <th>Deposition date</th>
-            <td>{pair.originalRow?.deposition_date ? new Date(pair.originalRow.deposition_date).toLocaleDateString('en', {month: 'long', day: 'numeric',  year: 'numeric'}) : ''}</td>
+            <td>{pairDB?.originalRow?.deposition_date ? new Date(pairDB?.originalRow.deposition_date).toLocaleDateString('en', {month: 'long', day: 'numeric',  year: 'numeric'}) : ''}</td>
         </tr>
     </table> -->
     </div>
@@ -284,7 +315,7 @@
         <table class="table is-narrow is-striped" style="width: fit-content">
             
         <tbody>
-        {#each getTableRows(pair?.originalRow) as r}
+        {#each getTableRows(pairDB?.originalRow) as r}
             {@const filterRange = getRange(realFilter, r.colName)}
             {@const val = r.value}
             <tr>

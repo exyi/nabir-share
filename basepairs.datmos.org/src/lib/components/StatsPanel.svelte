@@ -6,7 +6,8 @@
     import { variance } from "d3";
 
     export let settings: StatisticsSettingsModel | null = null
-    export let data: arrow.Table<any> | null = null
+    export let data: arrow.Table | null = null
+    export let availableSchema: arrow.Schema | null = null
     export let metadata: any = null
 
     export let allowEditing: boolean = true
@@ -23,7 +24,7 @@
     let optionsAllowFilters = true
     $: optionsAllowFilters = !!options?.variables?.some(v => !!v.filterSql)
     let availableColumns
-    $: availableColumns = data && metadata ? data.schema.fields.filter(f => !hideColumn(f.name, metadata)).map(f => {
+    $: availableColumns = data && metadata ? (availableSchema ?? data.schema).fields.filter(f => !hideColumn(f.name, metadata)).map(f => {
       const [label, tooltip] = getColumnLabel(f.name, metadata) ?? [f.name, null]
       return { column: f.name, label, tooltip: `${f.name}: ${f.type}${tooltip ? ' - ' + tooltip : ''}`, type: ""+f.type, isNumber: String(f.type).startsWith("Float") /* || String(f.type).startsWith("Int") */ }
     }) : []

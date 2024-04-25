@@ -3,14 +3,14 @@
   import Spinner from '$lib/components/Spinner.svelte'
   import metadata from '$lib/metadata'
 	import FilterEditor from '$lib/components/filterEditor.svelte';
-	import { aggregatePdbCountQuery, aggregateTypesQuery, defaultFilter, filterToSqlCondition, makeSqlQuery, parseUrl, type NucleotideFilterModel, filterToUrl, type StatisticsSettingsModel, statPresets, type StatPanelSettingsModel, statsToUrl, getDataSourceTable, makeDifferentialSqlQuerySingleTable, makeDifferentialSqlQuery, type ComparisonMode, type DetailModalViewModel } from '$lib/dbModels.js';
-	import { parsePairingType, type NucleotideId, type PairId, type PairingInfo, type HydrogenBondInfo, tryParsePairingType, type PairingFamily, normalizePairType } from '$lib/pairing.js';
+	import { aggregatePdbCountQuery, aggregateTypesQuery, defaultFilter, filterToSqlCondition, makeSqlQuery, parseUrl, type NucleotideFilterModel, filterToUrl, type StatisticsSettingsModel, statPresets, type StatPanelSettingsModel, statsToUrl, getDataSourceTable, makeDifferentialSqlQuerySingleTable, makeDifferentialSqlQuery, type ComparisonMode, type DetailModalViewModel, aggregateComparisoonTypeQuery, aggregateCountsAcrossGroups } from '$lib/dbModels';
+	import { parsePairingType, type NucleotideId, type PairId, type PairingInfo, type HydrogenBondInfo, tryParsePairingType, type PairingFamily, normalizePairType, getMetadata, convertQueryResults } from '$lib/pairing';
 	import { Modal, type Context } from 'svelte-simple-modal';
 	import type { AsyncDuckDBConnection } from '@duckdb/duckdb-wasm';
 	import { AsyncLock } from '$lib/lock.js';
   import * as db from '$lib/dbInstance';
   import * as arrow from 'apache-arrow'
-	import { AsyncDebouncer } from '$lib/debouncer.js';
+	import { AsyncDebouncer } from '$lib/debouncer';
   import HistogramPlot from '$lib/components/HistogramPlot.svelte';
 	import StatsPanel from '$lib/components/StatsPanel.svelte';
   import _ from 'lodash'
@@ -24,13 +24,14 @@
   let selectedFamily: string | undefined // 'cWW' / 'tWW' / ... / 'tSS'
   let selectedPairing: string | undefined // 'cWW-A-A' / 'cWW-A-C' / ...
   const totalRowLimit = 30_000
+  let normalTableLimit = 100
 
   let filterMode: "basic"|"ranges" | "sql" = "basic"
   let filter: NucleotideFilterModel = defaultFilter()
   let filterBaseline: NucleotideFilterModel | undefined = undefined
   let comparisonMode: ComparisonMode = config.defaultComparisonMode
   let miniStats: StatPanelSettingsModel[] = [ statPresets.histL, statPresets.histDA, statPresets.histAA ]
-  let testStats: StatisticsSettingsModel = {
+  let statistics: StatisticsSettingsModel = {
     enabled: false,
     panels: _.cloneDeep([ statPresets.histL, statPresets.histDA, statPresets.histAA ])
   }
@@ -48,7 +49,7 @@
   }
 
   function updateUrlNow(opt: {alwaysReplace?:boolean}={}) {
-    const url = selectedPairing == null ? '' : `${selectedPairing}/${getUrlParams(filter, filterBaseline, filterMode, testStats)}`
+    const url = selectedPairing == null ? '' : `${selectedPairing}/${getUrlParams(filter, filterBaseline, filterMode, statistics)}`
     if (window.location.hash.replace(/^#/, '') != url) {
       if (!opt.alwaysReplace && lastUrlUpdate + 1000 < performance.now()) {
         history.pushState({}, "", '#' + url)
@@ -69,9 +70,9 @@
     filter = x.filter
     filterBaseline = x.baselineFilter
     if (x.stats != null) {
-      testStats = x.stats
+      statistics = x.stats
     } else {
-      testStats.enabled = false
+      statistics.enabled = false
     }
     if (x.pairType != null) {
       selectedFamily = db.pairFamilies.find(f => f.toLowerCase() == x.pairFamily.toLowerCase()) ?? x.pairFamily
@@ -87,7 +88,7 @@
   window.addEventListener("hashchange", (ev: HashChangeEvent) => setModeFromUrl(window.location.hash))
 
   $: {
-    selectedPairing, filterMode, filter, filterBaseline, testStats
+    selectedPairing, filterMode, filter, filterBaseline, statistics
     updateUrl()
   }
 
@@ -196,11 +197,13 @@
     count?: number
     types?: { [key: string]: number },
     pdbStructures?: { [key: string]: number },
+    comparison?: { inBaseline: number, inCurrent: number, inBoth: number },
     bondStats?: { bond: number, stat: "nncount" | "mean" | "min" | "max" | "median" | "p10" | "p25" | "p75" | "p90" | "stddev", param: "length" | "acceptor_angle" | "donor_angle", value: number }[]
   }
-  let resultsPromise: Promise<arrow.Table<any> | undefined> = new Promise(() => {})
+  let resultsPromise: Promise<arrow.Table | undefined> = new Promise(() => {})
   let results = []
-  let resultsTable: arrow.Table<any> | null = null
+  let resultsTable: arrow.Table | null = null
+  let resultsSchema: arrow.Schema<any> | null = resultsTable?.schema
   let resultsCount = 0
   let resultsAgg: ResultsAggregates = {}
 
@@ -212,64 +215,23 @@
   const requiredColumns = [ "pdbid", "chain1", "nr1", "chain2", "nr2", ]
   const recommendedColumns = [ "model", "ins1", "alt1", "res1", "res2", "ins2", "alt2", "res2" ]
 
-  function getMetadata(pairType) {
-    if (pairType == null) return undefined
-    return metadata.find(m => m.pair_type.join('-').toLowerCase() == pairType.toLowerCase())
-  }
-
-  function* convertQueryResults(rs: arrow.Table<any>, pairingType, limit=undefined): Generator<PairingInfo> {
-    function convName(name) {
-      if (name == null) return undefined
-      name = String(name).trim()
-      if (name == '' || name == '?' || name == '\0') return undefined
-      return name
-    }
-
-    const meta = getMetadata(selectedPairing)
-
-    let count = 0
-    for (const r of rs) {
-      if (limit != null && count >= limit)
-        break
-      const pdbid = r.pdbid, model = Number(r.model ?? 1)
-      const nt1: NucleotideId = { pdbid, model, chain: convName(r.chain1), resnum: Number(r.nr1), resname: convName(r.res1), altloc: convName(r.alt1), inscode: convName(r.ins1), symop: r.symmetry_operation1 }
-      const nt2: NucleotideId = { pdbid, model, chain: convName(r.chain2), resnum: Number(r.nr2), resname: convName(r.res2), altloc: convName(r.alt2), inscode: convName(r.ins2), symop: r.symmetry_operation2 }
-
-      const id: PairId = { nt1, nt2, pairingType }
-      let hbonds: HydrogenBondInfo[] | undefined
-      if ("hb_0_length" in r) {
-        hbonds = []
-        for (let i = 0; i <= 4; i++) {
-          const length = r[`hb_${i}_length`]
-          if (length == null) break
-          function numberMaybe(x) { return x ? Number(x) : null }
-          hbonds.push({
-            length: numberMaybe(length),
-            donorAngle: numberMaybe(r[`hb_${i}_donor_angle`]),
-            acceptorAngle: numberMaybe(r[`hb_${i}_acceptor_angle`]),
-            OOPA1: numberMaybe(r[`hb_${i}_OOPA1`]),
-            OOPA2: numberMaybe(r[`hb_${i}_OOPA2`]),
-            label: meta?.labels[i],
-          })
-        }
-      }
-      const coplanarity = r.bogopropeller ?? r.coplanarity_angle
-      const { comparison_in_baseline, comparison_in_current } = r
-      const comparison = (comparison_in_baseline || false) != (comparison_in_current || false) ? Boolean(comparison_in_current || false) : undefined
-      yield { id, hbonds, coplanarity, comparison, originalRow: r }
-      count++
-    }
-  }
-
   const updateResultsLock = new AsyncLock()
 
   async function updateResults() {
     async function core(conn: AsyncDuckDBConnection, abort: AbortSignal) {
       let startTime = performance.now()
-      const timing = { ensureViews: -1, query: -1, queryConvert: -1, aggPdbId: -1, aggTypes: -1, aggBondParams: -1 }
+      const timing = { ensureViews: -1, query: -1, querySchema: -1, queryConvert: -1, aggCounts: -1, aggBondParams: -1 }
       
       const metadata = getMetadata(selectedPairing)
-      const limit = testStats.enabled ? totalRowLimit : 3000
+      const limit = statistics.enabled ? totalRowLimit : normalTableLimit
+      const basicColumns = ["pdbid", "model", "chain1", "res1", "nr1", "alt1", "ins1", "chain2", "res2", "nr2", "alt2", "ins2"]
+      const comparisonColumns = filterBaseline == null ? [] : ["comparison_in_current", "comparison_in_baseline"]
+      const statColumns = !statistics.enabled ? [] : [
+        ...new Set(statistics.panels.flatMap(p => p.variables).map(v => v.column)),
+      ]
+      const projectionColumns = [...basicColumns, ...comparisonColumns, ...statColumns].filter(c => c).join(", ")
+
+
       let sql = filterMode == "sql" ? filter.sql : makeSqlQuery(filter, getDataSourceTable(filter), null)
       if (filterBaseline != null) {
         if (filterMode != "sql" && filterBaseline.sql == null && getDataSourceTable(filter) == getDataSourceTable(filterBaseline)) {
@@ -289,6 +251,7 @@
         resultsPromise = Promise.resolve(undefined)
         results = []
         resultsTable = new arrow.Table()
+        resultsSchema = resultsTable.schema
         resultsCount = 0
         resultsAgg = {}
         return
@@ -296,47 +259,66 @@
       abort.throwIfAborted();
       await ensureViews(conn, abort, queryTables)
       abort.throwIfAborted()
-      timing.ensureViews = performance.now() - startTime
-      startTime = performance.now()
-
-      if (false) {
-        conn.query(sql).then(t => t.schema.metadata)
-      }
+      timing.ensureViews = performance.now() - startTime; startTime = performance.now()
 
       abort.throwIfAborted()
-      resultsTable = await conn.query(sql.trim().toLowerCase().startsWith('select') ? `SELECT * FROM (${sql}) LIMIT ${limit}` : sql)
+      resultsTable = await conn.query(
+        filterMode != "sql" ? `SELECT ${projectionColumns} FROM (${sql}) LIMIT ${limit}` :
+        sql.trim().toLowerCase().startsWith('select') ? `SELECT * FROM (${sql}) LIMIT ${limit}` : sql
+      )
+      timing.query = performance.now() - startTime; startTime = performance.now()
+      resultsSchema = resultsTable.schema
+      abort.throwIfAborted()
+      try {
+        if (filterMode != "sql") {
+          resultsSchema = (await conn.query(`SELECT * FROM (${sql}) LIMIT 0`)).schema
+        }
+      } catch { }
+      timing.querySchema = performance.now() - startTime; startTime = performance.now()
+
       abort.throwIfAborted()
       resultsAgg = {}
-      timing.query = performance.now() - startTime
-      startTime = performance.now()
-
       resultsCount = resultsTable.numRows
       results = Array.from(convertQueryResults(resultsTable, parsePairingType(selectedPairing), config.imgLimit));
-      timing.queryConvert = performance.now() - startTime
-      startTime = performance.now()
+      timing.queryConvert = performance.now() - startTime; startTime = performance.now()
 
       // console.log({resultsPromise, results})
-      const cols = resultsTable.schema.names
-      if (cols.includes("type") && cols.includes("res1") && cols.includes("res2")) {
-        abort.throwIfAborted()
-        resultsAgg.types = Object.fromEntries(
-          Array.from(await conn.query(aggregateTypesQuery(sql))).map(x => [x.type, Number(x.count)])
-        )
-        resultsAgg.count = Object.values(resultsAgg.types).reduce((a, b) => a + b, 0)
-        console.log("types", resultsAgg.types)
-        resultsAgg = resultsAgg
-        timing.aggTypes = performance.now() - startTime
-        startTime = performance.now()
+      const cols = resultsSchema.names
+      const countGroupingSets: string[][] = [ [] ]
+      if (cols.includes("family") && cols.includes("res1") && cols.includes("res2")) {
+        countGroupingSets.push(["family", "ltrim(res1,'D')", "ltrim(res2,'D')"])
       }
       if (cols.includes("pdbid")) {
-        abort.throwIfAborted()
-        resultsAgg.pdbStructures = Object.fromEntries(
-          Array.from(await conn.query(aggregatePdbCountQuery(sql))).map(x => [x.pdbid, x.count])
-        )
-        resultsAgg = resultsAgg
-        timing.aggPdbId = performance.now() - startTime
-        startTime = performance.now()
+        countGroupingSets.push(["pdbid"])
       }
+      if (cols.includes("comparison_in_baseline") && cols.includes("comparison_in_current")) {
+        countGroupingSets.push(["comparison_in_baseline", "comparison_in_current"])
+      }
+
+      abort.throwIfAborted()
+      const groupCountTable = await conn.query(aggregateCountsAcrossGroups(sql, countGroupingSets))
+      for (const row of groupCountTable) {
+        if (row.pdbid != null) {
+          resultsAgg.pdbStructures ??= {}
+          resultsAgg.pdbStructures[row.pdbid] = Number(row.count)
+        }
+        else if (row.family != null) {
+          resultsAgg.types ??= {}
+          resultsAgg.types[row.family + "-" + row["ltrim(res1,'D')"] + "-" + row["ltrim(res2,'D')"]] = Number(row.count)
+        }
+        else if (row.comparison_in_baseline != null) {
+          resultsAgg.comparison ??= { inBaseline: 0, inCurrent: 0, inBoth: 0 }
+          if (row.comparison_in_baseline && row.comparison_in_current) {
+            resultsAgg.comparison.inBoth = Number(row.count)
+          } else if (row.comparison_in_baseline) {
+            resultsAgg.comparison.inBaseline = Number(row.count)
+          } else if (row.comparison_in_current) {
+            resultsAgg.comparison.inCurrent = Number(row.count)
+          }
+        }
+      }
+      timing.aggCounts = performance.now() - startTime; startTime = performance.now()
+
       if (cols.some(x => String(x).startsWith("hb_"))) {
         abort.throwIfAborted()
         // const x = await conn.query(aggregateBondParameters(sql, cols.map(c => String(c))))
@@ -469,7 +451,7 @@
     {@const m = metadata.find(m => m.pair_type[0] == p.family && m.pair_type[1] == p.bases)}
     <a
       class="button"
-      href={`#${p.family}-${p.bases}/${getUrlParams(filter, filterBaseline, filterMode, testStats)}`}
+      href={`#${p.family}-${p.bases}/${getUrlParams(filter, filterBaseline, filterMode, statistics)}`}
       class:is-light-warning={!p.conventional && selectedPairing?.toLowerCase() != `${p.family}-${p.bases}`.toLowerCase()}
       class:is-success={selectedPairing?.toLowerCase() == `${p.family}-${p.bases}`.toLowerCase()}
       class:is-selected={selectedPairing?.toLowerCase() == `${p.family}-${p.bases}`.toLowerCase()}
@@ -539,7 +521,7 @@
           </tr>
         </thead>
         <tbody>
-          {#each [...result] as row}
+          {#each [...result] as row, i}
             <tr>
               {#each result.schema.fields as f}
                 <td>{row[f.name]}</td>
@@ -556,13 +538,25 @@
 <div class="stats-row">
 
   <div style="position: absolute; width: 200px; text-align: center; margin-left: -100px; left:50%">
-    {#if testStats.enabled}
-    <a style="text-align: center;" href="javascript:;" on:click={e => testStats.enabled = false }>▲ collapse plots ▲</a>
+    {#if statistics.enabled}
+    <a style="text-align: center;" href="javascript:;" on:click={e => statistics.enabled = false }>▲ collapse plots ▲</a>
     {:else}
-    <a href="javascript:;" on:click={() => testStats.enabled = true}>▽ expand plots ▽</a>
+    <a href="javascript:;" on:click={() => statistics.enabled = true}>▽ expand plots ▽</a>
     {/if}
   </div>
   <div>
+    {#if resultsAgg.comparison != null}
+      {#if resultsAgg.comparison.inBaseline}
+        <span class="tag is-light is-danger">only in baseline set: {resultsAgg.comparison.inBaseline}</span>
+      {/if}
+      {#if resultsAgg.comparison.inCurrent}
+        <span class="tag is-light is-success">only in new set: {resultsAgg.comparison.inCurrent}</span>
+      {/if}
+      {#if resultsAgg.comparison.inBoth}
+        <span class="tag is-light is-info">in both set: {resultsAgg.comparison.inBoth}</span>
+      {/if}
+      | 
+    {/if}
     {#each Object.entries(resultsAgg.types) as [type, count], i}
       {#if i > 0}, {/if}
       <strong>{count}</strong> × {type}
@@ -573,7 +567,7 @@
       </span>
     {/if}
   </div>
-  {#if !testStats.enabled}
+  {#if !statistics.enabled}
     <!-- <div class="mini-stats">
       {#each fillStatsLegends({ panels: miniStats, enabled: true }, getMetadata(selectedPairing)).panels as stat}
         <HistogramPlot data={resultsTable} settings={stat} />
@@ -582,13 +576,13 @@
   {/if}
 </div>
 
-{#if testStats.enabled}
+{#if statistics.enabled}
   {#if resultsCount == totalRowLimit}
     <div class="notification is-warning">
       Only the first {resultsCount.toLocaleString("mfe")} rows are counted in the statistics
     </div>
   {/if}
-  <StatsPanel data={resultsTable} bind:settings={testStats} metadata={getMetadata(selectedPairing)} />
+  <StatsPanel data={resultsTable} availableSchema={resultsSchema} bind:settings={statistics} metadata={getMetadata(selectedPairing)} />
 {/if}
 
 {/if}

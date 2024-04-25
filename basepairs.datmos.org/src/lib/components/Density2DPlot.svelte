@@ -6,7 +6,7 @@
 	import { onMount } from "svelte";
 	import { bind } from "svelte/internal";
     export let settings: KDE2DSettingsModel | null = null
-    export let data: arrow.Table<any> | null = null
+    export let data: arrow.Table | null = null
 
     let svg: SVGGElement, canvas: HTMLCanvasElement
     const widthPx = 640

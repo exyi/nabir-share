@@ -91,7 +91,7 @@ export function getIndexIndex(bitmap: Uint8Array, count: number): Int32Array {
     return index
 }
 
-export function getColumnHelper(table: arrow.Table<any>, variable: VariableModel, shareFilters: VariableModel[] = [variable]) {
+export function getColumnHelper(table: arrow.Table, variable: VariableModel, shareFilters: VariableModel[] = [variable]) {
     const x = tryGetColumnHelper(table, variable, shareFilters)
     if (x == null) {
         throw new Error(`Column ${variable.column} not found!`)
@@ -99,7 +99,7 @@ export function getColumnHelper(table: arrow.Table<any>, variable: VariableModel
     return x
 }
 
-export function tryGetColumnHelper(table: arrow.Table<any>, variable: VariableModel, shareFilters: VariableModel[] = [variable]) {
+export function tryGetColumnHelper(table: arrow.Table, variable: VariableModel, shareFilters: VariableModel[] = [variable]) {
     const column = table.getChild(variable.column)
     if (column == null) {
         return null

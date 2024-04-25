@@ -208,9 +208,9 @@ function buildSelect(opt: {
     return query
 }
 
-export function makeSqlQuery(filter: NucleotideFilterModel, from: string, limit?: number) {
+export function makeSqlQuery(filter: NucleotideFilterModel, from: string, limit?: number, cols = "*") {
     return buildSelect({
-        cols: "*",
+        cols,
         from,
         where: filterToSqlCondition(filter),
         orderBy: filter.orderBy,
@@ -240,7 +240,7 @@ function orderToExpr(opt: string | null, prefix = '') {
 
 export type ComparisonMode = "union" | "difference" | "missing" | "new"
 
-export function makeDifferentialSqlQuerySingleTable(filter: NucleotideFilterModel, filterBaseline: NucleotideFilterModel, from: string, limit: number | null, mode: ComparisonMode) {
+export function makeDifferentialSqlQuerySingleTable(filter: NucleotideFilterModel, filterBaseline: NucleotideFilterModel, from: string, limit: number | null, mode: ComparisonMode, columns = "*") {
     const conditions = filterToSqlCondition(filter)
     const baselineConditions = filterToSqlCondition(filterBaseline)
 
@@ -252,7 +252,7 @@ export function makeDifferentialSqlQuerySingleTable(filter: NucleotideFilterMode
         const missing = mode == "new"
         const not = (mode == "missing" ? conditions : baselineConditions).filter(c => !commonConditions.includes(c))
         return buildSelect({
-            cols: `*,
+            cols: `${columns},
                 ${missing} AS comparison_in_baseline,
                 ${!missing} AS comparison_in_current`,
             from,
@@ -274,7 +274,7 @@ export function makeDifferentialSqlQuerySingleTable(filter: NucleotideFilterMode
     })
 
     let query = `
-        SELECT *,
+        SELECT ${columns},
             coalesce(${joinConditions(conditions.filter(c => !commonConditions.includes(c)))}, FALSE) AS comparison_in_current,
             coalesce(${joinConditions(baselineConditions.filter(c => !commonConditions.includes(c)))}, FALSE) AS comparison_in_baseline
         FROM (${queryBase})
@@ -312,6 +312,8 @@ export function makeDifferentialSqlQuery(queryCurrent: string, queryBaseline: st
         `
         if (mode == "difference") {
             query = `SELECT * FROM (${query})\nWHERE comparison_in_baseline <> comparison_in_current`
+        } else {
+            query = `SELECT * FROM (${query})` // must wrap to run ORDER BY after the SELECT DISTINCT ON (pairid)
         }
     }
     if (limit) {
@@ -323,12 +325,12 @@ export function makeDifferentialSqlQuery(queryCurrent: string, queryBaseline: st
     return query
 }
 
-export function aggregateTypesQuery(query: string, type = "type", res1 = "res1", res2 = "res2") {
+export function aggregateTypesQuery(query: string, family = "family", res1 = "res1", res2 = "res2") {
     return `
-        SELECT concat(${type}, '-', ltrim(${res1}, 'D'), '-', ltrim(${res2}, 'D')) as type,
+        SELECT concat(${family}, '-', ltrim(${res1}, 'D'), '-', ltrim(${res2}, 'D')) as type,
                COUNT(*) AS count
         FROM (${query})
-        GROUP BY ${type}, ltrim(${res1}, 'D'), ltrim(${res2}, 'D')
+        GROUP BY ${family}, ltrim(${res1}, 'D'), ltrim(${res2}, 'D')
         ORDER BY COUNT(*) DESC`
 }
 
@@ -338,6 +340,31 @@ export function aggregatePdbCountQuery(query: string, pdbid = "pdbid") {
         FROM (${query})
         GROUP BY ${pdbid}
         ORDER BY COUNT(*) DESC`
+}
+
+export function aggregateComparisoonTypeQuery(query: string) {
+    return `
+        SELECT comparison_in_baseline, comparison_in_current, COUNT(*) AS count
+        FROM (${query})
+        GROUP BY comparison_in_baseline, comparison_in_current
+        ORDER BY comparison_in_baseline, comparison_in_current`
+}
+
+export function aggregateCountsAcrossGroups(query: string, groupingSets: string[][], agg = { count: 'COUNT(*)' }) {
+    const columns = []
+    const colHashSet = new Set<string>()
+    for (const set of groupingSets) {
+        for (const col of set) {
+            if (colHashSet.has(col)) continue
+            columns.push(col)
+            colHashSet.add(col)
+        }
+    }
+    return `
+        SELECT ${Object.entries(agg).map(([name, expr]) => `${expr} AS ${name}`).join(', ')},
+                ${columns.map(c => `${c}`).join(', ')}
+        FROM (${query})
+        GROUP BY GROUPING SETS (${groupingSets.map(set => `(${set.join(', ')})`).join(', ')})`
 }
 
 export function aggregateBondParameters(query: string, bondColumns: string[]) {

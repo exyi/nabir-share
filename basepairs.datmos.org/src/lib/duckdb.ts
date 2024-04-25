@@ -17,7 +17,9 @@ const initDB = async () => {
 
 	// and asynchronous database
 	db = new duckdb.AsyncDuckDB(logger, worker);
+	
 	await db.instantiate(duckdb_wasm);
+	await db.open({ query:  { castBigIntToDouble: true, castDecimalToDouble: true, }, filesystem: {allowFullHTTPReads: true } })
 	return db;
 };
 
