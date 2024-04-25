@@ -5,6 +5,7 @@
     import * as filterLoader from '$lib/predefinedFilterLoader'
 	import _ from "lodash";
     import * as dbInstance from '$lib/dbInstance'
+	import { ensureViews } from "$lib/dataSourceTables";
 
     export let imageUrl: string | undefined
     export let rotImageUrl: string | undefined
@@ -12,15 +13,16 @@
     export let pair: PairingInfo
     export let pairType: string
     export let filter: NucleotideFilterModel | undefined = undefined
+    export let filterBaseline: NucleotideFilterModel | undefined = undefined
     export let requeryDB: boolean = true
     let realFilter: NucleotideFilterModel | undefined = undefined
     let pairDB: PairingInfo | undefined = undefined
     $: { filter; updateRealFilter() }
 
-    function updateRealFilter() {
+    async function updateRealFilter() {
         realFilter = filter
         if (filter.datasource == "allcontacts-boundaries-f") {
-            filterLoader.defaultFilterLimits.value.then(v => {
+            await filterLoader.defaultFilterLimits.value.then(v => {
                 realFilter = filterLoader.addHBondLengthLimits(pairType, filterLoader.toNtFilter(v, pairType, filter))
                 console.log("realFilter", realFilter)
             })
@@ -34,11 +36,14 @@
             pairDB = pair;
             return
         }
-
-        const db = dbInstance.getConnectionSync()
+        let dataSourceTable = pair.originalRow.comparison_in_baseline === true && filterBaseline ? getDataSourceTable(filterBaseline) : getDataSourceTable(filter)
+        if (dataSourceTable == 'selectedpair_allcontacts_boundaries_f') {
+            // avoid issues when it isn't found because the filter does not match anymore...
+            dataSourceTable = 'selectedpair_allcontacts_f'
+        }
         const query = `
-            SELECT * FROM ${getDataSourceTable(filter)}
-            WHERE pdbid = '${pair.id.nt1.pdbid}'
+            SELECT * FROM ${dataSourceTable}
+            WHERE lower(pdbid) = '${pair.id.nt1.pdbid.toLowerCase()}'
               AND model = ${pair.id.nt1.model}
               AND chain1 = '${pair.id.nt1.chain}'
               AND nr1 = ${pair.id.nt1.resnum}
@@ -51,8 +56,15 @@
               AND coalesce(symmetry_operation1,'') = '${pair.id.nt1.symop ?? ''}'
               AND coalesce(symmetry_operation2,'') = '${pair.id.nt2.symop ?? ''}'
             LIMIT 1`
+
+        const db = dbInstance.getConnectionSync()
+        await ensureViews(db, new AbortController().signal, [dataSourceTable], pairType)
         const table = await db.query(query)
         pairDB = [...convertQueryResults(table, pairType, 1)][0]
+        if (!pairDB) {
+            console.error("Pair not found in database", pair.id)
+            pairDB = pair
+        }
     }
 
     let videoError = false

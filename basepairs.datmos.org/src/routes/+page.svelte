@@ -4,7 +4,7 @@
   import metadata from '$lib/metadata'
 	import FilterEditor from '$lib/components/filterEditor.svelte';
 	import { aggregatePdbCountQuery, aggregateTypesQuery, defaultFilter, filterToSqlCondition, makeSqlQuery, parseUrl, type NucleotideFilterModel, filterToUrl, type StatisticsSettingsModel, statPresets, type StatPanelSettingsModel, statsToUrl, getDataSourceTable, makeDifferentialSqlQuerySingleTable, makeDifferentialSqlQuery, type ComparisonMode, type DetailModalViewModel, aggregateComparisoonTypeQuery, aggregateCountsAcrossGroups } from '$lib/dbModels';
-	import { parsePairingType, type NucleotideId, type PairId, type PairingInfo, type HydrogenBondInfo, tryParsePairingType, type PairingFamily, normalizePairType, getMetadata, convertQueryResults } from '$lib/pairing';
+	import { parsePairingType, type NucleotideId, type PairId, type PairingInfo, type HydrogenBondInfo, type PairingFamily, normalizePairType, getMetadata, convertQueryResults } from '$lib/pairing';
 	import { Modal, type Context } from 'svelte-simple-modal';
 	import type { AsyncDuckDBConnection } from '@duckdb/duckdb-wasm';
 	import { AsyncLock } from '$lib/lock.js';
@@ -20,6 +20,7 @@
 	import ContextHack from '$lib/components/ContextHack.svelte';
   import * as filterLoader from '$lib/predefinedFilterLoader'
   import config from '$lib/config'
+	import { ensureViews } from '$lib/dataSourceTables';
 
   let selectedFamily: string | undefined // 'cWW' / 'tWW' / ... / 'tSS'
   let selectedPairing: string | undefined // 'cWW-A-A' / 'cWW-A-C' / ...
@@ -135,63 +136,6 @@
     })
   }
 
-  async function ensureViews(conn: AsyncDuckDBConnection, abort: AbortSignal, queryTables: Iterable<string>) {
-    let pairid
-    async function addView(pairingType: string | [ PairingFamily, string ] | null | undefined, name: string, file: string) {
-      pairingType = tryParsePairingType(pairingType)
-      if (pairingType && !metadata.some(m => m.pair_type[0].toLowerCase() == pairingType[0].toLowerCase() && m.pair_type[1].toLowerCase() == pairingType[1].toLowerCase())) {
-        throw new Error(`Pairing type ${pairingType.join('-')} is not defined.`)
-      }
-      console.log(`Loading ${file} into view ${name}`)
-      abort.throwIfAborted()
-      await conn.query(`CREATE OR REPLACE VIEW '${name}' AS SELECT (pdbid || '-' || model || '-' || chain1 || '_' || coalesce(alt1, '') || nr1 || coalesce(ins1, '') || '-' || chain2 || '_' || coalesce(alt2, '') || nr2 || coalesce(ins2, '')) as pairid, * FROM parquet_scan('${file}')`)
-    }
-    const tableSet = new Set(queryTables)
-    const existingTables = new Set([...await conn.query("select view_name as name from duckdb_views() union select table_name as name from duckdb_tables()")].map(r => r.name))
-    const selectedNorm = normalizePairType(selectedPairing)
-
-    for (const e in existingTables) {
-      tableSet.delete(e)
-    }
-    console.log("missing tables:", [...tableSet])
-    if (tableSet.has('selectedpair')) {
-      await addView(selectedNorm, 'selectedpair', `${selectedPairing}`)
-      tableSet.delete('selectedpair')
-    }
-    if (tableSet.has('selectedpair_f')) {
-      await addView(selectedNorm, 'selectedpair_f', `${selectedNorm}-filtered`)
-      tableSet.delete('selectedpair_f')
-    }
-    if (tableSet.has('selectedpair_allcontacts_f') || tableSet.has('selectedpair_allcontacts_boundaries_f')) {
-      await addView(selectedNorm, 'selectedpair_allcontacts_f', `${selectedNorm}-filtered-allcontacts`)
-      tableSet.delete('selectedpair_allcontacts_f')
-    }
-    if (tableSet.has('selectedpair_allcontacts_boundaries_f')) {
-      const f = filterLoader.addHBondLengthLimits(selectedNorm, filterLoader.toNtFilter(await filterLoader.defaultFilterLimits.value, selectedNorm, null))
-      console.log("boundaries filter: ", f)
-      await conn.query(`CREATE OR REPLACE VIEW 'selectedpair_allcontacts_boundaries_f' AS ${makeSqlQuery(f, 'selectedpair_allcontacts_f')}`)
-    }
-    if (tableSet.has('selectedpair_n')) {
-      await addView(selectedNorm, 'selectedpair_n', `n${selectedNorm}`)
-      tableSet.delete('selectedpair_n')
-    }
-
-    for (const t of tableSet) {
-      let pair
-      if ((pair = tryParsePairingType(t)) != null) {
-        await addView(pair, t, t)
-      } else if ((t.endsWith('_f') || t.endsWith('-f') || t.endsWith('_n') || t.endsWith('-n')) &&
-        (pair = tryParsePairingType(t.slice(0, -2))) != null) {
-        await addView(pair, t, (t.endsWith('n') ? 'n' : '') + normalizePairType(t.slice(0, -2)) + (t.endsWith('f') ? '-filtered' : ''))
-      } else if (/[_-]allcontacts[_-]f/i.test(t) &&
-        (pair = tryParsePairingType(t.slice(0, -'-allcontacts'.length)))) {
-        await addView(pair, t, normalizePairType(t.slice(0, -'-allcontacts'.length)) + '-filtered-allcontacts')
-      } else {
-        if (!existingTables.has(t))
-          console.warn(`Maybe missing table: ${t}?`)
-      }
-    }
-  }
 
   type ResultsAggregates = {
     count?: number
@@ -224,7 +168,7 @@
       
       const metadata = getMetadata(selectedPairing)
       const limit = statistics.enabled ? totalRowLimit : normalTableLimit
-      const basicColumns = ["pdbid", "model", "chain1", "res1", "nr1", "alt1", "ins1", "chain2", "res2", "nr2", "alt2", "ins2"]
+      const basicColumns = ["pdbid", "model", "chain1", "res1", "nr1", "alt1", "ins1", "chain2", "res2", "nr2", "alt2", "ins2", "symmetry_operation1", "symmetry_operation2"]
       const comparisonColumns = filterBaseline == null ? [] : ["comparison_in_current", "comparison_in_baseline"]
       const statColumns = !statistics.enabled ? [] : [
         ...new Set(statistics.panels.flatMap(p => p.variables).map(v => v.column)),
@@ -257,7 +201,7 @@
         return
       }
       abort.throwIfAborted();
-      await ensureViews(conn, abort, queryTables)
+      await ensureViews(conn, abort, queryTables, selectedPairing)
       abort.throwIfAborted()
       timing.ensureViews = performance.now() - startTime; startTime = performance.now()
 
@@ -396,7 +340,7 @@
   function showDetailModal(d: DetailModalViewModel) {
     console.log("Opening modal", d)
     detailModal = d
-    modalContext.open(DetailModal, {pair: d.pair, imageUrl: d.imgUrl, videoUrl: d.videoUrl, rotImageUrl: d.rotImgUrl, pairType: selectedPairing, filter }, {
+    modalContext.open(DetailModal, {pair: d.pair, imageUrl: d.imgUrl, videoUrl: d.videoUrl, rotImageUrl: d.rotImgUrl, pairType: selectedPairing, filter, filterBaseline, requeryDB: filterMode != "sql" }, {
       classContent: "smodal-content",
       styleWindow: {
         width: "80vw",

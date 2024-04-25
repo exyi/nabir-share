@@ -15,7 +15,7 @@
   export let parentSize: boolean = false
   export let linkText: string | undefined = undefined
   export let linkUrl: string | undefined = undefined
-  export let onClick: () => any = () => { showModal(); return false }
+  export let onClick: () => any = () => { }
 
   let pngFallback = false,
     webpFallback = false,
@@ -48,18 +48,6 @@
     }
     console.warn("Failed to load image", e)
   }
-
-	function showModal(): any {
-    const {open} = getContext<Context>('simple-modal');
-    const imageUrl = pngFallback ? url : webpFallback ? url.replace(/\.\w+$/, '-1440.webp') : url.replace(/\.\w+$/, '-1440.avif')
-    open(DetailModal, { pair, imageUrl, videoUrl }, {
-      classContent: "smodal-content",
-      styleWindow: {
-        width: "80vw",
-      }
-    })
-    return false
-	}
 </script>
 <style>
   .pairimage {
