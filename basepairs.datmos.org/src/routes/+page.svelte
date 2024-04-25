@@ -538,7 +538,16 @@
       <h5 class="title is-5" style="text-align: center">Sorry, the base pair is not defined.</h5>
       <!-- TODO: show rotated bases to illustrate that it's probably impossible -->
     {:else if filterBaseline != null}
-      <h5 class="title is-5" style="text-align: center">The compared datasets are equal.</h5>
+      <h5 class="title is-5" style="text-align: center">
+        {#if comparisonMode == "difference"}
+          The compared datasets are equal.
+        {:else if comparisonMode == "missing"}
+          All entries from the current dataset are also present in baseline.
+        {:else if comparisonMode == "new"}
+          All entries in the baseline dataset are also present in the current dataset.
+        {:else}
+          Both datasets are empty.
+        {/if}</h5>
       <p class="subtitle is-6" style="text-align: center">You are in comparison mode - only results missing in the current or the baseline dataset are shown</p>
       <p class="subtitle is-6" style="text-align: center">
         <button class="button is-warning" on:click={() => filterBaseline = undefined}>Reset baseline, exit comparison mode</button>
