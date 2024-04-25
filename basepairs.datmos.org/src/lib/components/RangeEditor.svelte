@@ -20,6 +20,10 @@
       range = update
     }
   }
+
+  function selectInput(ev: Event & { currentTarget: HTMLInputElement }) {
+    ev.currentTarget.select()
+  }
 </script>
 
 <style>
@@ -33,10 +37,10 @@
     <div class="field">
       <div class="field has-addons">
       <p class="control">
-          <input class="input is-small num-input" type="number" {step} {min} {max} placeholder="Min" value={range?.min} on:change={ev => update({ min: tryParseNum(ev.currentTarget.value) }) }>
+          <input class="input is-small num-input" type="number" {step} {min} {max} placeholder="Min" value={range?.min} on:change={ev => update({ min: tryParseNum(ev.currentTarget.value) }) } on:click={selectInput}>
       </p>
       <p class="control">
-          <input class="input is-small num-input" type="number" {step} {min} {max} placeholder="Max" value={range?.max} on:change={ev => update({ max: tryParseNum(ev.currentTarget.value) }) }>
+          <input class="input is-small num-input" type="number" {step} {min} {max} placeholder="Max" value={range?.max} on:change={ev => update({ max: tryParseNum(ev.currentTarget.value) }) } on:click={selectInput}>
       </p>
       </div>
     </div>
