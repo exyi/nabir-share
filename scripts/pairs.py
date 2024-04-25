@@ -702,7 +702,9 @@ class RMSDToIdealMetric(PairMetric):
         return [ rmsd ]
 
 
-def get_angle(atom1: Bio.PDB.Atom.Atom, atom2: Bio.PDB.Atom.Atom, atom3: Bio.PDB.Atom.Atom) -> float:
+def get_angle(atom1: Bio.PDB.Atom.Atom, atom2: Bio.PDB.Atom.Atom, atom3: Bio.PDB.Atom.Atom) -> Optional[float]:
+    if atom1 is None or atom2 is None or atom3 is None:
+        return None
     v1 = atom1.coord - atom2.coord
     v2 = atom3.coord - atom2.coord
     return math.degrees(np.arccos(np.dot(v1, v2) / (_linalg_norm(v1) * _linalg_norm(v2))))
@@ -713,9 +715,9 @@ def get_distance(atom1: Bio.PDB.Atom.Atom, atom2: Bio.PDB.Atom.Atom) -> float:
 
 @dataclass
 class HBondStats:
-    length: float
-    donor_angle: float
-    acceptor_angle: float
+    length: Optional[float]
+    donor_angle: Optional[float]
+    acceptor_angle: Optional[float]
     OOPA1: Optional[float] = None
     OOPA2: Optional[float] = None
 
@@ -724,6 +726,9 @@ def hbond_stats(
     residue1_plane: Optional[ResiduePosition],
     residue2_plane: Optional[ResiduePosition]
 ) -> HBondStats:
+    if atom1 is None or atom2 is None:
+        return HBondStats(None, None, None)
+
     assert _linalg_norm(atom0.coord - atom1.coord) <= 1.6, f"atoms 0,1 not bonded: {atom0.full_id} {atom1.full_id} ({np.linalg.norm(atom0.coord - atom1.coord)} > 1.6, {atom0.coord} {atom1.coord})"
     assert _linalg_norm(atom2.coord - atom3.coord) <= 1.6, f"atoms 2,3 not bonded: {atom2.full_id} {atom3.full_id} ({np.linalg.norm(atom0.coord - atom1.coord)} > 1.6, {atom0.coord} {atom1.coord})"
     assert _linalg_norm(atom1.coord - atom2.coord) > 1.55, f"atoms too close for h-bond: {atom1.full_id} {atom2.full_id} ({np.linalg.norm(atom1.coord - atom2.coord)} < 2, {atom1.coord} {atom2.coord})"
@@ -774,7 +779,7 @@ def get_hbond_stats(pair: PairInformation) -> Optional[List[Optional[HBondStats]
     ]
 
     return [
-        hbond_stats(atoms[0], atoms[1], atoms[2], atoms[3], rp1, rp2) if None not in atoms else None
+        hbond_stats(atoms[0], atoms[1], atoms[2], atoms[3], rp1, rp2)
         for atoms, hb in zip(bonds_atoms, hbonds)
     ]
 
