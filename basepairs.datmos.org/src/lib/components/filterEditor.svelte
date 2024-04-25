@@ -7,6 +7,7 @@
 	import _, { slice, startsWith } from "lodash";
 	import config from "$lib/config";
 	import Pairimage from "./pairimage.svelte";
+	import { imgDir } from "$lib/dbInstance";
 
     export let filter: NucleotideFilterModel
     export let filterBaseline: NucleotideFilterModel | undefined
@@ -107,7 +108,7 @@
     async function setFr3dObservedBoundaries(sql: boolean) {
       const f = await filterLoader.defaultFilterLimits.value
       const pairType = metadata.pair_type.join("-")
-      const newFilter = filterLoader.addHBondLengthLimits(pairType, filterLoader.toNtFilter(f, pairType, null))
+      const newFilter = filterLoader.addHBondLengthLimits(pairType, 0.01, filterLoader.toNtFilter(f, 0.02, pairType, null))
       newFilter.datasource = filter.datasource
       newFilter.filtered = filter.filtered && !["fr3d-f", "allcontacts-f", "allcontacts-boundaries-f"].includes(filter.datasource)
       if (sql) {
@@ -206,8 +207,29 @@
     </div>
 
     {#if mode=="basic"}
-    
+    {@const biggestStat = metadata?.statistics.reduce((prev, x) => (prev && prev.count > x.count ? prev : x), null)}
+    {@const igmUrlBase = biggestStat?.nicest_bp == null ? null : `${imgDir}/${biggestStat.nicest_bp[0]}/${biggestStat.nicest_bp[2]}_${biggestStat.nicest_bp[4]}${biggestStat.nicest_bp[5]??''}${biggestStat.nicest_bp[6]??''}-${biggestStat.nicest_bp[7]}_${biggestStat.nicest_bp[9]}${biggestStat.nicest_bp[10]??''}${biggestStat.nicest_bp[11]??''}`}
     <div class="flex-columns">
+      {#if biggestStat}
+      <div class="column">
+        <div class="LW-table-cell" style="text-align: center">
+          <!-- parentSize={true} -->
+              <Pairimage
+                url={igmUrlBase + ".png"}
+                videoUrl={igmUrlBase + ".webm"}
+                allowHoverVideo={false}
+                onClick={() => false}
+                labelText="Reference {metadata.pair_type[0]} {metadata.pair_type[1]} basepair"
+                pair={JSON.parse(JSON.stringify({ // TS laundry machine
+                    id: {
+                        nt1: {pdbid: biggestStat.nicest_bp[0], model: biggestStat.nicest_bp[1], chain: biggestStat.nicest_bp[2], resname: biggestStat.nicest_bp[3], resnum: biggestStat.nicest_bp[4], altloc: biggestStat.nicest_bp[5], inscode: biggestStat.nicest_bp[6]},
+                        nt2: {pdbid: biggestStat.nicest_bp[0], model: biggestStat.nicest_bp[1], chain: biggestStat.nicest_bp[7], resname: biggestStat.nicest_bp[8], resnum: biggestStat.nicest_bp[9], altloc: biggestStat.nicest_bp[10], inscode: biggestStat.nicest_bp[11]},
+                        pairingType: metadata.pair_type
+                    }
+                }))} />
+        </div>
+      </div>
+      {/if}
       <div class="column">
         <div class="field">
           <label class="label" for="ntfilter-data-source">Data source</label>

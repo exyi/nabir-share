@@ -15,6 +15,7 @@
   export let parentSize: boolean = false
   export let linkText: string | undefined = undefined
   export let linkUrl: string | undefined = undefined
+  export let labelText: string | undefined = undefined
   export let onClick: () => any = () => { }
 
   let pngFallback = false,
@@ -122,7 +123,7 @@
   }
 </style>
 
-<div class="pairimage" class:comparison-added={pair.comparison === true} class:comparison-removed={pair.comparison === false}>
+<div class="pairimage" class:comparison-added={pair?.comparison === true} class:comparison-removed={pair?.comparison === false}>
   <a on:click={() => onClick()} href={linkUrl ?? "javascript:;"}>
 <div class="img-root" class:autosize={!parentSize} class:allow-video={allowHoverVideo && videoUrl != null} class:video-show={videoShow} on:mouseover={() => { videoLoaded = true }} on:focus={() => { videoLoaded = true }}>
   <div class="video">
@@ -144,10 +145,14 @@
 <div class="header">
     <div style="flex: 1 1 0px;"></div>
     <div style="flex: 0 0 auto;">
+      {#if labelText}
+        {labelText}
+      {:else if pair != null}
       <strong>{pair?.id.nt1.pdbid}</strong>{pair?.id.nt1.model > 1 ? "-" + pair?.id.nt1.model : ""}
       {pair?.id.nt1.chain}-{pair?.id.nt1.resname??''}<strong>{pair?.id.nt1.resnum}{pair?.id.nt1.altloc??''}{pair?.id.nt1.inscode??''}</strong>
       · · ·
       {pair?.id.nt2.chain}-{pair?.id.nt2.resname??''}<strong>{pair?.id.nt2.resnum}{pair?.id.nt2.altloc??''}{pair?.id.nt2.inscode??''}</strong>
+      {/if}
     </div>
     <div style="flex: 0 0 auto; overflow: visible">
       {#if linkText}
