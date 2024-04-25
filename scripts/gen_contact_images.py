@@ -559,7 +559,7 @@ def main(argv):
     parser.add_argument("--movie", type=int, default=0, help="If not zero, produce a rotating animation of the base pair")
     parser.add_argument("--movie-format", type=str, default="webm", help="webm (VP9 with alpha) or mp4 (H.264)")
     parser.add_argument("--incremental", type=bool, default=False, help="Generate the image/video only if it does not exist yet")
-    parser.add_argument("--incremental-max-age", type=int, default=False, help="Maximum age of the image/video to be considered done, in days")
+    parser.add_argument("--incremental-max-age", type=int, default=9999, help="Maximum age of the image/video to be considered done, in days")
     parser.add_argument("--ortho", action="store_true", help="Use orthoscopic projection")
     parser.add_argument("--ffmpeg_background", type=int, default=0, help="How many ffmpeg processes can be left running asynchronously per PyMOL thread. 0 = run synchronously. With the VP9 encoding, about 3 ffmpegs for 1 pymol thread is reasonable.")
     parser.add_argument("--skip-bad", type=bool, default=False, help="Skip basepairs with bad or missing parameters")
