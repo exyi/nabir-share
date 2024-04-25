@@ -127,6 +127,16 @@ class PairType:
             t = self.type[0].lower() + self.type[1].upper() + self.type[2].upper()
             return PairType(t, self.bases, self.variant, self.n)
 
+_resname_map = {
+    'DT': 'U',
+    'DC': 'C',
+    'DA': 'A',
+    'DG': 'G',
+    'DU': 'U',
+    'T': 'U',
+}
+def map_resname(resname: str) -> str:
+    return _resname_map.get(resname.upper(), resname)
 
 def read_pair_definitions(file = os.path.join(os.path.dirname(__file__), "H_bonding_Atoms_from_Isostericity_Table.csv")) -> dict[tuple[str, str], list[tuple[str, str, str, str]]]:
     with open(file, "r") as f:
@@ -163,7 +173,7 @@ def read_pair_definitions(file = os.path.join(os.path.dirname(__file__), "H_bond
     return result_mapping
 
 def get_angle_ref_atom(res: str, atom: str)-> str:
-    res = {"U":"T"}.get(res, res)
+    res = map_resname(res)
     neighbors = set(itertools.chain(*[ edge for edge in atom_connectivity[res] if atom in edge ]))
     neighbors.remove(atom)
     assert len(neighbors) >= 1, f"No neighbors found in {res} for atom {atom}"
@@ -249,7 +259,7 @@ atom_connectivity = {
         *pyrimidine_atom_connectivity,
         ("C2", "O2"),
         ("C4", "N4"),
-        ("C5", "C7") # 5-methyl cytosine
+        # ("C5", "C7") # 5-methyl cytosine
     ],
     "U": [
         *pyrimidine_atom_connectivity,
@@ -419,14 +429,4 @@ def has_symmetrical_definition(pair_type: PairType):
 def defined_pair_types() -> list[PairType]:
     return [ PairType.from_tuple(k) for k in hbonding_atoms.keys() ]
 
-_resname_map = {
-    'DT': 'U',
-    'DC': 'C',
-    'DA': 'A',
-    'DG': 'G',
-    'DU': 'U',
-    'T': 'U',
-}
-def map_resname(resname: str) -> str:
-    return _resname_map.get(resname.upper(), resname)
 
