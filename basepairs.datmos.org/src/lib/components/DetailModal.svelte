@@ -67,8 +67,12 @@
         }
     }
 
+    let avifError = false
+    let avifRotError = false
     let videoError = false
     $: { videoUrl; videoError = false }
+    $: { rotImageUrl; avifRotError = false }
+    $: { imageUrl; avifError = false }
 
     function getRange(f: NucleotideFilterModel, column: string) : NumRange | undefined {
         if (!f) return undefined
@@ -199,11 +203,18 @@
 </style>
 <div>
     <div class="imgpane">
+        {#if !avifError}
+        <img src={imageUrl.replace(/[.]\w+$/, '-1440.avif')} alt='x' on:error={() => { avifError = true }} />
+        {:else}
         <img src={imageUrl} alt='x' />
+        {/if}
+
         {#if videoUrl && !videoError}
             <video src={videoUrl} autoplay muted loop controls on:error={() => { videoError = true }} />
+        {:else if rotImageUrl && !avifRotError}
+            <img src={rotImageUrl.replace(/[.]\w+$/, '-1440.avif')} alt='x' />
         {:else if rotImageUrl}
-            <img src={rotImageUrl} alt='' />
+            <img src={rotImageUrl} alt='x' />
         {/if}
     </div>
     <div>
