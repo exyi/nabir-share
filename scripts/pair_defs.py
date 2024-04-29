@@ -146,9 +146,9 @@ def read_pair_definitions(file = os.path.join(os.path.dirname(__file__), "H_bond
     header = lines[header_i]
     data = lines[header_i + 1:]
     def translate_pair_type(line):
-        m = re.match(r"^(cis |trans )([WSH])/([WSH])(a?)", line[0].strip(), re.IGNORECASE)
+        m = re.match(r"^(cis |trans )([WSH])/([WSHB])(a?)", line[0].strip(), re.IGNORECASE)
         if not m:
-            # print("WARNING: Invalid pair type: " + line[0])
+            print("WARNING: Invalid pair type: " + line[0])
             return None
         ct = { "c": "c", "t": "t", "cis":"c", "trans": "t" }[m.group(1)[0].strip().lower()]
         return f"{ct}{m.group(2).upper()}{m.group(3).upper()}{m.group(4)}"
