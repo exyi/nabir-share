@@ -148,7 +148,6 @@
   let results = []
   let resultsTable: arrow.Table | null = null
   let resultsSchema: arrow.Schema<any> | null = resultsTable?.schema
-  let resultsCount = 0
   let resultsAgg: ResultsAggregates = {}
 
   $: {
@@ -196,7 +195,6 @@
         results = []
         resultsTable = new arrow.Table()
         resultsSchema = resultsTable.schema
-        resultsCount = 0
         resultsAgg = {}
         return
       }
@@ -222,7 +220,6 @@
 
       abort.throwIfAborted()
       resultsAgg = {}
-      resultsCount = resultsTable.numRows
       results = Array.from(convertQueryResults(resultsTable, parsePairingType(selectedPairing), config.imgLimit));
       timing.queryConvert = performance.now() - startTime; startTime = performance.now()
 
@@ -259,6 +256,14 @@
           } else if (row.comparison_in_current) {
             resultsAgg.comparison.inCurrent = Number(row.count)
           }
+        }
+
+        if (resultsAgg.types) {
+          resultsAgg.count = Object.values(resultsAgg.types).reduce((a, b) => a + b, 0)
+        } else if (resultsAgg.comparison) {
+          resultsAgg.count = resultsAgg.comparison.inBaseline + resultsAgg.comparison.inCurrent + resultsAgg.comparison.inBoth
+        } else if (resultsAgg.pdbStructures) {
+          resultsAgg.count = Object.values(resultsAgg.pdbStructures).reduce((a, b) => a + b, 0)
         }
       }
       timing.aggCounts = performance.now() - startTime; startTime = performance.now()
@@ -521,9 +526,9 @@
 </div>
 
 {#if statistics.enabled}
-  {#if resultsCount == totalRowLimit}
+  {#if resultsTable?.numRows == totalRowLimit}
     <div class="notification is-warning">
-      Only the first {resultsCount.toLocaleString("mfe")} rows are counted in the statistics
+      Only the first {resultsTable.numRows.toLocaleString("mfe")} rows are counted in the statistics
     </div>
   {/if}
   <StatsPanel data={resultsTable} availableSchema={resultsSchema} bind:settings={statistics} metadata={getMetadata(selectedPairing)} />
@@ -533,7 +538,7 @@
 {#await resultsPromise}
   <!-- <Spinner></Spinner> -->
 {:then _} 
-  {#if resultsCount == 0}
+  {#if resultsTable?.numRows === 0}
     {#if getMetadata(selectedPairing) == null}
       <h5 class="title is-5" style="text-align: center">Sorry, the base pair is not defined.</h5>
       <!-- TODO: show rotated bases to illustrate that it's probably impossible -->
@@ -569,13 +574,18 @@
 {/await}
 <PairImages pairs={results} rootImages={db.imgDir} rotImg={filter.rotX} imgAttachement=".png" videoAttachement=".webm" videoOnHover={!!filter.rotX}
   onClick={d => showDetailModal(d)} />
-{#if results && resultsCount != results.length && resultsCount > 0}
+{#if results && resultsTable?.numRows > 0 && (resultsAgg.count ?? resultsTable.numRows) != results.length}
   <div style="margin: 100px; text-align: center">
-    <p style="text-align: center">This is the first {results.length} cases, total count is {resultsAgg.count ?? resultsCount}</p>
-    <button type="button" on:click={() => {
+    <p style="text-align: center">This is the first {results.length} cases, total count is {resultsAgg.count ?? resultsTable.numRows}</p>
+    <button type="button" on:click={async () => {
+      const newCount = Math.min(config.imgLimit, (resultsAgg.count ?? resultsTable.numRows) - results.length)
+      if (resultsTable.numRows < results.length + newCount) {
+        normalTableLimit = results.length + newCount
+        await updateResults()
+      }
       results = [...results, ...convertQueryResults(resultsTable.slice(results.length), parsePairingType(selectedPairing), config.imgLimit) ]
     }}>
-      Load {Math.min(config.imgLimit, resultsCount - results.length)} more examples
+      Load {Math.min(config.imgLimit, (resultsAgg.count ?? resultsTable.numRows) - results.length)} more examples
     </button>
   </div>
 {/if}
