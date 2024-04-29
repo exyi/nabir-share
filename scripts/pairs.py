@@ -1106,14 +1106,19 @@ def export_stats_csv(pdbid, df: pl.DataFrame, add_metadata_columns: bool, max_bo
 def df_hstack(columns: list[pl.DataFrame]) -> pl.DataFrame:
     return functools.reduce(pl.DataFrame.hstack, columns)
 
-def load_inputs(pool: Union[Pool, MockPool], args) -> pl.DataFrame:
+def load_inputs(pool: Union[Pool, MockPool], args, pdbid_prefix='') -> pl.DataFrame:
     inputs: list[str] = args.inputs
     if len(inputs) == 0:
         raise ValueError("No input files specified")
+    if pdbid_prefix:
+        pdbid_filter = pl.col('pdbid').str.to_lowercase().str.starts_with(pdbid_prefix.lower())
+    else:
+        pdbid_filter = pl.lit(True)
     
     if inputs[0].endswith(".parquet") or inputs[0].endswith('.csv'):
         print(f'Loading basepairing CSV files')
-        df = scan_pair_csvs(args.inputs).sort('pdbid', 'model', 'nr1', 'nr2')
+        df = scan_pair_csvs(args.inputs)
+        df = df.filter(pdbid_filter)
         df = df.with_columns(
             alt1=pl.when((pl.col("alt1") == '\0') | (pl.col("alt1") == '?')).then(pl.lit('')).otherwise(pl.coalesce(pl.col("alt1"), pl.lit('')).str.strip_chars()),
             alt2=pl.when((pl.col("alt2") == '\0') | (pl.col("alt2") == '?')).then(pl.lit('')).otherwise(pl.coalesce(pl.col("alt2"), pl.lit('')).str.strip_chars()),
@@ -1127,12 +1132,14 @@ def load_inputs(pool: Union[Pool, MockPool], args) -> pl.DataFrame:
             )
         allowed_residues = ["A", "T", "G", "U", "C", "DA", "DT", "DG", "DC", "DU"]
         df = df.filter(pl.col("res1").is_in(allowed_residues)).filter(pl.col("res2").is_in(allowed_residues))
+        df = df.sort('pdbid', 'model', 'nr1', 'nr2')
         # if "r11" in df.columns:
-        df = df.collect()
+        df = df.collect(streaming=True)
     elif inputs[0].endswith("_basepair.txt") or inputs[0].endswith("_basepair_detail.txt"):
         print(f"Loading {len(inputs)} basepair files")
         import fr3d_parser
         df = fr3d_parser.read_fr3d_files_df(pool, args.inputs,
+            filter=pdbid_filter,
             # filter=(pl.col("symmetry_operation1").is_null() & pl.col("symmetry_operation2").is_null())
         ).sort('pdbid', 'model', 'nr1', 'nr2')
     else:
@@ -1153,8 +1160,8 @@ def validate_missing_columns(chunks: list[pl.DataFrame]):
         if not all_columns.issubset(c.columns):
             print(f"Chunk with {set(c['pdbid'].to_numpy())} is missing columns: {all_columns.difference(set(c.columns))}")
 
-def main(pool: Union[Pool, MockPool], args):
-    df = load_inputs(pool, args)
+def main(pool: Union[Pool, MockPool], args, pdbid_partition_prefix=''):
+    df = load_inputs(pool, args, pdbid_prefix=pdbid_partition_prefix)
     if args.export_only:
         print("Exporting metadata only")
         return save_output(args, df)
@@ -1246,9 +1253,9 @@ def main(pool: Union[Pool, MockPool], args):
     validate_missing_columns(result_chunks)
     df = pl.concat(result_chunks)
     df = postfilter(df)
-    return save_output(args, df)
+    return df
 
-def save_output(args, df):
+def save_output(args, df: pl.DataFrame):
     df = df.sort('pdbid', 'model', 'chain1', 'nr1', 'chain2', 'nr2')
     if args.output != "/dev/null":
         df.write_csv(args.output if args.output.endswith(".csv") else args.output + ".csv")
@@ -1289,7 +1296,8 @@ if __name__ == "__main__":
 
     multiprocessing.set_start_method("spawn")
     if args.threads == 1:
-        main(MockPool(), args)
+        result_df = main(MockPool(), args)
     else:
         with multiprocessing.Pool(processes=args.threads) as pool:
-            main(pool, args)
+            result_df = main(pool, args)
+    save_output(args, result_df)

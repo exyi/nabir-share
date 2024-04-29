@@ -279,7 +279,7 @@ def read_fr3d_files_df(pool: Union[Pool, MockPool], files: Sequence[str], filter
         frames = []
         for f in files:
             df = _load_frame(f, filter)
-            if df is not None:
+            if df is not None and len(df) > 0:
                 frames.append(df)
     else:
         frames = [
