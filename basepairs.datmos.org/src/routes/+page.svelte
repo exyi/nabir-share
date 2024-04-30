@@ -160,7 +160,7 @@
 
   const updateResultsLock = new AsyncLock()
 
-  async function updateResults() {
+  async function updateResults(resultsMappingLimit = config.imgLimit) {
     async function core(conn: AsyncDuckDBConnection, abort: AbortSignal) {
       let startTime = performance.now()
       const timing = { ensureViews: -1, query: -1, querySchema: -1, queryConvert: -1, aggCounts: -1, aggBondParams: -1 }
@@ -220,14 +220,14 @@
 
       abort.throwIfAborted()
       resultsAgg = {}
-      results = Array.from(convertQueryResults(resultsTable, parsePairingType(selectedPairing), config.imgLimit));
+      results = Array.from(convertQueryResults(resultsTable, parsePairingType(selectedPairing), resultsMappingLimit));
       timing.queryConvert = performance.now() - startTime; startTime = performance.now()
 
       // console.log({resultsPromise, results})
       const cols = resultsSchema.names
       const countGroupingSets: string[][] = [ [] ]
       if (cols.includes("family") && cols.includes("res1") && cols.includes("res2")) {
-        countGroupingSets.push(["family", "ltrim(res1,'D')", "ltrim(res2,'D')"])
+        countGroupingSets.push(["family", "ltrim(res1, 'D')", "ltrim(res2, 'D')"])
       }
       if (cols.includes("pdbid")) {
         countGroupingSets.push(["pdbid"])
@@ -245,7 +245,7 @@
         }
         else if (row.family != null) {
           resultsAgg.types ??= {}
-          resultsAgg.types[row.family + "-" + row["ltrim(res1,'D')"] + "-" + row["ltrim(res2,'D')"]] = Number(row.count)
+          resultsAgg.types[row.family + "-" + row["ltrim(res1, 'D')"] + "-" + row["ltrim(res2, 'D')"]] = Number(row.count)
         }
         else if (row.comparison_in_baseline != null) {
           resultsAgg.comparison ??= { inBaseline: 0, inCurrent: 0, inBoth: 0 }
@@ -415,7 +415,7 @@
         }
         ev.preventDefault()
         return false
-      }}><b>{selectedFamily == null ? p.family + "-" : ""}{p.bases}</b>{#if m && location.host != "basepairs.datmos.org"}&nbsp;({m.med_quality + m.high_quality}){/if}</a>
+      }}><b>{selectedFamily == null ? p.family + "-" : ""}{p.bases}</b>{#if m && location.host != "xxbasepairs.datmos.org"}&nbsp;({m.med_quality + m.high_quality}){/if}</a>
   {/each}
 </nav>
 {#if selectedPairing && selectedPairing[1] == selectedPairing[2] && selectedPairing.slice(1, 3) != 'SS'}
@@ -578,12 +578,13 @@
   <div style="margin: 100px; text-align: center">
     <p style="text-align: center">This is the first {results.length} cases, total count is {resultsAgg.count ?? resultsTable.numRows}</p>
     <button type="button" on:click={async () => {
+      const oldCount = results.length
       const newCount = Math.min(config.imgLimit, (resultsAgg.count ?? resultsTable.numRows) - results.length)
       if (resultsTable.numRows < results.length + newCount) {
         normalTableLimit = results.length + newCount
-        await updateResults()
+        await updateResults(newCount + oldCount)
       }
-      results = [...results, ...convertQueryResults(resultsTable.slice(results.length), parsePairingType(selectedPairing), config.imgLimit) ]
+      results = [...results, ...convertQueryResults(resultsTable.slice(results.length), parsePairingType(selectedPairing), oldCount + newCount - results.length) ]
     }}>
       Load {Math.min(config.imgLimit, (resultsAgg.count ?? resultsTable.numRows) - results.length)} more examples
     </button>
