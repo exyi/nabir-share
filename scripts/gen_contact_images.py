@@ -433,21 +433,36 @@ def process_group(pdbid, group: pl.DataFrame, output_dir: str, bpargs: BPArgs):
     def load_if_needed() -> None:
         nonlocal loaded, states
         if not loaded:
-            cmd.set("assembly", 1)
-            load(None, pdbid)
-            cmd.split_states(f"%{pdbid}")
-            states = [ x for x in cmd.get_names() if x.startswith(pdbid + '_')]
-            assert len(states) > 0, f"no states found for {pdbid}: {cmd.get_names()}"
-            states.sort()
-            cmd.delete(f"%{pdbid}")
+            if has_symop:
+                # only set assembly=1 for structures with symmetry operations
+                # assembly=1 also has the unpleasant side effect of loading only one part of the structure in some cases
+                cmd.set("assembly", 1)
+                load(None, pdbid)
+                cmd.split_states(f"%{pdbid}")
+                states = [ x for x in cmd.get_names() if x.startswith(pdbid + '_')]
+                assert len(states) > 0, f"no states found for {pdbid}: {cmd.get_names()}"
+                states.sort()
+                # remove original state, make sure that we only access the structure through states[x]
+                cmd.delete(f"%{pdbid}")
+            else:
+                cmd.set("assembly", "")
+                load(None, pdbid)
+                states = [pdbid]
+
             cmd.hide("everything")
             loaded = True
     pdbdir = os.path.join(output_dir, pdbid)
     os.makedirs(pdbdir, exist_ok=True)
     cmd.set("orthoscopic", bpargs.ortho)
     type_column = group["family"] if "family" in group.columns else group['type'] if 'type' in group.columns else itertools.repeat(None)
-    symop1_column = group["symmetry_operation1"] if "symmetry_operation1" in group.columns else itertools.repeat(None)
-    symop2_column = group["symmetry_operation2"] if "symmetry_operation2" in group.columns else itertools.repeat(None)
+    if "symmetry_operation1" in group.columns:
+        symop1_column = group["symmetry_operation1"]
+        symop2_column = group["symmetry_operation2"]
+        has_symop = group["symmetry_operation1"].is_not_null().any() or group["symmetry_operation2"].is_not_null().any()
+    else:
+        symop1_column = itertools.repeat(None)
+        symop2_column = itertools.repeat(None)
+        has_symop = False
     for pair_family, model, res1, chain1, nr1, ins1, alt1, symop1, res2, chain2, nr2, ins2, alt2, symop2 in zip(type_column, group['model'], group["res1"], group["chain1"], group["nr1"], group["ins1"], group["alt1"], symop1_column, group["res2"], group["chain2"], group["nr2"], group["ins2"], group["alt2"], symop2_column):
         row_description = f"{pdbid}:{model} {chain1}-{nr1}{alt1 or ''}{ins1 or ''}{symop1 or ''}...{chain2}-{nr2}{alt2 or ''}{ins2 or ''}{symop2 or ''}"
         assert symop1 != '1_555' and symop2 != '1_555'
