@@ -366,22 +366,28 @@ def get_label(col: str, pair_type: PairType, throw=True):
         assert not throw
         return None
     swap = is_swapped(pair_type)
-    
-    if (m := re.match("^hb_(\\d+)_donor_angle", col)):
-        ix = int(m.group(1))
+    if not (m := re.match("^hb_(\\d+)_", col)):
+        return None
+    ix = int(m.group(1))
+    if len(hbonds) <= ix: return None
+
+    # cWB has two identical bonds, because the nitrogen has two hydrogens...
+    if hbonds.count(hbonds[ix]) > 1:
+        disambig = " " + chr(ord('α') + hbonds[:ix].count(hbonds[ix]))
+    else:
+        disambig = ""
+
+    if col.endswith("_donor_angle"):
         if len(hbonds) <= ix: return None
-        return format_angle_label(hbonds[ix][:3], swap=swap)
-    elif (m := re.match("^hb_(\\d+)_acceptor_angle", col)):
-        ix = int(m.group(1))
+        return format_angle_label(hbonds[ix][:3], swap=swap)+disambig
+    elif col.endswith("_acceptor_angle"):
         if len(hbonds) <= ix: return None
-        return format_angle_label(hbonds[ix][1:], swap=swap)
-    elif (m := re.match("^hb_(\\d+)_(length|.*)", col)):
-        ix = int(m.group(1))
-        if len(hbonds) <= ix: return None
-        return format_length_label(hbonds[ix][1:3], swap=swap)
+        return format_angle_label(hbonds[ix][1:], swap=swap)+disambig
+    else:
+        return format_length_label(hbonds[ix][1:3], swap=swap)+disambig
 
 def is_swapped(pair_type: PairType):
-    symtype = pair_type.type in ["cWW", "tWW", "cHH", "tHH", "cSS", "tSS"]
+    symtype = pair_type.type.lower() in ["cww", "tww", "chh", "thh", "css", "tss"]
     return pair_type.bases_str == "C-G" and symtype or pair_type.type.lower() not in pair_defs.pair_families
 def format_pair_type(pair_type: PairType, is_dna = False, is_rna=False):
     pair_kind, pair_bases = pair_type.to_tuple()
@@ -390,6 +396,7 @@ def format_pair_type(pair_type: PairType, is_dna = False, is_rna=False):
     elif is_rna == True:
         pair_bases = pair_bases.replace("T", "U")
     if is_swapped(pair_type):
+        assert not is_swapped(pair_type.swap())
         return format_pair_type(pair_type.swap())
     elif len(pair_bases) == 3 and pair_bases[1] == '-':
         return pair_kind + " " + pair_bases.replace("-", "")
@@ -1105,6 +1112,7 @@ def main(argv):
     boundaries = []
     all_statistics = []
 
+    os.makedirs(args.output_dir, exist_ok=True)
     for pair_type, df in enumerate_pair_types(args.input_file, args.include_nears):
         if only_pairtypes is not None and pair_type.without_n() not in only_pairtypes:
             print(f"Skipping {pair_type} because it is not in {only_pairtypes}")
@@ -1166,16 +1174,17 @@ def main(argv):
             # ]
             dna_rna_images = [ create_pair_image(dff[bp], args.output_dir, pair_type) if bp >= 0 else None for bp in nicest_bps ] * len(resolutions) if nicest_bps is not None else []
             dna_rna_highlights = [ dff[bp] if bp >= 0 else None for bp in nicest_bps ] if nicest_bps is not None else []
-            output_files = [
+            output_files = []
+            output_files.extend(
                 f for f in make_bond_pages(df, args.output_dir, pair_type, hbond_histogram_defs, images=dna_rna_images, highlights=dna_rna_highlights, title_suffix=" - H-bonds"
                 )
-            ]
-            output_files.extend(
-                make_bond_pages(dff, args.output_dir, pair_type, coplanarity_histogram_defs, highlights=dna_rna_highlights, title_suffix= " - Coplanarity")
             )
-            output_files.extend(
-                make_bond_pages(dff, args.output_dir, pair_type, coplanarity_histogram_defs2, highlights=dna_rna_highlights, title_suffix= " - coplanarity2")
-            )
+            # output_files.extend(
+            #     make_bond_pages(dff, args.output_dir, pair_type, coplanarity_histogram_defs, highlights=dna_rna_highlights, title_suffix= " - Coplanarity")
+            # )
+            # output_files.extend(
+            #     make_bond_pages(dff, args.output_dir, pair_type, coplanarity_histogram_defs2, highlights=dna_rna_highlights, title_suffix= " - coplanarity2")
+            # )
             # output_files.extend(
             #     make_bond_pages(dff, args.output_dir, pair_type, rmsd_histogram_defs, highlights=dna_rna_highlights, title_suffix= " - RMSD to nicest BP")
             # )
@@ -1220,16 +1229,16 @@ def main(argv):
             #         pl.col(f"rmsd_all_base"),
             #     ], title_suffix=" - Various N1-C1' reference frame angles")
             # )
-            # output_files = [
+            # output_files.extend(
             #     f
             #     for column in [0, 1, 2]
             #     for f in make_bond_pages(df, args.output_dir, pair_type, [ h.select_columns(column) for h in histogram_defs], images=dna_rna_images, highlights=dna_rna_highlights, title_suffix=f" #{column}")
-            # ]
+            # )
             all_statistics.extend(statistics)
             hb_filters = [
-                pl.col(f"hb_{i}_length") <= 4.0 if "C" in hb[1] or "C" in hb[2] else pl.col(f"hb_{i}_length") <= 3.8
-                for i, hb in enumerate(pair_defs.get_hbonds(pair_type, throw=False))
-                if f"hb_{i}_length" in df.columns
+                # pl.col(f"hb_{i}_length") <= 4.0 if "C" in hb[1] or "C" in hb[2] else pl.col(f"hb_{i}_length") <= 3.8
+                # for i, hb in enumerate(pair_defs.get_hbonds(pair_type, throw=False))
+                # if f"hb_{i}_length" in df.columns
             ]
             boundaries.append(calculate_boundaries(
                 df.filter(

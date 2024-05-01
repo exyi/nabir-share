@@ -1,11 +1,14 @@
 import functools
 import itertools
 import os, math, re, csv, dataclasses
-from typing import Optional, Union
+from typing import Literal, Optional, Union
 
 @functools.total_ordering
 @dataclasses.dataclass(frozen=True)
 class PairType:
+    """
+    Represent type of basepairs, like cWW-A-U, cWWa-U-U, ntHS-A-G, ...
+    """
     type: str
     bases: tuple[str, str]
     variant: str = ""
@@ -27,28 +30,36 @@ class PairType:
         return f"{'n' if self.n else ''}{self.type}{self.variant}"
     @property
     def full_family(self) -> str:
+        """Basepair family including the variant (a suffix) and near pair (n prefix)"""
         return f"{'n' if self.n else ''}{self.type}{self.variant}"
     @property
     def bases_str(self) -> str:
+        """Pairing bases separated by dash (G-C, A-U, ...)"""
         return "-".join(self.bases)
     def __str__(self) -> str:
         return f"{self.full_type}-{self.bases_str}"
     def __repr__(self) -> str:
         return f"PairType({repr(self.type)}, {self.bases}{f', {repr(self.variant) if self.variant or self.n else str()}'}{', n=True' if self.n else ''})"
     def to_tuple(self, simplify = False) -> tuple[str, str]:
+        """Tuple of pair family and bases. E.g. ('cWW', 'A-U')"""
         return (self.type if simplify else self.full_type, self.bases_str)
     def swap(self) -> 'PairType':
+        """Swap the bases and pairing edges. E.g. cWH-A-U -> cHW-U-A"""
         return PairType(self.type[0] + self.type[2] + self.type[1], (self.bases[1], self.bases[0]), self.variant, self.n)
     def is_preferred_orientation(self) -> bool:
+        """cWH > cHW, cWS > cSW, ... A-U > U-A, G-C > C-G, ..."""
         return is_preferred_pair_type_orientation(self.to_tuple())
     def is_swappable(self):
+        """If this pair type can be safely swapped, i.e. the other orientatin isn't defined to mean something different."""
         if self.to_tuple() in hbonding_atoms and self.swap().to_tuple() in hbonding_atoms:
             # both definitions exist,
             return False
         return True
     def swap_is_nop(self) -> bool:
+        """If the swap is the same as the original pair type."""
         return self.type[1] == self.type[2] and self.bases[0] == self.bases[1]
     def without_n(self) -> 'PairType':
+        """Remove the near pair flag"""
         if self.n:
             return PairType(self.type, self.bases, self.variant, n=False)
         return self
@@ -64,13 +75,13 @@ class PairType:
             self.n,
         )
     @property
-    def edge1_name(self) -> str:
+    def edge1_name(self) -> Literal['W', 'H', 'S', 'B']:
         assert len(self.type) == 3
-        return self.type[1].upper()
+        return self.type[1].upper() # type: ignore
     @property
-    def edge2_name(self) -> str:
+    def edge2_name(self) -> Literal['W', 'H', 'S', 'B']:
         assert len(self.type) == 3
-        return self.type[2].upper()
+        return self.type[2].upper() # type: ignore
     
     def __lt__(self, other: 'PairType') -> bool:
         return self.order_key() < other.order_key()
@@ -121,6 +132,7 @@ class PairType:
         raise ValueError(f"Invalid pair type: {s}")
     
     def normalize_capitalization(self) -> 'PairType':
+        """Normalize the capitalization of pair family lower t/c/n, twice upper W/H/S/B, optonal lower a suffix"""
         if self.type[0].islower() and self.type[1].isupper() and self.type[2].isupper():
             return self
         else:
@@ -139,6 +151,7 @@ def map_resname(resname: str) -> str:
     return _resname_map.get(resname.upper(), resname)
 
 def read_pair_definitions(file = os.path.join(os.path.dirname(__file__), "H_bonding_Atoms_from_Isostericity_Table.csv")) -> dict[tuple[str, str], list[tuple[str, str, str, str]]]:
+    """Load the hydrogen bond definitions from H_bonding_Atoms_from_Isostericity_Table.csv file into the `hbonding_atoms` dict."""
     with open(file, "r") as f:
         reader = csv.reader(f)
         lines = list(reader)
@@ -167,12 +180,17 @@ def read_pair_definitions(file = os.path.join(os.path.dirname(__file__), "H_bond
             # atom2 is the acceptor, atom3 is hydrogen and atom4 is the donor
             b = ("B"+get_angle_ref_atom(res2, atom4), "B"+atom4, "A"+atom2, "A"+get_angle_ref_atom(res1, atom2))
         else:
+            # aton3 is the acceptor, atom2 is hydrogen and atom1 is the donor
             assert atom4 == '-'
             b = ("A"+get_angle_ref_atom(res1, atom1), "A"+atom1, "B"+atom3, "B"+get_angle_ref_atom(res2, atom3))
-        result_mapping[pt].append(b)
+        if b not in result_mapping[pt]: # cWB has some bonds duplicated (the nitrogen has two hydrogens)
+            result_mapping[pt].append(b)
     return result_mapping
 
 def get_angle_ref_atom(res: str, atom: str)-> str:
+    """
+    Gets the reference atom used to calculate the hydrogen bond donor/acceptor angle.
+    """
     res = map_resname(res)
     neighbors = set(itertools.chain(*[ edge for edge in atom_connectivity[res] if atom in edge ]))
     neighbors.remove(atom)
@@ -180,12 +198,15 @@ def get_angle_ref_atom(res: str, atom: str)-> str:
     return max(neighbors)
 
 def hbond_swap_nucleotides(hbond: tuple[str, str, str, str]) -> tuple[str, str, str, str]:
+    """
+    Replace A with B and B with A in the hydrogen bond definition.
+    """
     return tuple(
         atom.replace("A", "ⒷⒷⒷⒷⒷⒷ").replace("B", "A").replace("ⒷⒷⒷⒷⒷⒷ", "B")
         for atom in hbond
     ) # type: ignore
 
-def swap_pair_type(pair_type: tuple[str, str]) -> tuple[str, str]:
+def _swap_pair_type(pair_type: tuple[str, str]) -> tuple[str, str]:
     t, bases = pair_type
     bases = bases.split("-")
     assert len(pair_type) == 2 and len(t) >= 3 and len(bases) == 2
@@ -223,7 +244,8 @@ pair_families = [
     "cws", "tws",
     "chh", "thh",
     "chs", "ths",
-    "css", "tss"
+    "css", "tss",
+    "cwb"
 ]
 
 sugar_atom_connectivity = [
@@ -384,21 +406,25 @@ my_hbonding_atoms: dict[tuple[str, str], list[tuple[str, str, str, str]]] = {
     # ],
 }
 
-# hbonding_atoms = my_hbonding_atoms
+#hbonding_atoms = my_hbonding_atoms
 hbonding_atoms = read_pair_definitions()
 
 def is_ch_bond(pair_type: PairType, b: tuple[str, str, str, str]) -> bool:
+    """Does the h-bond involve a carbon atom?"""
     return b[1][1] == 'C' or b[2][1] == 'C'
 
 def is_bond_to_sugar(pair_type: PairType, b: tuple[str, str, str, str]) -> bool:
+    """Is the bond to the O2' (or other sugar) atom?"""
     return b[1].endswith("'") or b[2].endswith("'")
 
 def is_bond_hidden(pair_type: PairType, b: tuple[str, str, str, str]) -> bool:
+    """Return true to hide a given bond from the generated plots"""
     return False
     return is_ch_bond(pair_type, b)
     return is_ch_bond(pair_type, b) or is_bond_to_sugar(pair_type, b)
 
 def get_hbonds(pair_type: Union[tuple[str, str], PairType], throw=True) -> list[tuple[str, str, str, str]]:
+    """Returns the list of hydrogen bonds for the given pair type. If it isn't defined, return an empty list or throw"""
     if isinstance(pair_type, PairType):
         type = pair_type.type + pair_type.variant
         bases = pair_type.bases_str
@@ -412,7 +438,7 @@ def get_hbonds(pair_type: Union[tuple[str, str], PairType], throw=True) -> list[
     if (type, bases) in hbonding_atoms:
         return hbonding_atoms[(type, bases)]
     
-    (type, bases) = swap_pair_type((type, bases))
+    (type, bases) = _swap_pair_type((type, bases))
     if (type, bases) in hbonding_atoms:
         return [ hbond_swap_nucleotides(hbond) for hbond in hbonding_atoms[(type, bases)] ]
     
@@ -422,6 +448,9 @@ def get_hbonds(pair_type: Union[tuple[str, str], PairType], throw=True) -> list[
         return []
     
 def has_symmetrical_definition(pair_type: PairType):
+    """Is the hydrogen bond definition of a swappable pair type symmetrical? - i.e. tWW A-A is the same regardless if one base is left or right."""
+    if not pair_type.swap_is_nop():
+        return False
     hb = set(get_hbonds(pair_type))
     hb_swap = set(hbond_swap_nucleotides(x) for x in hb)
     return hb == hb_swap

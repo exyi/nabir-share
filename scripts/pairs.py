@@ -21,6 +21,9 @@ _sentinel = object()
 
 @dataclass
 class AltResidue:
+    """
+    Residue wrapper filtering only atoms with a given altloc code
+    """
     res: Bio.PDB.Residue.Residue
     alt: str
 
@@ -29,6 +32,7 @@ class AltResidue:
         return self.res.resname
 
     def transform_atom(self, a: Bio.PDB.Atom.DisorderedAtom) -> Any:
+        """unwrap a disordered atom"""
         if a.is_disordered():
             if self.alt == '':
                 # don't crash on uninteresting atoms
@@ -42,6 +46,7 @@ class AltResidue:
         else:
             return a
     def get_atoms(self):
+        """List all residue atoms"""
         disorder_match = False
         for a in self.res.get_atoms():
             if self.alt != '' and a.is_disordered():
@@ -55,6 +60,7 @@ class AltResidue:
         if self.alt != '' and not disorder_match:
             raise KeyError(f"Alt {self.alt} not found in residue {self.res.full_id}")
     def get_atom(self, name, default: Any=_sentinel) -> Bio.PDB.Atom.Atom:
+        """Get residue atom by name"""
         if name in self.res:
             return self.transform_atom(self.res[name])
         else:
@@ -67,6 +73,10 @@ class AltResidue:
         return AltResidue(self.res.copy(), self.alt)
 
 def try_get_base_atoms(res: AltResidue) -> Optional[Tuple[Bio.PDB.Atom.Atom, List[Bio.PDB.Atom.Atom]]]:
+    """
+    Get atoms af the nucleobase, excluding sugar and phosphate atoms
+    return tuple of (C1', [base atoms]), or None in case of an error (C1' doesn't exist)
+    """
     c1 = res.get_atom("C1'", None)
     if c1 is not None:
         planar_base_atoms = [ a for a in res.get_atoms() if not a.name.endswith("'") and a.element not in [ "H", "D", "P" ] and a.name not in ["P", "OP1", "OP2", "OP3"] ]
@@ -75,6 +85,10 @@ def try_get_base_atoms(res: AltResidue) -> Optional[Tuple[Bio.PDB.Atom.Atom, Lis
     return None
 
 def get_base_atoms(res: AltResidue) -> Tuple[Bio.PDB.Atom.Atom, List[Bio.PDB.Atom.Atom]]:
+    """
+    Get atoms af the nucleobase, excluding sugar and phosphate atoms
+    return tuple of (C1', [base atoms])
+    """
     x = try_get_base_atoms(res)
     if x is None:
         raise ResideTransformError(f"No C1' atom found at {res.res.full_id}")
@@ -92,6 +106,9 @@ class ResideTransformError(Exception):
     pass
 
 def filter_atoms(c1, atoms):
+    """
+    Returns only atoms connected to the `c1` atom
+    """
     arr = np.array([ a.coord for a in atoms ]) - c1.coord
     c1_bonded = np.linalg.norm(arr, axis=1) <= 1.8
     if not np.any(c1_bonded):
@@ -101,31 +118,6 @@ def filter_atoms(c1, atoms):
 
     filter = connected_component
     return [ a for a, b in zip(atoms, filter) if b ]
-
-def normalize(v):
-    return v / np.linalg.norm(v)
-
-def orthonormal_basis(B):
-    Q, R = np.linalg.qr(B)
-    return Q
-
-def get_reasonable_nucleotides(model: Bio.PDB.Model.Model) -> List[Bio.PDB.Residue.Residue]:
-    nucleotides = []
-    for r in model.get_residues():
-        r: Bio.PDB.Residue.Residue = r
-        if "C1'" not in r:
-            continue # TODO: is this naming consistent in all structures?
-        if r.resname == "HOH":
-            continue
-        atoms = [ a for a in r.get_atoms() if a.element != "H" and a.element != "D" ]
-        if len(atoms) < 6:
-            continue
-        if sum(1 for a in atoms if a.element == "C") < 4:
-            continue
-        if sum(1 for a in atoms if a.element == "N") < 2:
-            continue
-        
-    return nucleotides
 
 @dataclass
 class TranslationThenRotation:
@@ -154,10 +146,15 @@ class ResiduePosition:
     origin: np.ndarray
     # rotation around C1 to align C1'-N bond to x-axis and the plane to X/Y axes
     rotation: np.ndarray
+    # orthonormal basis of the base plane (fitted through least squares)
     plane_basis: np.ndarray
+    # normal vector of the base plane
     plane_normal_vector: np.ndarray
+    # projection matrix to the plane
     projection_matrix: np.ndarray
+    # C1' atom coordinates
     c1_pos: Optional[np.ndarray] = None
+    # N1/N9 atom coordinates
     n_pos: Optional[np.ndarray] = None
 
     def __post_init__(self):
@@ -165,6 +162,9 @@ class ResiduePosition:
         assert self.plane_basis.shape == (3, 2)
 
     def plane_projection(self, point: np.ndarray) -> np.ndarray:
+        """
+        Projects the point onto the base plane
+        """
         assert point.shape[-1] == 3
         tpoint = point - self.origin
         return np.matmul(tpoint, self.projection_matrix) + self.origin
@@ -195,7 +195,7 @@ class ResiduePosition:
         """
         assert point1.shape == (3,) == point2.shape
         line = point2 - point1
-        normal_angle = math.degrees(math.acos(np.dot(normalize(line), self.plane_normal_vector)))
+        normal_angle = math.degrees(math.acos(np.dot(_linalg_normalize(line), self.plane_normal_vector)))
         return 90 - normal_angle
 
 def fit_plane_magic_svd(atoms: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -221,19 +221,6 @@ def get_residue_posinfo(res: AltResidue) -> ResiduePosition:
     atom_elements = np.array([ a.element for a in planar_atoms ])
     atoms = np.array([ a.coord for a in planar_atoms ])
 
-    # dist_matrix = np.linalg.norm(atoms[:, None, :] - atoms[None, :, :], axis=2)
-    # dist_matrix[np.arange(len(atoms)), np.arange(len(atoms))] = 1000_000
-
-    # check enough distance from C1'
-    # if np.any(np.linalg.norm(atoms, axis=1) < 1.3):
-    #     raise ResideTransformError(f"Atoms too close to origin at {res.res.full_id}")
-    
-    # * fit a plane through the atoms
-    # fitted_plane, sum_error, _, _ = np.linalg.lstsq(np.concatenate([atoms[:, 1:], np.ones((len(planar_atoms), 1))], axis=1), -atoms[:, 0], rcond=None) # x + ay + bz + c = 0
-    # fitted_plane, sum_error, _, _ = np.linalg.lstsq(np.concatenate([atoms, np.ones((atoms.shape[0], 1))], axis=1), np.zeros(atoms.shape[0]), rcond=None) # ax + by + cz + d = 0
-    # fitted_plane, sum_error, _, _ = np.linalg.lstsq(atoms[:, :2], -atoms[:, 2], rcond=None)
-    # fitted_plane, sum_error, _, _ = np.linalg.lstsq(np.concatenate([atoms, np.ones, np.zeros(len(planar_atoms)), rcond=None) # ax + by + cz = 0
-
     centroid, rot_matrix1 = fit_plane_magic_svd(atoms)
     plane_basis = rot_matrix1[:, :2]
     normal_v = rot_matrix1[:, 2]
@@ -255,7 +242,6 @@ def get_residue_posinfo(res: AltResidue) -> ResiduePosition:
 
         # rotate to align the fitted_plane to x, y
         # rotation matrix is an orthonormal matrix with det=1. Cross product gives us the remaining vector orthogonal to the plane.
-        # rot_matrix1 = np.concatenate([plane_basis, normal_v.reshape(3, 1)], axis=1)
         assert np.sum((atoms_c @ rot_matrix1)[:, 2] ** 2) < 1.3 * sum_error
         
         assert np.allclose(rot_matrix1 @ rot_matrix1.T, np.eye(3), atol=1e-5)
@@ -267,7 +253,7 @@ def get_residue_posinfo(res: AltResidue) -> ResiduePosition:
 
         # orient C1'-N bond to x-axis (using 2D rotation on X,Y)
         c1_c_rot = (c1.coord - origin) @ rot_matrix1
-        x_vector = -normalize(c1_c_rot)
+        x_vector = -_linalg_normalize(c1_c_rot)
         rot_matrix2 = np.array([
             [x_vector[0], -x_vector[1], 0],
             [x_vector[1], x_vector[0],  0],
@@ -294,7 +280,7 @@ def get_residue_posinfo(res: AltResidue) -> ResiduePosition:
 
 def get_residue_posinfo_C1_N(res: AltResidue) -> TranslationThenRotation:
     """
-    Orients residue so that the C1-N bond is aligned with the x-axis, the N1-C2 or N9-C8 bond is towards Y axis and remaining is Z
+    Orients residue so that the C1-N bond is aligned with the Y-axis, the N1-C2 or N9-C8 bond is towards X axis and remaining is Z
     """
     c1 = res.get_atom("C1'", None)
     if res.get_atom("N9", None) is not None:
@@ -302,19 +288,21 @@ def get_residue_posinfo_C1_N(res: AltResidue) -> TranslationThenRotation:
         c2 = res.get_atom("C8", None)
     else:
         n = res.get_atom("N1", None)
-        c2 = res.get_atom("C6", None) # ale tady mi copilot dal hajzl C dvojku
+        c2 = res.get_atom("C6", None)
     if c1 is None or n is None or c2 is None:
         raise ResideTransformError(f"Missing atoms in residue {res.res.full_id}")
-    translation = -n.coord # tvl copilot toto dal asi, cool priklad do appendix AI
+    translation = -n.coord # N1/N9 is origin
+    # y axis is aligned with C1'-N
     y = n.coord - c1.coord
     y /= np.linalg.norm(y)
+    # x axis is aligned with N1-C2/N9-C8 (but perpendicular to y)
     x = n.coord - c2.coord
     x -= np.dot(y, x) * y # project X onto Y
     x /= np.linalg.norm(x)
+    # z is just perpendicular to x and y
     z = np.cross(x, y)
     z /= np.linalg.norm(z)
     rotation = np.array([x, y, z]).T
-
 
     test = transform_residue(res, TranslationThenRotation(translation, rotation))
     assert np.all(test.get_atom(n.name).coord ** 2 < 0.001)
@@ -525,30 +513,43 @@ def transform_residue(r: TResidue, t: Union[TranslationThenRotation, Translation
     return r
 
 def to_float32_df(df: pl.DataFrame) -> pl.DataFrame:
+    """Convert float64 columns to float32"""
     return df.with_columns([
         pl.col(c).cast(pl.Float32).alias(c) for c in df.columns if df[c].dtype == pl.Float64
     ])
 
 def _linalg_norm(v) -> float:
-    return float(np.linalg.norm(v)) # typechecker se asi posral nebo fakt nevím z jakých halucinací usoudil, že výsledek np.linalg.norm nejde násobit, porovnávat nebo nic
+    return float(np.linalg.norm(v))
 
 def _linalg_normalize(v) -> np.ndarray:
     return v / np.linalg.norm(v)
 
 def maybe_agg(agg, array):
+    """
+    Apply a function to a list if it's not empty
+    """
     if len(array) == 0:
         return None
     return agg(array)
 
 def abs_min(array):
+    """
+    Finds the element closest to zero
+    """
     ix = np.argmin(np.abs(array))
     return array[ix]
 
-def get_edge_atoms(res: AltResidue, edge_name: str) -> List[Bio.PDB.Atom.Atom]:
+def get_edge_atoms(res: AltResidue, edge_name: str | Literal['W', 'H', 'S']) -> list[Bio.PDB.Atom.Atom]:
+    """
+    Returns the residue atoms forming a given edge
+    """
     edge = pair_defs.base_edges.get(resname_map.get(res.resname, res.resname), {}).get(edge_name, [])
     return [ a for aname in edge if (a:=res.get_atom(aname, None)) is not None ]
 
-def get_edge_edges(edge: List[Bio.PDB.Atom.Atom]) -> Optional[Tuple[Bio.PDB.Atom.Atom, Bio.PDB.Atom.Atom]]:
+def get_edge_edges(edge: list[Bio.PDB.Atom.Atom]) -> Optional[tuple[Bio.PDB.Atom.Atom, Bio.PDB.Atom.Atom]]:
+    """
+    Returns the first and last atom of an edge
+    """
     if not edge or len(edge) < 2:
         return None
     polar_atoms = [ a for a in edge if a.element not in ("H", "C") ]
@@ -577,6 +578,9 @@ class CoplanarityEdgeMetrics(PairMetric):
         ]
     
 class IsostericityCoreMetrics(PairMetric):
+    """
+    C1'-C1' distance and the angle of the two C1'-N bonds, as the two numbers reported in the LSW2002 paper
+    """
     columns = [ "C1_C1_distance", "C1_C1_total_angle" ]
     def get_values(self, pair: PairInformation) -> Sequence[Optional[float]]:
         pos1, pos2 = pair.position1, pair.position2
@@ -591,17 +595,17 @@ class IsostericityCoreMetrics(PairMetric):
         return [ distance, total_angle ]
     
 class EulerAngleMetrics(PairMetric):
-    def __init__(self, col_names: Sequence[str], function: Callable[[np.ndarray, np.ndarray], tuple[float, float, float]], swap: bool) -> None:
+    def __init__(self, col_names: Sequence[str], function: Callable[[np.ndarray, np.ndarray], tuple[float, float, float]], reference: Literal[1, 2]) -> None:
         self.columns = [ "C1_C1_" + c for c in col_names ]
         self.function = function
-        self.swap = swap
+        self.reference = reference
 
     def get_values(self, pair: PairInformation) -> Sequence[Optional[float]]:
         rot_trans1, rot_trans2 = pair.rot_trans1, pair.rot_trans2
         if rot_trans1 is None or rot_trans2 is None:
             return [ None ] * len(self.columns)
         flip = np.diag([-1, -1, 1])
-        if self.swap:
+        if self.reference == 2:
             return self.function(rot_trans2.rotation, rot_trans1.rotation @ flip)
         else:
             return self.function(rot_trans1.rotation, rot_trans2.rotation @ flip)
@@ -622,13 +626,16 @@ class TranslationMetrics(PairMetric):
 class StandardMetrics:
     Coplanarity = CoplanarityEdgeMetrics()
     Isostericity = IsostericityCoreMetrics()
-    EulerClassic = EulerAngleMetrics(["euler_phi", "euler_theta", "euler_psi"], get_C1_N_euler_angles, False)
-    YawPitchRoll = EulerAngleMetrics(["yaw1", "pitch1", "roll1"], get_C1_N_yaw_pitch_roll, False)
-    YawPitchRoll2 = EulerAngleMetrics(["yaw2", "pitch2", "roll2"], get_C1_N_yaw_pitch_roll, True)
+    EulerClassic = EulerAngleMetrics(["euler_phi", "euler_theta", "euler_psi"], get_C1_N_euler_angles, 1)
+    YawPitchRoll = EulerAngleMetrics(["yaw1", "pitch1", "roll1"], get_C1_N_yaw_pitch_roll, 1)
+    YawPitchRoll2 = EulerAngleMetrics(["yaw2", "pitch2", "roll2"], get_C1_N_yaw_pitch_roll, 2)
     Translation1 = TranslationMetrics(1)
     Translation2 = TranslationMetrics(2)
 
 class RMSDToIdealMetric(PairMetric):
+    """
+    Various RMSD distances between the singular "ideal" basepair the observed one
+    """
     def __init__(self, name, ideal: dict[pair_defs.PairType, PairInformation],
         fit_on: Literal['all', 'left_C1N', 'left', 'right', 'both_edges'],
         calculate: Literal['all', 'right_C1N', 'both_C1N', 'left_edge', 'right_edge', 'both_edges'],
@@ -703,6 +710,7 @@ class RMSDToIdealMetric(PairMetric):
 
 
 def get_angle(atom1: Bio.PDB.Atom.Atom, atom2: Bio.PDB.Atom.Atom, atom3: Bio.PDB.Atom.Atom) -> Optional[float]:
+    """3 point angle (in degrees)"""
     if atom1 is None or atom2 is None or atom3 is None:
         return None
     v1 = atom1.coord - atom2.coord
@@ -718,6 +726,7 @@ class HBondStats:
     length: Optional[float]
     donor_angle: Optional[float]
     acceptor_angle: Optional[float]
+    # "out-of-plane angle" - angle between the line of the bond and the first base plane
     OOPA1: Optional[float] = None
     OOPA2: Optional[float] = None
 
@@ -726,6 +735,7 @@ def hbond_stats(
     residue1_plane: Optional[ResiduePosition],
     residue2_plane: Optional[ResiduePosition]
 ) -> HBondStats:
+    """Gets stats for a given hydrogen bond in a given basepair."""
     if atom1 is None or atom2 is None:
         return HBondStats(None, None, None)
 
@@ -756,7 +766,8 @@ resname_map = {
     'T': 'U',
 }
 
-def get_hbond_stats(pair: PairInformation) -> Optional[List[Optional[HBondStats]]]:
+def pair_hbonds_stats(pair: PairInformation) -> Optional[List[Optional[HBondStats]]]:
+    """Returns stats for all h-bonds in the given basepair (assuming the `pair.type`)"""
     r1, r2 = pair.res1, pair.res2
     rp1, rp2 = pair.position1, pair.position2
     # if r1.resname > r2.resname:
@@ -834,6 +845,7 @@ def lazy(create: Callable[..., T], *args) -> Callable[[], T]:
     return core
 
 def get_residue(structure: Bio.PDB.Structure.Structure, strdata: Optional[Callable[[], pdb_utils.StructureData]], model, chain, resname, nr, ins, alt, symop) -> AltResidue:
+    """Finds a residue in a given structure, and optionally performs the given symmetry operation on it."""
     nr = int(nr)
     ins = ins or ' '
     alt = alt or ''
@@ -863,7 +875,7 @@ def get_residue(structure: Bio.PDB.Structure.Structure, strdata: Optional[Callab
 
 def get_stats_for_csv(df_: pl.DataFrame, structure: Bio.PDB.Structure.Structure, strdata: Callable[[], pdb_utils.StructureData], metrics: list[PairMetric]) -> Iterator[tuple[int, list[Optional[HBondStats]], list[Optional[float]]]]:
     """
-    Add columns calculated from PDB structure
+    Iterates over all basepairs in the given DataFrame, calculating the stats for each one. Works on a single PDB structure.
     """
     df = df_.with_row_count()
     pair_type_col = df["family" if "family" in df.columns else "type"]
@@ -886,7 +898,7 @@ def get_stats_for_csv(df_: pl.DataFrame, structure: Bio.PDB.Structure.Structure,
                 continue
             pair_type = pair_defs.PairType.create(pair_family, r1.resname, r2.resname, name_map=resname_map)
             pair_info = calc_pair_information(pair_type, r1, r2)
-            hbonds = get_hbond_stats(pair_info)
+            hbonds = pair_hbonds_stats(pair_info)
             metric_values: list[Optional[float]] = []
             for mix, m in enumerate(metrics):
                 v = m.get_values(pair_info)
@@ -909,6 +921,7 @@ def remove_duplicate_pairs_phase1(df: pl.DataFrame):
     """
     Removes duplicate symmetric pairs - i.e. cHS-AG and cHS-GA.
     Keeps only the preferred family ordering (WS > SW), and only the preferred base ordering (GC > CG)
+    If the basepair family has a lowercase letter, it will always be second (preserving the FR3D ordering).
     """
     # original = df
     original_len = len(df)
@@ -920,7 +933,7 @@ def remove_duplicate_pairs_phase1(df: pl.DataFrame):
     def core(df: pl.DataFrame, condition):
         duplicated = df.filter(condition)\
             .join(df,
-                left_on=['type', 'pdbid', 'model', 'chain1', 'res1', 'nr1', 'ins1', 'alt1', 'chain2', 'nr2', 'ins2', 'alt2'],
+                left_on=[family_col, 'pdbid', 'model', 'chain1', 'res1', 'nr1', 'ins1', 'alt1', 'chain2', 'nr2', 'ins2', 'alt2'],
                 right_on=['_tmp_family_reversed', 'pdbid', 'model', 'chain2', 'res2', 'nr2', 'ins2', 'alt2', 'chain1', 'nr1', 'ins1', 'alt1'],
                 join_nulls=True, how="inner"
             )
@@ -933,8 +946,8 @@ def remove_duplicate_pairs_phase1(df: pl.DataFrame):
 
             # for x in list(duplicated_set.intersection(check_not_removed))[:10]:
             #     print(x)
-            #     print(duplicated.filter(pl.col("_tmp_row_nr") == x).select("type", pl.col("res1") + pl.col("res2"), "pdbid", "chain1", "chain2", pl.col("alt1") + pl.col("nr1").cast(pl.Utf8) + pl.col("ins1"), pl.col("alt2") + pl.col("nr2").cast(pl.Utf8) + pl.col("ins2")))
-            #     print(duplicated.filter(pl.col("_tmp_row_nr_right") == x).select("type", pl.col("res1") + pl.col("res2"), "pdbid", "chain1", "chain2", pl.col("alt1") + pl.col("nr1").cast(pl.Utf8) + pl.col("ins1") , pl.col("alt2") + pl.col("nr2").cast(pl.Utf8) + pl.col("ins2")))
+            #     print(duplicated.filter(pl.col("_tmp_row_nr") == x).select("family", pl.col("res1") + pl.col("res2"), "pdbid", "chain1", "chain2", pl.col("alt1") + pl.col("nr1").cast(pl.Utf8) + pl.col("ins1"), pl.col("alt2") + pl.col("nr2").cast(pl.Utf8) + pl.col("ins2")))
+            #     print(duplicated.filter(pl.col("_tmp_row_nr_right") == x).select("family", pl.col("res1") + pl.col("res2"), "pdbid", "chain1", "chain2", pl.col("alt1") + pl.col("nr1").cast(pl.Utf8) + pl.col("ins1") , pl.col("alt2") + pl.col("nr2").cast(pl.Utf8) + pl.col("ins2")))
             # assert False
 
             duplicated_set.difference_update(check_not_removed)
@@ -961,6 +974,7 @@ def remove_duplicate_pairs_phase1(df: pl.DataFrame):
 def remove_duplicate_pairs(df: pl.DataFrame):
     """
     Removes duplicate symmetric pairs - i.e. cHS-AG and cHS-GA.
+    If the order is ambiguous according to `remove_duplicate_pairs_phase1`, keeps the one with shorter h-bonds, or with lower left residue number
     """
     df = remove_duplicate_pairs_phase1(df)
 
@@ -995,13 +1009,15 @@ def remove_duplicate_pairs(df: pl.DataFrame):
     return df
 
 def get_max_bond_count(df: pl.DataFrame):
-    pair_types = list(set(pair_defs.PairType.create(type, res1, res2, name_map=resname_map) for type, res1, res2 in df[["type", "res1", "res2"]].unique().iter_rows()))
+    """Gets the maximum number of hydrogen bonds in the given DataFrame.  """
+    pair_types = list(set(pair_defs.PairType.create(type, res1, res2, name_map=resname_map) for type, res1, res2 in df[["family", "res1", "res2"]].unique().iter_rows()))
     bond_count = max(len(pair_defs.get_hbonds(p, throw=False)) for p in pair_types)
     # print("Analyzing pair types:", pair_types, "with bond count =", bond_count)
     print(f"Analyzing {len(pair_types)} pair  typeswith bond count =", bond_count)
     return max(3, bond_count)
 
-def backbone_columns(df: pl.DataFrame, structure: Optional[Bio.PDB.Structure.Structure]) -> list[pl.Series]:
+def make_backbone_columns(df: pl.DataFrame, structure: Optional[Bio.PDB.Structure.Structure]) -> list[pl.Series]:
+    """Calculates is_dinucleotide and is_parallel columns"""
     is_dinucleotide = pl.Series("is_dinucleotide", [ False ] * len(df), dtype=pl.Boolean)
     is_parallel = pl.Series("is_parallel", [ None ] * len(df), dtype=pl.Boolean)
 
@@ -1048,7 +1064,10 @@ def backbone_columns(df: pl.DataFrame, structure: Optional[Bio.PDB.Structure.Str
 
 
 
-def export_stats_csv(pdbid, df: pl.DataFrame, add_metadata_columns: bool, max_bond_count: int, metrics: list[PairMetric]) -> Tuple[str, pl.DataFrame, np.ndarray]:
+def make_stats_columns(pdbid: str, df: pl.DataFrame, add_metadata_columns: bool, max_bond_count: int, metrics: list[PairMetric]) -> Tuple[str, pl.DataFrame, np.ndarray]:
+    """
+    Adds the columns with basepair stats to the DataFrame.
+    """
     bond_params = [ x.name for x in dataclasses.fields(HBondStats) ]
     valid = np.zeros(len(df), dtype=np.bool_)
     hb_columns: list[pl.Series] = [
@@ -1099,7 +1118,7 @@ def export_stats_csv(pdbid, df: pl.DataFrame, add_metadata_columns: bool, max_bo
             pl.lit(h.get('resolution', None), dtype=pl.Float32).alias("resolution")
         )
 
-    result_df = result_df.with_columns(backbone_columns(df, structure))
+    result_df = result_df.with_columns(make_backbone_columns(df, structure))
     assert len(result_df) == len(df)
     return pdbid, result_df, valid
 
@@ -1107,6 +1126,7 @@ def df_hstack(columns: list[pl.DataFrame]) -> pl.DataFrame:
     return functools.reduce(pl.DataFrame.hstack, columns)
 
 def load_inputs(pool: Union[Pool, MockPool], args, pdbid_prefix='') -> pl.DataFrame:
+    """Loads CSV/Parquet/FR3D files and returns a DataFrame with basepair identifiers"""
     inputs: list[str] = args.inputs
     if len(inputs) == 0:
         raise ValueError("No input files specified")
@@ -1145,12 +1165,12 @@ def load_inputs(pool: Union[Pool, MockPool], args, pdbid_prefix='') -> pl.DataFr
     else:
         raise ValueError("Unknown input file type")
     if "type" not in df.columns and "family" not in df.columns:
-        if not args.override_pair_type:
+        if not args.override_pair_family:
             raise ValueError("Input does not contain family column and --override-pair-type was not specified")
-    if args.override_pair_type:
+    if args.override_pair_family:
         df = df.select(
-            pl.lit(args.override_pair_type).alias("type"),
-            pl.lit(args.override_pair_type).alias("family"),
+            pl.lit(args.override_pair_family).alias("type"),
+            pl.lit(args.override_pair_family).alias("family"),
             pl.col("*"))
     return df
 
@@ -1209,7 +1229,7 @@ def main(pool: Union[Pool, MockPool], args, pdbid_partition_prefix=''):
         ])
 
     processes.append([ # process per PDB structure
-        pool.apply_async(export_stats_csv, args=[pdbid, group, args.metadata, max_bond_count, pair_metrics])
+        pool.apply_async(make_stats_columns, args=[pdbid, group, args.metadata, max_bond_count, pair_metrics])
         for (pdbid,), group in groups # type: ignore
     ])
     if args.dssr_binary is not None:
@@ -1265,29 +1285,42 @@ def save_output(args, df: pl.DataFrame):
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="""
-        Adds geometric information to the specified pairing CSV files.
+        Adds geometric information to the specified basepairing CSV/Parquet/FR3D files.
         Added columns:
             * hb_0_length, hb_0_acceptor_angle, hb_0_donor_angle, ... - hydrogen bond lengths and angles between heavy atoms on both sides
-            * coplanarity_angle - angle between planes of the two nucleotides
+            * hb_0_OOPA1, hb_0_OOPA2, ... - hydrogen bond / base plane angles
+            * coplanarity_angle - angle between normals of the two base planes
+            * coplanarity_shift1, coplanarity_shift2 - (minimum) distance between the pairing edge and the other base plane
+            * coplanarity_edge_angle1 - angle between the pairing edge and the other base plane
+            * C1_C1_distance - distance between the C1' atoms
+            * C1_C1_total_angle - angle between the C1'-N bonds
+            * Relative positions of N - C1' reference frames
+                - x1, y1, z1, x2, y2, z2 - x, y, z coordinates of the N-C1' reference frame (1: left to right, 2: right to left)
+                - yaw1, pitch1, roll1, yaw2, pitch2, roll2 - yaw, pitch, roll angles of the N-C1' reference frame
+                - euler_phi, euler_theta, euler_psi - euler angles between the N-C1' reference frames (left to right, the other direction is  symmetric)
+            * Distance to ideal basepair (if --reference-basepairs is specified)
+                - rmsd_edge1, rmsd_edge2 - RMSD of the pairing edge, when fitted on the other bases
+                - rmsd_C1N_frames1, rmsd_C1N_frames2 - RMSD of the C1', N1/N9, C6/C8 atoms, when fitted on the other bases
+                - rmsd_all_base - "classic" RMSD of all atoms
         When --dssr-binary is specified, DSSR --analyze is executed to gain additional information:
             * dssr_pairing_type - pairing type according to DSSR (e.g. WC, Platform, ~rHoogsteen)
             * pairing_type, shear, stretch, stagger, buckle, propeller, opening, shift, slide, rise, tilt, roll, twist
         """,
         formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument("inputs", nargs="+")
-    parser.add_argument("--pdbcache", nargs="+", help="Directories to search for PDB files in order to avoid downloading. Last directory will be written to, if the structure is not found and has to be downloaded.")
-    parser.add_argument("--output", "-o", required=True, help="Output CSV/Parquet file name")
-    parser.add_argument("--threads", type=int, default=1, help="Maximum parallelism - number of worker processes to spawn")
+    parser.add_argument("--pdbcache", nargs="+", help="Directories to search for PDB files in order to avoid downloading. Last directory will be written to, if the structure is not found and has to be downloaded from RCSB. Also can be specified as PDB_CACHE_DIR env variable.")
+    parser.add_argument("--output", "-o", required=True, help="Output CSV/Parquet file name. Both CSV and Parquet are always written.")
+    parser.add_argument("--threads", type=int, default=1, help="Number of worker processes to spawn. Does not affect Polars threading, at the start, the process might use more threads than specified.")
     parser.add_argument("--export-only", default=False, action="store_true", help="Only re-export the input as CSV+Parquet files, do not calculate anything")
     parser.add_argument("--metadata", type=bool, default=True, help="Add deposition_date, resolution and structure_method columns")
     parser.add_argument("--dssr-binary", type=str, help="If specified, DSSR --analyze will be invoked for each structure and its results stored as 'dssr_' prefixed columns")
     parser.add_argument("--filter", default=False, action="store_true", help="Filter out rows for which the values could not be calculated")
     parser.add_argument("--postfilter-hb", default=None, type=float, help="Only include rows with at least 1 hydrogen bond length < X Å")
-    parser.add_argument("--postfilter-shift", default=None, type=float, help="Only include rows with abs(coplanarity_shift) < X Å")
-    parser.add_argument("--dedupe", default=False, action="store_true", help="Remove duplicate pairs, keep the one with shorter bonds or lower chain1,nr1")
-    parser.add_argument("--reference-basepairs", type=str, help="output of gen_histogram_plots.py with the 'nicest' basepairs, will be used as reference for RMSD calculation")
-    parser.add_argument("--disable-cross-symmetry", default=False, action="store_true", help="Do not calculate pairs in different Asymmetrical Units")
-    parser.add_argument("--override-pair-type", type=str, required=False, help="Ignore the pair type from the input and assume the specified one instead.")
+    parser.add_argument("--postfilter-shift", default=None, type=float, help="Only include rows with abs(coplanarity_shift) < X Å (both left and right)")
+    parser.add_argument("--dedupe", default=False, action="store_true", help="Remove duplicate pairs, keep the one with preferred family (W > H > S), FR3D ordering, preferred base order (A > G > C > U), shorter bonds, or lower chain1,nr1")
+    parser.add_argument("--reference-basepairs", type=str, help="output of gen_histogram_plots.py with the 'nicest' basepairs, will be used as reference for RMSD calculation (rmsd_edge1, rmsd_edge2, rmsd_C1N_frames1, rmsd_C1N_frames2, rmsd_edge_C1N_frame, rmsd_all_base columns)")
+    parser.add_argument("--disable-cross-symmetry", default=False, action="store_true", help="Skip basepairs with bases in different Asymmetrical Units")
+    parser.add_argument("--override-pair-family", type=str, required=False, help="Ignore the pair family from the input and assume the specified one instead.")
     args = parser.parse_args()
 
     for x in args.pdbcache or []:
