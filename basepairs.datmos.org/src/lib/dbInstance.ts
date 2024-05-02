@@ -15,7 +15,7 @@ export const pairFamilies: string[] = [...new Set(pairTypes.map(t => normalizePa
 const registeredFiles = new Set<string>()
 
 pairFamilies.sort(compareFamilies)
-const cacheBuster = '?v=10'
+const cacheBuster = '?v=11'
 
 for (const pairMeta of metadata) {
   const [family, bases] = pairMeta.pair_type

@@ -10,4 +10,13 @@ export default {
     debugHost: 'https://pairs.exyi.cz',
     imgPath: '/pregen-img',
     tablesPath: '/tables',
+
+    parameterBoundariesUrls: {
+        'googleTable': 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTvEpcubhqyJoPTmL3wtq0677tdIRnkTghJcbPtflUdfvyzt4xovKJxBHvH2Y1VyaFSU5S2BZIimmSD/pub?gid=245758142&single=true&output=csv',
+        fr3dData: 'filters/fr3d-data-boundaries.csv'
+    },
+    defaultBoundaries: [
+        'googleTable',
+        'fr3dData'
+    ]
 }

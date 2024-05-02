@@ -119,7 +119,8 @@ export function filterToSqlCondition(filter: NucleotideFilterModel): string[] {
     }
     if (filter.min_bond_length) {
         const c = [...rangeToCondition(`hb_0_length`, filter.min_bond_length), ...rangeToCondition(`hb_1_length`, filter.min_bond_length), ...rangeToCondition(`hb_2_length`, filter.min_bond_length)]
-        conditions.push(c.join(' OR '))
+        if (c.length > 0)
+            conditions.push(c.join(' OR '))
     }
     conditions.push(...rangeToCondition(`resolution`, filter.resolution))
     conditions.push(...rangeToCondition(`coplanarity_angle`, filter.coplanarity_angle))

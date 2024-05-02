@@ -1,3 +1,4 @@
+import config from "./config";
 import { assetBaseUri } from "./dbInstance";
 import { defaultFilter, type NucleotideFilterModel, type NumRange } from "./dbModels";
 import { Lazy } from "./lazy";
@@ -6,6 +7,7 @@ import metadata from "./metadata";
 export type FilterLimits = { [pairType: string]: { [column: string]: [number | null, number | null] } }
 
 async function loadFilterCSV(url) {
+    url = new URL(url, assetBaseUri).href
     const response = await fetch(url)
     const lines = (await response.text()).split("\n").map(line => line.trim())
 
@@ -38,14 +40,33 @@ async function loadFilterCSV(url) {
     return limits
 }
 
-export const defaultFilterLimits = new Lazy(async () => loadFilterCSV(new URL("filters/fr3d-data-boundaries.csv", assetBaseUri).href))
+export const filterLimits = new Lazy(async () => {
+    const e = Object.entries(config.parameterBoundariesUrls)
+    const f = await Promise.all(e.map(x => loadFilterCSV(x[1]).catch(err => {
+        console.error(`Failed to load filter limits ${x[0]} from ${x[1]}`, err)
+        return null
+    })))
+    return Object.fromEntries(e.map((x, i) => [x[0], f[i]]))
+})
+
+export const defaultFilterLimits = new Lazy(() => filterLimits.value.then(l => {
+    const result = config.defaultBoundaries.find(b => l[b] != null)
+    if (!result) {
+        throw new Error(`No default filter limits could be loaded`)
+    }
+    return { id: result, limits: l[result] }
+}))
 
 export function addHBondLengthLimits(pairType: string, extendBy: number, baseFilter: NucleotideFilterModel) {
     pairType = pairType.toLowerCase()
     const m = metadata.find(m => m.pair_type.join("-").toLowerCase() == pairType)
     const hbLengthLimits = m.atoms.map(([_, a, b, __], i) =>
         (a.includes("C") || b.includes("C") || b.includes("O2'") || a.includes("O2'") || i >= 2 ? 4.2 : 4) + extendBy)
-    return { ...baseFilter, min_bond_length: {max: 3.8}, bond_length: hbLengthLimits.map(l => ({ min: null, max: l })) }
+    return {
+        ...baseFilter,
+        min_bond_length: baseFilter.min_bond_length ?? {max: 3.8},
+        bond_length: hbLengthLimits.map((l, i) => baseFilter.bond_length[i] || ({ min: null, max: l }))
+    }
 }
 
 export function toNtFilter(allLimits: FilterLimits, extendBy: number, pairType: string, baseFilter: NucleotideFilterModel | null | undefined): NucleotideFilterModel {
@@ -84,6 +105,11 @@ export function toNtFilter(allLimits: FilterLimits, extendBy: number, pairType: 
                 arr[hb] = range
                 continue
             }
+        }
+
+        if (column == "min_bond_length") {
+            filter.min_bond_length = range
+            continue
         }
 
         if (column == "coplanarity_angle") {

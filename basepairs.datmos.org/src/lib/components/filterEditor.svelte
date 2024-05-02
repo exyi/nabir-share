@@ -106,9 +106,9 @@
     }
 
     async function setFr3dObservedBoundaries(sql: boolean) {
-      const f = await filterLoader.defaultFilterLimits.value
+      const f = (await filterLoader.defaultFilterLimits.value).limits
       const pairType = metadata.pair_type.join("-")
-      const newFilter = filterLoader.addHBondLengthLimits(pairType, 0.01, filterLoader.toNtFilter(f, 0.02, pairType, null))
+      const newFilter = filterLoader.addHBondLengthLimits(pairType, 0.0, filterLoader.toNtFilter(f, 0.0, pairType, null))
       newFilter.datasource = filter.datasource
       newFilter.filtered = filter.filtered && !["fr3d-f", "allcontacts-f", "allcontacts-boundaries-f"].includes(filter.datasource)
       if (sql) {

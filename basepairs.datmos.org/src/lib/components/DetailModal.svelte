@@ -1,11 +1,12 @@
 <script lang="ts">
-	import { getColumnLabel, getDataSourceTable, hideColumn, longNucleotideNames, type NucleotideFilterModel, type NumRange } from "$lib/dbModels";
+	import { filterToSqlCondition, getColumnLabel, getDataSourceTable, hideColumn, longNucleotideNames, type NucleotideFilterModel, type NumRange } from "$lib/dbModels";
 	import metadata from "$lib/metadata";
 	import { convertQueryResults, type NucleotideId, type PairId, type PairingInfo } from "$lib/pairing";
     import * as filterLoader from '$lib/predefinedFilterLoader'
 	import _ from "lodash";
     import * as dbInstance from '$lib/dbInstance'
 	import { ensureViews } from "$lib/dataSourceTables";
+	import config from "$lib/config";
 
     export let imageUrl: string | undefined
     export let rotImageUrl: string | undefined
@@ -16,14 +17,17 @@
     export let filterBaseline: NucleotideFilterModel | undefined = undefined
     export let requeryDB: boolean = true
     let realFilter: NucleotideFilterModel | undefined = undefined
+    let filterLabel: string | undefined = undefined
     let pairDB: PairingInfo | undefined = undefined
     $: { filter; updateRealFilter() }
 
     async function updateRealFilter() {
         realFilter = filter
+        filterLabel = undefined
         if (filter.datasource == "allcontacts-boundaries-f") {
             await filterLoader.defaultFilterLimits.value.then(v => {
-                realFilter = filterLoader.addHBondLengthLimits(pairType, 0.01, filterLoader.toNtFilter(v, 0, pairType, filter))
+                filterLabel = v.id
+                realFilter = filterLoader.addHBondLengthLimits(pairType, 0.01, filterLoader.toNtFilter(v.limits, 0, pairType, filter))
                 console.log("realFilter", realFilter)
             })
         }
@@ -339,6 +343,16 @@
         </tr>
     </table> -->
     </div>
+    <div style="font-style: italic;">
+        {#if true}
+        {@const conditions = filterToSqlCondition(realFilter).filter(c => c !='jirka_approves')}
+        {#if filterLabel}
+            <p style="margin-bottom: 1rem">Implicit filter: <a href={config.parameterBoundariesUrls[filterLabel]}><strong>{filterLabel}</strong></a> with {conditions.length} conditions.</p>
+        {:else if conditions.length > 0}
+            <p style="margin-bottom: 1rem" title={conditions.join("\n AND ")}>Filtered by {conditions.length} conditions.</p>
+        {/if}
+        {/if}
+    </div>
     <div>
         <table class="table is-narrow is-striped" style="width: fit-content">
             
@@ -349,12 +363,12 @@
             <tr>
                 <td><b><code>{r.colName}</code></b></td>
                 <td>{r.label ?? ''}</td>
-                <td colspan={r.colName == 'structure_name' ? 2 : 1}
+                <td colspan={['structure_name', 'structure_method', 'pairid', 'deposition_date'].includes(r.colName) ? 2 : 1}
                     style="font-weigth: 700; text-align: {[ "bigint", "number", "boolean" ].includes(typeof r.value) ? 'right' : 'left'};"
                     data-debug-filter-range={JSON.stringify(filterRange)}
                     data-debug-nofilter={filterRange == null}
                     class:filter-pass={isOutOfRange(val, filterRange) === true}
-                    class:filter-fail={(val == null && filterRange != null) ||  isOutOfRange(val, filterRange) === false}
+                    class:filter-fail={(val == null && filterRange != null) || isOutOfRange(val, filterRange) === false}
                     title={getRangeValueTitle(val, filterRange)}
                     data-type={typeof val}>
                     {typeof val == "number" ? val.toFixed(3) : val == null ? (filterRange != null ? "NULL" : "") : "" + val}
