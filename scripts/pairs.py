@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import functools
 import itertools
 from multiprocessing.pool import Pool
@@ -1318,7 +1320,7 @@ if __name__ == "__main__":
     parser.add_argument("--postfilter-hb", default=None, type=float, help="Only include rows with at least 1 hydrogen bond length < X Å")
     parser.add_argument("--postfilter-shift", default=None, type=float, help="Only include rows with abs(coplanarity_shift) < X Å (both left and right)")
     parser.add_argument("--dedupe", default=False, action="store_true", help="Remove duplicate pairs, keep the one with preferred family (W > H > S), FR3D ordering, preferred base order (A > G > C > U), shorter bonds, or lower chain1,nr1")
-    parser.add_argument("--reference-basepairs", type=str, help="output of gen_histogram_plots.py with the 'nicest' basepairs, will be used as reference for RMSD calculation (rmsd_edge1, rmsd_edge2, rmsd_C1N_frames1, rmsd_C1N_frames2, rmsd_edge_C1N_frame, rmsd_all_base columns)")
+    parser.add_argument("--reference-basepairs", type=str, help="output of pair_distributions.py with the 'nicest' basepairs, will be used as reference for RMSD calculation (rmsd_edge1, rmsd_edge2, rmsd_C1N_frames1, rmsd_C1N_frames2, rmsd_edge_C1N_frame, rmsd_all_base columns)")
     parser.add_argument("--disable-cross-symmetry", default=False, action="store_true", help="Skip basepairs with bases in different Asymmetrical Units")
     parser.add_argument("--override-pair-family", type=str, required=False, help="Ignore the pair family from the input and assume the specified one instead.")
     args = parser.parse_args()

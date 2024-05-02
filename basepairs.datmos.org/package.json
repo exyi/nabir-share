@@ -1,6 +1,6 @@
 {
-  "name": "duck-sotu",
-  "version": "0.0.3",
+  "name": "basepairs.datmos.org",
+  "version": "0.0.1",
   "scripts": {
     "dev": "vite dev --port 1922",
     "build": "vite build && python patch-duckdb-hack.py docs/internal/immutable/workers",

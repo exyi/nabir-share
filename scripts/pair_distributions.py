@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import itertools
 import subprocess
 from typing import Any, Generator, Optional, Union
@@ -24,6 +25,7 @@ is_high_quality = pl.col("RNA-0-1.8") | pl.col("DNA-0-1.8")
 is_some_quality = pl.col("RNA-0-1.8") | pl.col("DNA-0-1.8") | pl.col("DNA-1.8-3.5") | pl.col("RNA-1.8-3.5")
 is_med_quality = pl.col("RNA-1.8-3.5") | pl.col("DNA-1.8-3.5")
 is_dna = pl.col("res1").str.starts_with("D") | pl.col("res2").str.starts_with("D")
+is_rna = pl.col("res1").str.starts_with("D").not_() | pl.col("res2").str.starts_with("D").not_()
 
 plt.rcParams["figure.figsize"] = (16, 9)
 subplots = (2, 2)
@@ -31,10 +33,14 @@ subplots = (2, 2)
 # plt.rcParams["figure.figsize"] = (10, 6)
 
 resolutions = [
+    # ("DNA ≤3 Å", is_some_quality & is_rna.not_() & (pl.col("resolution") <= 3)),
     ("RNA ≤3 Å", is_some_quality & is_rna & (pl.col("resolution") <= 3)),
     # ("RNA ≤3 Å", is_some_quality & (pl.col("resolution") <= 3)),
     # ("No filter ≤3 Å", (pl.col("resolution") <= 3)),
+    # ("DNA >3 Å", is_rna.not_() & (pl.col("resolution") > 3)),
     # ("RNA >3 Å", is_rna & (pl.col("resolution") > 3)),
+    # ("DNA ≤1.8 Å", is_high_quality & is_rna.not_()),
+    # ("DNA 1.8 Å - 3.5 Å", is_med_quality & is_rna.not_()),
     # ("≤1.8 Å", is_high_quality),
     # ("1.8 Å - 3.5 Å", is_med_quality),
 ]
@@ -885,6 +891,7 @@ def create_pair_image(row: pl.DataFrame, output_dir: str, pair_type: PairType) -
         f"--output-dir={os.path.join(output_dir, 'img')}",
     ]
     print(*command)
+    p = subprocess.run(command, capture_output=True, timeout=30)
     if p.returncode != 0:
         print(p.stdout.decode('utf-8'))
         print(p.stderr.decode('utf-8'))
@@ -930,6 +937,7 @@ def enumerate_pair_types(files: list[str], include_nears: bool) -> Generator[tup
                 ).alias("pair_bases")
             )
             groups = df.group_by("type", "pair_bases")
+            print(f"{file}: {len(df)} rows, types: {dict(sorted([ (str(pair_defs.PairType.from_tuple(k)), len(gdf)) for k, gdf in groups ], key=lambda x: x[1], reverse=True))}")
             all_pairs_types = set(pair_defs.PairType.from_tuple(pt) for pt, _ in groups)
             for k, gdf in groups:
                 k: Any
@@ -1088,15 +1096,28 @@ def main(argv):
     import argparse
     parser = argparse.ArgumentParser(description="Generate histogram plots")
     parser.add_argument("input_file", help="Input file", nargs="+")
+    parser.add_argument("--residue-directory", help="Directory with residue lists, used to select representative set residues. Currently, lists RNA-1.8-3.5, RNA-0-1.8, DNA-1.8-3.5, DNA-0-1.8 are expected.")
     parser.add_argument("--reexport", default='none', choices=['none', 'partitioned'], help="Write out parquet files with calculated statistics columns (log likelihood, mode deviations)")
     parser.add_argument("--include-nears", default=False, action="store_true", help="If FR3D is run in basepair_detailed mode, it reports near basepairs (denoted as ncWW). By default, we ignore them, but this option includes them in the output.")
     parser.add_argument("--filter-pair-type", default=None, help="Comma separated list of pair types to include in the result (formatted as cWW-AC). By default all are included.")
+    parser.add_argument("--skip-kde", default=False, action="store_true", help="Skip generating kernel density estimates for histograms, image selection and 'niceness' score calculation.")
+    parser.add_argument("--skip-image", default=False, action="store_true", help="Skip generating images for the nicest basepairs (use if the gen_contact_images.py script is broken)")
     parser.add_argument("--drop-columns", default=[], nargs="*", help="remove the specified columns from the reexport output (regex supported when in ^...$)")
     parser.add_argument("--output-dir", "-o", required=True, help="Output directory")
     args = parser.parse_args(argv)
 
     only_pairtypes = None if args.filter_pair_type is None else set(pair_defs.PairType.parse(pt) for pt in args.filter_pair_type.split(","))
 
+    if args.residue_directory:
+        residue_lists = residue_filter.read_id_lists(args.residue_directory)
+    else:
+        residue_lists = None
+        global is_some_quality # TODO: configurable resolution cutoffs
+        is_some_quality = pl.lit(True)
+    
+    if args.skip_kde:
+        global hist_kde
+        hist_kde = False
 
     results = []
     boundaries = []
@@ -1107,6 +1128,16 @@ def main(argv):
         if only_pairtypes is not None and pair_type.without_n() not in only_pairtypes:
             print(f"Skipping {pair_type} because it is not in {only_pairtypes}")
             continue
+        
+        if residue_lists:
+            df = residue_filter.add_res_filter_columns(df, residue_lists)
+        else:
+            df = df.with_columns(**{
+                "RNA-0-1.8": is_rna & (pl.col("resolution") <= 1.8),
+                "RNA-1.8-3.5": is_rna & (pl.col("resolution") <= 3.5) & (pl.col("resolution") > 1.8),
+                "DNA-0-1.8": is_dna & (pl.col("resolution") <= 1.8),
+                "DNA-1.8-3.5": is_dna & (pl.col("resolution") <= 3.5) & (pl.col("resolution") > 1.8),
+            })
         print(f"{pair_type}: total count = {len(df)}, quality count = {len(df.filter(is_some_quality))}")
         print(df.select(pl.col("^hb_\\d+_length$"), pl.col("resolution"), is_some_quality.alias("some_quality")).describe())
 
@@ -1160,10 +1191,29 @@ def main(argv):
             #     for h in histogram_defs
             #     for f in make_resolution_comparison_page(df, args.output_dir, pair_type, h, images= [ create_pair_image(df[nicest_bp], args.output_dir, pair_type) ] if nicest_bp is not None else [])
             # ]
+            if args.skip_image:
+                basepair_images = None
+            else:
+                try:
+                    basepair_images = [ create_pair_image(dff[bp], args.output_dir, pair_type) if bp >= 0 else None for bp in nicest_bps ] * len(resolutions) if nicest_bps is not None else []
+                except Exception as e:
+                    print(f"Error generating images for {pair_type}: {e}")
+                    print(f"If the image generation doesn't work (e.g. PyMOL is not installed), you can skip it with --skip-image flag")
+                    exit(1)
             dna_rna_highlights = [ dff[bp] if bp >= 0 else None for bp in nicest_bps ] if nicest_bps is not None else []
             output_files = []
             output_files.extend(
+                f for f in make_bond_pages(df, args.output_dir, pair_type, hbond_histogram_defs, images=basepair_images, highlights=dna_rna_highlights, title_suffix=" - H-bonds"
                 )
+            )
+            output_files.extend(
+                make_bond_pages(dff, args.output_dir, pair_type, coplanarity_histogram_defs, highlights=dna_rna_highlights, title_suffix= " - Coplanarity")
+            )
+            output_files.extend(
+                make_bond_pages(dff, args.output_dir, pair_type, coplanarity_histogram_defs2, highlights=dna_rna_highlights, title_suffix= " - coplanarity2")
+            )
+            output_files.extend(
+                make_bond_pages(dff, args.output_dir, pair_type, rmsd_histogram_defs, highlights=dna_rna_highlights, title_suffix= " - RMSD to nicest BP")
             )
             # output_files.extend(
             #     make_pairplot_page(dff, args.output_dir, pair_type, variables=[
@@ -1187,6 +1237,8 @@ def main(argv):
             #         pl.col(f"C1_C1_roll1").alias("Roll 1"),
             #         pl.col(f"coplanarity_edge_angle1").alias("Edge 1 / plane 2"),
             #         pl.col(f"coplanarity_edge_angle2").alias("Edge 2 / plane 1"),
+            #         pl.col("hb_1_OOPA1").alias("H-bond 2 / plane 1"),
+            #         pl.col("hb_1_OOPA2").alias("H-bond 2 / plane 2"),
             #         pl.col("coplanarity_shift1").alias("Edge 1/plane 2 shift"),
             #         pl.col("coplanarity_shift2").alias("Edge 2/plane 1 shift"),
 
@@ -1207,6 +1259,7 @@ def main(argv):
             # output_files.extend(
             #     f
             #     for column in [0, 1, 2]
+            #     for f in make_bond_pages(df, args.output_dir, pair_type, [ h.select_columns(column) for h in hbond_histogram_defs], images=dna_rna_images, highlights=dna_rna_highlights, title_suffix=f" #{column}")
             # )
             all_statistics.extend(statistics)
             hb_filters = [
@@ -1245,6 +1298,8 @@ def main(argv):
     results.sort(key=lambda r: (1, pair_defs.PairType.from_tuple(r["pair_type"])))
     output_files = [ f for r in results for f in r["files"] ]
 
+    subprocess.run(["gs", "-dBATCH", "-dNOPAUSE", "-q", "-sDEVICE=pdfwrite", "-dPDFSETTINGS=/prepress", f"-sOutputFile={os.path.join(args.output_dir, 'plots-merged.pdf')}", *output_files])
+    print("Wrote", os.path.join(args.output_dir, 'plots-merged.pdf'))
     boundaries_df: pl.DataFrame = pl.concat(boundaries)
     boundaries_df = boundaries_df.sort("family_id", "bases", "family", "boundary", descending=[False, False, False, True])
     boundaries_df.write_csv(os.path.join(args.output_dir, "boundaries.csv"))

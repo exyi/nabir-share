@@ -1,20 +1,15 @@
-A simple svelte-kit app to show loading duckdb-wasm using svelte-kit.
+## Basepair browser webapp
 
-Andre Kohn has a base svelte example, but it requires a lot of rollup configuration
-and I want to see how far you can get using vite's built-in `?worker` and `?url` loaders
-for the tags.
+Running on: https://basepairs.datmos.org
+Sometimes running on test env: https://pairs.exyi.cz
 
-It doesn't properly negotiate the different bundles, but everything else seems to work.
 
-Example using adapter static [on github pages](https://duckdb-wasm-examples.github.io/sveltekit-typescript/).
+### Setup
 
-To run locally:
-
-```sh
-git clone https://github.com/duckdb-wasm-examples/sveltekit-typescript sveltekit-typescript
-cd sveltekit-typescript
-npm i
-npm run dev
-```
-
-and visit `http://localhost:1922/sveltekit-typescript`.
+* Install node.js and npm and Python
+* Run `npm install`
+* To run dev version locally: `npm run dev` and open `http://localhost:1922/`
+    - large assets are fetched from the deployed instance
+* To build a deployable static website: `npm run build`
+    - parquet file are expected under `tables/`, that is generated using `pair_distributions.py --reexport=partitioned`
+    - optionally, generated images are expected under `img/`, which can be generated using `gen_contact_images.py`
