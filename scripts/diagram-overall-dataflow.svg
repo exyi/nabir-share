@@ -24,10 +24,10 @@
      inkscape:deskcolor="#d1d1d1"
      inkscape:document-units="mm"
      inkscape:zoom="1.0512065"
-     inkscape:cx="387.17416"
+     inkscape:cx="387.17417"
      inkscape:cy="351.97651"
      inkscape:window-width="2560"
-     inkscape:window-height="1366"
+     inkscape:window-height="1368"
      inkscape:window-x="0"
      inkscape:window-y="0"
      inkscape:window-maximized="1"
@@ -110,6 +110,13 @@
      inkscape:groupmode="layer"
      id="layer1"
      transform="translate(-2.4124741,-55.307467)">
+    <rect
+       style="opacity:1;fill:#ffffff;fill-opacity:0.99715519;stroke:#000000;stroke-width:0.300037;stroke-miterlimit:5.5"
+       id="rect1"
+       width="171.33287"
+       height="100.37278"
+       x="1.1432076"
+       y="54.738586" />
     <rect
        style="fill:none;stroke:#000000;stroke-width:0.2"
        id="rect3"
