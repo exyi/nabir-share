@@ -8,6 +8,7 @@
 	import config from "$lib/config";
 	import Pairimage from "./pairimage.svelte";
 	import { imgDir } from "$lib/dbInstance";
+	import ClearFilterButton from "./ClearFilterButton.svelte";
 
     export let filter: NucleotideFilterModel
     export let filterBaseline: NucleotideFilterModel | undefined
@@ -35,6 +36,9 @@
     function formatFilter(f: NucleotideFilterModel, compareWith: NucleotideFilterModel | undefined) {
       if (f == null) return ""
       const clauses = filterToSqlCondition(f).filter(x => !["jirka_approves"].includes(x))
+      const currentClauses = filterToSqlCondition(compareWith).filter(x => !["jirka_approves"].includes(x))
+      const newClauses = clauses.filter(x => !currentClauses.includes(x))
+      const removedClauses = currentClauses.filter(x => !clauses.includes(x))
       const datasetName = f.datasource == "fr3d-f" ? "FR3D, Representative Set" :
                           f.datasource == "fr3d" ? "3D, entire PDB" :
                           f.datasource == "fr3d-nf" ? "FR3D with nears, RS" :
@@ -42,7 +46,14 @@
                           f.datasource == "allcontacts-f" ? "All polar contacts, RS" :
                           f.datasource == "allcontacts-boundaries-f" ? "Pairs Selected by New Parameters, RS" :
                           "dataset???"
-      if (clauses.length == 0) return datasetName
+      const sameDataSource = compareWith?.datasource == f.datasource
+      const sameFilters = newClauses.length == 0 && removedClauses.length == 0
+      if (sameDataSource && sameFilters) return "Same data"
+      if (sameDataSource && clauses.length == 0) return "Same data, without filters"
+      if (sameDataSource && newClauses.length == 0) return `Same data, without ${removedClauses.length} filters`
+      if (sameDataSource && removedClauses.length == 0) return `Same data, with ${newClauses.length} more filters`
+      if (sameDataSource) return `Same data, with other filters`
+      if (newClauses.length == 0) return datasetName
 
       return `${datasetName} with other filters`
     }
@@ -297,7 +308,7 @@
               Enable FR3D comparison
             </button>
           {:else}
-            <!-- <button class="button" type="button" on:click={() => setBaseline({...filter}, mode)}>
+            <!-- <button class="button" type="button" on:click={() => setBaseline(structuredClone(filter), mode)}>
               Compare with ???
             </button> -->
           {/if}
@@ -325,12 +336,12 @@
         <div class="column" style="font-variant: small-caps; font-weight: bold">
           <div class="panel-title"></div>
           {#each hb_params as p}
-            <div class="panel-field" title={p.title}>{p.name}</div>
+            <div class="panel-field" title={p.title}>{p.name} <ClearFilterButton bind:clearList={filter[p.k]} /></div>
           {/each}
           {#if hasYawPitchRoll}
             <div class="panel-title"></div>
-            <div class="panel-field">Left to right</div>
-            <div class="panel-field">Right to left</div>
+            <div class="panel-field">Left to right <ClearFilterButton bind:clear1={filter.yaw1} bind:clear2={filter.pitch1} bind:clear3={filter.roll1} /></div>
+            <div class="panel-field">Right to left <ClearFilterButton bind:clear1={filter.yaw2} bind:clear2={filter.pitch2} bind:clear3={filter.roll2} /></div>
           {/if}
         </div>
         <div class="column">
@@ -358,7 +369,7 @@
               </div>
             {/each}
             {#if hasYawPitchRoll}
-              <h3 class="panel-title">Yaw</h3>
+              <h3 class="panel-title">Yaw <ClearFilterButton bind:clear1={filter.yaw1} bind:clear2={filter.yaw2} /></h3>
               <div class="panel-field field is-horizontal">
                 <RangeEditor bind:range={filter.yaw1} step={1} min={-180} max={180} />
               </div>
@@ -368,13 +379,13 @@
             {/if}
 
             {#if filter.coplanarity_angle}
-              <h3 class="panel-title">Coplanarity angle</h3>
+              <h3 class="panel-title">Coplanarity angle <ClearFilterButton bind:clear1={filter.coplanarity_angle} /></h3>
               <div class="panel-field field is-horizontal">
                 <RangeEditor bind:range={filter.coplanarity_angle} step={1} min={-180} max={180} />
               </div>
             {/if}
             {#if filter.min_bond_length}
-              <h3 class="panel-title" title="At least one H-bond must satisfy this length constraint">Minimal bond length</h3>
+              <h3 class="panel-title" title="At least one H-bond must satisfy this length constraint">Min H-bond length <ClearFilterButton bind:clear1={filter.min_bond_length}/></h3>
               <div class="panel-field field is-horizontal">
                 <RangeEditor bind:range={filter.min_bond_length} step={1} min={0} max={4.2} />
               </div>
@@ -402,7 +413,7 @@
               </div>
             {/each}
             {#if hasYawPitchRoll}
-              <h3 class="panel-title">Pitch</h3>
+              <h3 class="panel-title">Pitch <ClearFilterButton bind:clear1={filter.pitch1} bind:clear2={filter.pitch2}/></h3>
               <div class="panel-field field is-horizontal">
                 <RangeEditor bind:range={filter.pitch1} step={1} min={-180} max={180} />
               </div>
@@ -412,16 +423,16 @@
             {/if}
 
             {#if filter.coplanarity_edge_angle1}
-              <h3 class="panel-title">Edge1/Plane2 angle</h3>
+              <h3 class="panel-title">Edge1/Plane2 angle <ClearFilterButton bind:clear1={filter.coplanarity_edge_angle1}/></h3>
               <div class="panel-field field is-horizontal">
                 <RangeEditor bind:range={filter.coplanarity_edge_angle1} step={1} min={-180} max={180} />
               </div>
             {/if}
 
             {#if filter.coplanarity_shift1}
-              <h3 class="panel-title">Edge1/Plane2 distance</h3>
+              <h3 class="panel-title">Edge1/Plane2 distance <ClearFilterButton bind:clear1={filter.coplanarity_shift1}/></h3>
               <div class="panel-field field is-horizontal">
-                <RangeEditor bind:range={filter.coplanarity_shift1} step={1} min={-180} max={180} />
+                <RangeEditor bind:range={filter.coplanarity_shift1} step={0.1} min={-2.5} max={2.5} />
               </div>
             {/if}
         </div>
@@ -448,7 +459,7 @@
               </div>
             {/each}
             {#if hasYawPitchRoll}
-              <h3 class="panel-title">Roll</h3>
+              <h3 class="panel-title">Roll <ClearFilterButton bind:clear1={filter.roll1} bind:clear2={filter.roll2}/></h3>
               <div class="panel-field field is-horizontal">
                 <RangeEditor bind:range={filter.roll1} step={1} min={-180} max={180} />
               </div>
@@ -458,15 +469,15 @@
             {/if}
 
             {#if filter.coplanarity_edge_angle2}
-              <h3 class="panel-title">Coplanarity Edge2/Plane1</h3>
+              <h3 class="panel-title">Edge2/Plane1 angle <ClearFilterButton bind:clear1={filter.coplanarity_edge_angle2}/></h3>
               <div class="panel-field field is-horizontal">
                 <RangeEditor bind:range={filter.coplanarity_edge_angle2} step={1} min={-180} max={180} />
               </div>
             {/if}
             {#if filter.coplanarity_shift2}
-              <h3 class="panel-title">Edge2/Plane1 distance</h3>
+              <h3 class="panel-title">Edge2/Plane1 distance <ClearFilterButton bind:clear1={filter.coplanarity_shift2}/></h3>
               <div class="panel-field field is-horizontal">
-                <RangeEditor bind:range={filter.coplanarity_shift2} step={1} min={-180} max={180} />
+                <RangeEditor bind:range={filter.coplanarity_shift2} step={0.1} min={-2.5} max={2.5} />
               </div>
             {/if}
         </div>
@@ -590,27 +601,47 @@
           <div class="field">
             <label class="label" for="ntfilter-order-by">Comparison baseline</label>
             <div class="control">
-              <div class="buttons has-addons">
-                {#if filterBaseline == null}
-                <button class="button is-small" on:click={() => setBaseline({ ...defaultFilter(), datasource: filter.filtered ? "fr3d-f" : "fr3d" }, "ranges")}
-                  title="Sets the current filters as the filter baseline, allowing you to change some parameters and observe the changed">
-                  FR3D
-                </button>
-                <button class="button is-small" on:click={() => setBaseline({...filter}, mode)}
-                  title="Compares the current basepair selection with that determined by FR3D">
-                  Set to this
-                </button>
-                {:else}
+              {#if filterBaseline == null}
+                <div class="buttons has-addons">
+                  <button class="button is-small" on:click={() => setBaseline({ ...defaultFilter(), datasource: filter.filtered ? "fr3d-f" : "fr3d" }, "ranges")}
+                    title="Sets the current filters as the filter baseline, allowing you to change some parameters and observe the changed">
+                    FR3D
+                  </button>
+                  <button class="button is-small" on:click={() => setBaseline(structuredClone(filter), mode)}
+                    title="Compares the current basepair selection with that determined by FR3D">
+                    Set to this
+                  </button>
+                </div>
+              {:else}
+                <p>{formatFilter(filterBaseline, filter)}</p>
+                <div class="buttons has-addons">
                   <button class="button is-small is-warning" type="button" on:click={() => setBaseline(null, mode)}
                     title="Exits comparison mode, removed the baseline">
                     ❌ Reset
                   </button>
+                  <button class="button is-small" on:click={() => {
+                    const backup = structuredClone(filterBaseline)
+                    setBaseline(structuredClone(filter), mode)
+                    filter = backup
+                  }}
+                    title="Swap the baseline and current dataset">
+                    ↔️ Swap
+                  </button>
                   <!-- <button class="button" type="button" on:click={() => setBaseline(filter, mode)}>
                     Set to this
                   </button> -->
+                </div>
+                <div class="select is-small">
+                  <select bind:value={comparisonMode}>
+                    <option value="union">Show all matches</option>
+                    <option value="difference">Only differences</option>
+                    <option value="new">Absent in {filterBaseline.datasource?.startsWith("fr3d") && !filter.datasource?.startsWith("fr3d") ? "FR3D" : "baseline"} (green)</option>
+                    <option value="missing">Only in {filterBaseline.datasource?.startsWith("fr3d") && !filter.datasource?.startsWith("fr3d") ? "FR3D" : "baseline"} (red)</option>
+                  </select>
+                </div>
+
 
                 {/if}
-              </div>
             </div>
           </div>
           {/if}
@@ -653,7 +684,7 @@
           </button>
         {/if}
         {#if filterBaseline == null}
-          <button class="button" type="button" on:click={() => setBaseline({...filter}, mode)}>
+          <button class="button" type="button" on:click={() => setBaseline(structuredClone(filter), mode)}>
             Set as baseline
           </button>
           <button class="button" type="button" on:click={() => setBaseline({ ...defaultFilter(), datasource: filter.filtered ? "fr3d-f" : "fr3d" }, "ranges")}>
@@ -663,7 +694,7 @@
           <button class="button is-warning" type="button" on:click={() => setBaseline(null, mode)}>
             Exit comparison
           </button>
-          <button class="button" type="button" on:click={() => setBaseline(filter, mode)}>
+          <button class="button" type="button" on:click={() => setBaseline(structuredClone(filter), mode)}>
             Set current query as baseline
           </button>
           {#if filterBaseline.sql == null}

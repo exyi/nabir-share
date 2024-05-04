@@ -190,8 +190,8 @@
                 }
               }
             }}>
-            <option value="histogram">Histogram</option>
-            <option value="kde2d">2D Scatterplot</option>
+            <option value="histogram">📊 Histogram</option>
+            <option value="kde2d">🌌 2D Scatterplot</option>
           </select>
         </div>
       </div>
