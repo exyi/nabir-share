@@ -206,8 +206,7 @@ def fit_plane_magic_svd(atoms: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     https://math.stackexchange.com/a/99317
     """
     assert atoms.shape[1] == 3
-    svd = np.linalg.svd((atoms - np.mean(atoms, axis=0, keepdims=True)).T)
-    left_singular_vectors = svd[0]
+    left_singular_vectors, _, _ = np.linalg.svd((atoms - np.mean(atoms, axis=0, keepdims=True)).T)
     assert left_singular_vectors.shape == (3, 3)
     return np.mean(atoms, axis=0), left_singular_vectors
 
