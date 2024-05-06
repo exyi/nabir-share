@@ -1126,6 +1126,19 @@ def make_stats_columns(pdbid: str, df: pl.DataFrame, add_metadata_columns: bool,
 def df_hstack(columns: list[pl.DataFrame]) -> pl.DataFrame:
     return functools.reduce(pl.DataFrame.hstack, columns)
 
+def load_input_pdbids(args) -> list[str]:
+    r = set()
+    for i in args.inputs:
+        if i.endswith(".parquet"):
+            r.update(pl.scan_parquet(i).select(pl.col("pdbid").str.to_lowercase()).unique().collect(streaming=True)["pdbid"].to_list())
+        elif i.endswith(".csv"):
+            r.update(pl.scan_parquet(i).select(pl.col("pdbid").str.to_lowercase()).unique().collect(streaming=True)["pdbid"].to_list())
+        elif i.endswith("_basepair.txt") or i.endswith("_basepair_detail.txt"):
+            r.add(os.path.basename(i).split("_")[0].lower())
+        else:
+            raise ValueError(f"Unknown input file type: {i}")
+    return list(sorted(r))
+
 def load_inputs(pool: Union[Pool, MockPool], args, pdbid_prefix='') -> pl.DataFrame:
     """Loads CSV/Parquet/FR3D files and returns a DataFrame with basepair identifiers"""
     inputs: list[str] = args.inputs
@@ -1181,11 +1194,11 @@ def validate_missing_columns(chunks: list[pl.DataFrame]):
         if not all_columns.issubset(c.columns):
             print(f"Chunk with {set(c['pdbid'].to_numpy())} is missing columns: {all_columns.difference(set(c.columns))}")
 
-def main(pool: Union[Pool, MockPool], args, pdbid_partition_prefix=''):
+def main_partition(pool: Union[Pool, MockPool], args, pdbid_partition_prefix=''):
     df = load_inputs(pool, args, pdbid_prefix=pdbid_partition_prefix)
     if args.export_only:
         print("Exporting metadata only")
-        return save_output(args, df)
+        return df
     raw_df_len = len(df)
     print(f"Loaded {raw_df_len} raw basepairs")
     if args.disable_cross_symmetry:
@@ -1203,6 +1216,7 @@ def main(pool: Union[Pool, MockPool], args, pdbid_partition_prefix=''):
         df = remove_duplicate_pairs_phase1(df)
         print(f"Removed duplicates, phase1 -> len={len(df)}")
     max_bond_count = get_max_bond_count(df)
+
     groups = list(df.group_by(pl.col("pdbid")))
 
     processes = []
@@ -1274,13 +1288,43 @@ def main(pool: Union[Pool, MockPool], args, pdbid_partition_prefix=''):
     validate_missing_columns(result_chunks)
     df = pl.concat(result_chunks)
     df = postfilter(df)
+    df = df.sort('pdbid', 'model', 'chain1', 'nr1', 'chain2', 'nr2')
     return df
 
-def save_output(args, df: pl.DataFrame):
-    df = df.sort('pdbid', 'model', 'chain1', 'nr1', 'chain2', 'nr2')
-    if args.output != "/dev/null":
-        df.write_csv(args.output if args.output.endswith(".csv") else args.output + ".csv")
-        df.write_parquet(args.output + ".parquet")
+def main(pool: Union[Pool, MockPool], args):
+    if args.partition_input == 0:
+        df = main_partition(pool, args, '')
+        save_output(args, df.lazy())
+    else:
+        pdbids = load_input_pdbids(args)
+        partitions = {}
+        for pdbid in pdbids:
+            x = pdbid[:args.partition_input]
+            partitions[x] = partitions.get(x, 0) + 1
+        print(f"Partitioning {len(pdbids)} PDBIDs into {len(partitions)} partitions: {partitions}")
+        p_results = dict()
+        try:
+            for p in sorted(partitions.keys()):
+                print("Processing partition", p)
+                p_result = main_partition(pool, args, p)
+                if len(p_result) > 0:
+                    file = f"{args.output}_part{p}"
+                    p_result.write_parquet(file)
+                    p_results[p] = file
+
+            all_df = pl.concat([ pl.scan_parquet(p, cache=False, low_memory=True) for p in p_results.values() ])
+            save_output(args, all_df)
+        finally:
+            for p in p_results.values():
+                os.remove(p)
+
+
+def save_output(args, df: pl.LazyFrame):
+    if args.output.endswith(".parquet"):
+        df.sink_parquet(args.output)
+    elif args.output != "/dev/null":
+        df.sink_csv(args.output if args.output.endswith(".csv") else args.output + ".csv")
+        df.sink_parquet(args.output + ".parquet")
     return df
 
 if __name__ == "__main__":
@@ -1313,6 +1357,7 @@ if __name__ == "__main__":
     parser.add_argument("--output", "-o", required=True, help="Output CSV/Parquet file name. Both CSV and Parquet are always written.")
     parser.add_argument("--threads", type=int, default=1, help="Number of worker processes to spawn. Does not affect Polars threading, at the start, the process might use more threads than specified.")
     parser.add_argument("--export-only", default=False, action="store_true", help="Only re-export the input as CSV+Parquet files, do not calculate anything")
+    parser.add_argument("--partition_input", default=0, type=int, help="Partition the input by N first characters of the PDBID. Reduces memory usage for large datasets.")
     parser.add_argument("--metadata", type=bool, default=True, help="Add deposition_date, resolution and structure_method columns")
     parser.add_argument("--dssr-binary", type=str, help="If specified, DSSR --analyze will be invoked for each structure and its results stored as 'dssr_' prefixed columns")
     parser.add_argument("--filter", default=False, action="store_true", help="Filter out rows for which the values could not be calculated")
@@ -1330,8 +1375,7 @@ if __name__ == "__main__":
 
     multiprocessing.set_start_method("spawn")
     if args.threads == 1:
-        result_df = main(MockPool(), args)
+        main(MockPool(), args)
     else:
         with multiprocessing.Pool(processes=args.threads) as pool:
-            result_df = main(pool, args)
-    save_output(args, result_df)
+            main(pool, args)
