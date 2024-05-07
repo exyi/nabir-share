@@ -1194,7 +1194,7 @@ def validate_missing_columns(chunks: list[pl.DataFrame]):
         if not all_columns.issubset(c.columns):
             print(f"Chunk with {set(c['pdbid'].to_numpy())} is missing columns: {all_columns.difference(set(c.columns))}")
 
-def main_partition(pool: Union[Pool, MockPool], args, pdbid_partition_prefix=''):
+def main_partition(pool: Union[Pool, MockPool], args, pdbid_partition_prefix='', ideal_basepairs: Optional[dict[pair_defs.PairType, PairInformation]] = None):
     df = load_inputs(pool, args, pdbid_prefix=pdbid_partition_prefix)
     if args.export_only:
         print("Exporting metadata only")
@@ -1230,9 +1230,7 @@ def main_partition(pool: Union[Pool, MockPool], args, pdbid_partition_prefix='')
         StandardMetrics.Translation1,
         StandardMetrics.Translation2,
     ]
-    if args.reference_basepairs:
-        print("Loading metadata from ", args.reference_basepairs)
-        ideal_basepairs = load_ideal_pairs(pool, args.reference_basepairs)
+    if ideal_basepairs:
         print(f"Loaded {len(ideal_basepairs)} ideal basepairs")
         pair_metrics.extend([
             RMSDToIdealMetric('C1N_frames1', ideal_basepairs, fit_on='left_C1N', calculate='right_C1N'),
@@ -1292,8 +1290,14 @@ def main_partition(pool: Union[Pool, MockPool], args, pdbid_partition_prefix='')
     return df
 
 def main(pool: Union[Pool, MockPool], args):
+    if args.reference_basepairs:
+        print("Loading metadata from ", args.reference_basepairs)
+        ideal_basepairs = load_ideal_pairs(pool, args.reference_basepairs)
+    else:
+        ideal_basepairs = None
+
     if args.partition_input == 0:
-        df = main_partition(pool, args, '')
+        df = main_partition(pool, args, '', ideal_basepairs)
         save_output(args, df.lazy())
     else:
         pdbids = load_input_pdbids(args)
@@ -1306,7 +1310,7 @@ def main(pool: Union[Pool, MockPool], args):
         try:
             for p in sorted(partitions.keys()):
                 print("Processing partition", p)
-                p_result = main_partition(pool, args, p)
+                p_result = main_partition(pool, args, p, ideal_basepairs)
                 if len(p_result) > 0:
                     file = f"{args.output}_part{p}"
                     p_result.write_parquet(file)

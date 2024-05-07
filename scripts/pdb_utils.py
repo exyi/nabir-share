@@ -95,6 +95,7 @@ def open_pdb_file(file: Optional[str], pdbid: Optional[str] = None) -> TextIO:
             import bz2
             return bz2.open(file, "rt")
         else:
+            print("Warning: unknown file extension", file)
             return open(file, "rt")
     elif file is None:
         raise Exception("No file specified")
@@ -120,9 +121,13 @@ def load_pdb(file: Optional[str | TextIO], pdbid: Optional[str] = None):
         with open_pdb_file(file, pdbid) as f:
             return load_pdb(f, pdbid)
     else:
-        parser = Bio.PDB.MMCIFParser(QUIET=True)
-        structure = parser.get_structure(pdbid, file)
-        return structure
+        try:
+            parser = Bio.PDB.MMCIFParser(QUIET=True)
+            structure = parser.get_structure(pdbid, file)
+            return structure
+        except Exception as e:
+            print(f"Error loading {pdbid}: {e}")
+            raise
 
 @dataclasses.dataclass
 class SymmetryOperation:
