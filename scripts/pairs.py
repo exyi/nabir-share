@@ -1387,11 +1387,17 @@ def main(pool: Union[Pool, MockPool], args):
 
 
 def save_output(args, df: pl.LazyFrame):
-    if args.output.endswith(".parquet"):
+    file = args.output
+    if file == "/dev/null":
+        return
+    if args.partition_input_select:
+        x, ext = os.path.splitext(file)
+        file = f"{x}_p{args.partition_input_select.replace('/', 'of')}{ext}"
+    if file.endswith(".parquet"):
         df.sink_parquet(args.output)
-    elif args.output != "/dev/null":
-        df.sink_csv(args.output if args.output.endswith(".csv") else args.output + ".csv")
-        df.sink_parquet(args.output + ".parquet")
+    else:
+        df.sink_csv(file if file.endswith(".csv") else args.output + ".csv")
+        df.sink_parquet(file + ".parquet")
     return df
 
 if __name__ == "__main__":
