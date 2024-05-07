@@ -306,11 +306,11 @@ def get_residue_posinfo_C1_N(res: AltResidue) -> TranslationThenRotation:
     rotation = np.array([x, y, z]).T
 
     test = transform_residue(res, TranslationThenRotation(translation, rotation))
-    assert np.all(test.get_atom(n.name).coord ** 2 < 0.001)
-    assert np.all(test.get_atom(c1.name).coord[0:] < 0.001)
+    assert np.all(test.get_atom(n.name).coord ** 2 < 0.001), f"Unexpected N1/N9 coordinates (y is positive?): {test.get_atom(n.name).coord}"
+    assert np.all(test.get_atom(c1.name).coord[0:] < 0.001), f"Unexpected C1' coordinates (y is positive?): {test.get_atom(c1.name).coord}"
     assert -1.9 < test.get_atom(c1.name).coord[1] < -1.2, f"Unexpected C1' coordinates (x is bad): {test.get_atom(c1.name).coord}"
-    assert np.all(test.get_atom(c2.name).coord[0] < -0.01)
-    assert np.all(test.get_atom(c2.name).coord[1] > 0.01)
+    assert np.all(test.get_atom(c2.name).coord[0] < -0.01), f"Unexpected C2 coordinates (x is positive?): {test.get_atom(c2.name).coord}"
+    assert np.all(test.get_atom(c2.name).coord[1] > 0.01), f"Unexpected C2 coordinates (y is negative?): {test.get_atom(c2.name).coord}"
 
     return TranslationThenRotation(translation, rotation)
 
@@ -863,7 +863,7 @@ def lazy(create: Callable[..., T], *args) -> Callable[[], T]:
         return cache
     return core
 
-def get_residue(structure: Bio.PDB.Structure.Structure, strdata: Optional[Callable[[], pdb_utils.StructureData]], model, chain, resname, nr, ins, alt, symop) -> AltResidue:
+def get_residue(structure: Bio.PDB.Structure.Structure, strdata: Optional[Callable[[], pdb_utils.StructureData]], model, chain, resname, nr, ins, alt, symop) -> Optional[AltResidue]:
     """Finds a residue in a given structure, and optionally performs the given symmetry operation on it."""
     nr = int(nr)
     ins = ins or ' '
@@ -882,7 +882,8 @@ def get_residue(structure: Bio.PDB.Structure.Structure, strdata: Optional[Callab
             found = found.copy()
             found.transform(sym_transform.rotation, sym_transform.translation)
         else:
-            raise KeyError(f"Symmetry operation {symop} is not defined {structure.id}")
+            # raise KeyError(f"Symmetry operation {symop} is not defined {structure.id}")
+            return None
         
     if isinstance(found, Bio.PDB.Residue.DisorderedResidue):
         disordered_residues: list[Bio.PDB.Residue.Residue] = list(found.child_dict.values())
@@ -907,7 +908,7 @@ def get_stats_for_csv(df_: pl.DataFrame, structure: Bio.PDB.Structure.Structure,
 
             pair_type = pair_defs.PairType.create(pair_family, resname1, resname2, name_map=resname_map)
 
-            if pair_defs.get_hbonds(pair_type) is None:
+            if pair_defs.get_hbonds(pair_type, throw=False) is None:
                 continue
 
             try:
@@ -919,6 +920,8 @@ def get_stats_for_csv(df_: pl.DataFrame, structure: Bio.PDB.Structure.Structure,
                 r2 = get_residue(structure, strdata, model, chain2, resname2, nr2, ins2, alt2, symop2)
             except KeyError as keyerror:
                 print(f"Could not find residue2 {pdbid}.{model}.{chain2}.{str(nr2)+ins2} in {pdbid} ({keyerror=})")
+                continue
+            if r1 is None or r2 is None:
                 continue
             pair_info = calc_pair_information(pair_type, r1, r2)
             hbonds = pair_hbonds_stats(pair_info)
@@ -932,6 +935,8 @@ def get_stats_for_csv(df_: pl.DataFrame, structure: Bio.PDB.Structure.Structure,
             if hbonds is not None:
                 yield i, hbonds, metric_values
         except AssertionError as e:
+            if f"{e}" == "":
+                raise
             print(f"Assertion error {e} on row:\n{to_csv_row(df_, i, 18)}")
             continue
         except Exception as keyerror:
@@ -1155,27 +1160,37 @@ def load_input_pdbids(args) -> list[str]:
     r = set()
     for i in args.inputs:
         if i.endswith(".parquet"):
-            r.update(pl.scan_parquet(i).select(pl.col("pdbid").str.to_lowercase()).unique().collect(streaming=True)["pdbid"].to_list())
+            r.update(pl.scan_parquet(i, cache=False, low_memory=True).select(pl.col("pdbid").str.to_lowercase()).unique().collect(streaming=True)["pdbid"].to_list())
         elif i.endswith(".csv"):
-            r.update(pl.scan_parquet(i).select(pl.col("pdbid").str.to_lowercase()).unique().collect(streaming=True)["pdbid"].to_list())
+            r.update(pl.scan_parquet(i, cache=False, low_memory=True).select(pl.col("pdbid").str.to_lowercase()).unique().collect(streaming=True)["pdbid"].to_list())
         elif i.endswith("_basepair.txt") or i.endswith("_basepair_detail.txt"):
             r.add(os.path.basename(i).split("_")[0].lower())
         else:
             raise ValueError(f"Unknown input file type: {i}")
     return list(sorted(r))
 
-def load_inputs(pool: Union[Pool, MockPool], args, pdbid_prefix='') -> pl.DataFrame:
+def load_inputs(pool: Union[Pool, MockPool], args, pdbid_partition_str='') -> pl.DataFrame:
     """Loads CSV/Parquet/FR3D files and returns a DataFrame with basepair identifiers"""
     inputs: list[str] = args.inputs
     if len(inputs) == 0:
         raise ValueError("No input files specified")
-    if pdbid_prefix:
-        pdbid_filter = pl.col('pdbid').str.to_lowercase().str.starts_with(pdbid_prefix.lower())
+    if pdbid_partition_str:
+        if '/' in pdbid_partition_str:
+            # hash partition filter (format 0/300 ... 299/300)
+            p_ix, p_total = pdbid_partition_str.split('/')
+            p_ix = int(p_ix)
+            p_total = int(p_total)
+            if p_ix >= p_total:
+                raise ValueError(f"Invalid partition: {pdbid_partition_str}")
+            pdbid_filter = pl.col('pdbid').str.to_lowercase().hash(seed=418).mod(p_total) == p_ix
+        else:
+            # prefix filter
+            pdbid_filter = pl.col('pdbid').str.to_lowercase().str.starts_with(pdbid_partition_str.lower())
     else:
         pdbid_filter = pl.lit(True)
     
     if inputs[0].endswith(".parquet") or inputs[0].endswith('.csv'):
-        print(f'Loading basepairing CSV files')
+        print(f'Loading basepairing CSV files with filter: {pdbid_partition_str} -> {pdbid_filter}')
         df = scan_pair_csvs(args.inputs)
         df = df.with_columns(pdbid = pl.col("pdbid").str.to_lowercase())
         df = df.filter(pdbid_filter)
@@ -1195,6 +1210,7 @@ def load_inputs(pool: Union[Pool, MockPool], args, pdbid_prefix='') -> pl.DataFr
         df = df.sort('pdbid', 'model', 'nr1', 'nr2')
         # if "r11" in df.columns:
         df = df.collect(streaming=True)
+        print(f"Loaded {len(df)} basepairs")
     elif inputs[0].endswith("_basepair.txt") or inputs[0].endswith("_basepair_detail.txt"):
         print(f"Loading {len(inputs)} basepair files")
         import fr3d_parser
@@ -1208,10 +1224,18 @@ def load_inputs(pool: Union[Pool, MockPool], args, pdbid_prefix='') -> pl.DataFr
         if not args.override_pair_family:
             raise ValueError("Input does not contain family column and --override-pair-type was not specified")
     if args.override_pair_family:
-        df = df.select(
-            pl.lit(args.override_pair_family).alias("type"),
-            pl.lit(args.override_pair_family).alias("family"),
-            pl.col("*"))
+        df = df.drop("type", "family")
+        override: list[str] = args.override_pair_family.split(",")
+        if len(override) == 1:
+            df = df.select(
+                pl.lit(override[0]).alias("type"),
+                pl.lit(override[0]).alias("family"),
+                pl.col("*"))
+        else:
+            df = df.join(
+                pl.DataFrame({"type": override, "family": override}),
+                how='cross'
+            )
     return df
 
 def validate_missing_columns(chunks: list[pl.DataFrame]):
@@ -1220,8 +1244,8 @@ def validate_missing_columns(chunks: list[pl.DataFrame]):
         if not all_columns.issubset(c.columns):
             print(f"Chunk with {set(c['pdbid'].to_numpy())} is missing columns: {all_columns.difference(set(c.columns))}")
 
-def main_partition(pool: Union[Pool, MockPool], args, pdbid_partition_prefix='', ideal_basepairs: Optional[dict[pair_defs.PairType, PairInformation]] = None):
-    df = load_inputs(pool, args, pdbid_prefix=pdbid_partition_prefix)
+def main_partition(pool: Union[Pool, MockPool], args, pdbid_partition='', ideal_basepairs: Optional[dict[pair_defs.PairType, PairInformation]] = None):
+    df = load_inputs(pool, args, pdbid_partition_str=pdbid_partition)
     if args.export_only:
         print("Exporting metadata only")
         return df
@@ -1243,7 +1267,10 @@ def main_partition(pool: Union[Pool, MockPool], args, pdbid_partition_prefix='',
         print(f"Removed duplicates, phase1 -> len={len(df)}")
     max_bond_count = get_max_bond_count(df)
 
+    total_row_count = len(df)
     groups = list(df.group_by(pl.col("pdbid")))
+    del df
+    print(f"Will process {len(groups)} PDB structures")
 
     processes = []
 
@@ -1267,8 +1294,15 @@ def main_partition(pool: Union[Pool, MockPool], args, pdbid_partition_prefix='',
             RMSDToIdealMetric('all_base', ideal_basepairs, fit_on='all', calculate='all'),
         ])
 
+    processed_row_count = {}
+    def report_progress(process_name, pdbid, group_size):
+        def core(result):
+            processed_row_count[process_name] = processed_row_count.get(process_name, 0) + group_size
+            print(f"Progress report: chunk {process_name}-{pdbid} is done ({processed_row_count[process_name] / total_row_count*100:.0f}% - {processed_row_count[process_name] - group_size} + {group_size})")
+        return core
+
     processes.append([ # process per PDB structure
-        pool.apply_async(make_stats_columns, args=[pdbid, group, args.metadata, max_bond_count, pair_metrics])
+        pool.apply_async(make_stats_columns, args=[pdbid, group, args.metadata, max_bond_count, pair_metrics], callback=report_progress('metrics', pdbid, len(group)))
         for (pdbid,), group in groups # type: ignore
     ])
     if args.dssr_binary is not None:
@@ -1322,8 +1356,11 @@ def main(pool: Union[Pool, MockPool], args):
     else:
         ideal_basepairs = None
 
+    if args.partition_input_select and args.partition_input:
+        raise ValueError("Cannot specify both --partition-input and --partition-input-select")
+    
     if args.partition_input == 0:
-        df = main_partition(pool, args, '', ideal_basepairs)
+        df = main_partition(pool, args, args.partition_input_select, ideal_basepairs)
         save_output(args, df.lazy())
     else:
         pdbids = load_input_pdbids(args)
@@ -1387,7 +1424,8 @@ if __name__ == "__main__":
     parser.add_argument("--output", "-o", required=True, help="Output CSV/Parquet file name. Both CSV and Parquet are always written.")
     parser.add_argument("--threads", type=int, default=1, help="Number of worker processes to spawn. Does not affect Polars threading, at the start, the process might use more threads than specified.")
     parser.add_argument("--export-only", default=False, action="store_true", help="Only re-export the input as CSV+Parquet files, do not calculate anything")
-    parser.add_argument("--partition_input", default=0, type=int, help="Partition the input by N first characters of the PDBID. Reduces memory usage for large datasets.")
+    parser.add_argument("--partition-input", default=0, type=int, help="Partition the input by N first characters of the PDBID. Reduces memory usage for large datasets.")
+    parser.add_argument("--partition-input-select", default='', type=str, help="Select a given input partition (for example '9' will run pdbids starting with '9').")
     parser.add_argument("--metadata", type=bool, default=True, help="Add deposition_date, resolution and structure_method columns")
     parser.add_argument("--dssr-binary", type=str, help="If specified, DSSR --analyze will be invoked for each structure and its results stored as 'dssr_' prefixed columns")
     parser.add_argument("--filter", default=False, action="store_true", help="Filter out rows for which the values could not be calculated")
@@ -1396,7 +1434,7 @@ if __name__ == "__main__":
     parser.add_argument("--dedupe", default=False, action="store_true", help="Remove duplicate pairs, keep the one with preferred family (W > H > S), FR3D ordering, preferred base order (A > G > C > U), shorter bonds, or lower chain1,nr1")
     parser.add_argument("--reference-basepairs", type=str, help="output of pair_distributions.py with the 'nicest' basepairs, will be used as reference for RMSD calculation (rmsd_edge1, rmsd_edge2, rmsd_C1N_frames1, rmsd_C1N_frames2, rmsd_edge_C1N_frame, rmsd_all_base columns)")
     parser.add_argument("--disable-cross-symmetry", default=False, action="store_true", help="Skip basepairs with bases in different Asymmetrical Units")
-    parser.add_argument("--override-pair-family", type=str, required=False, help="Ignore the pair family from the input and assume the specified one instead.")
+    parser.add_argument("--override-pair-family", type=str, required=False, help="Ignore the pair family from the input and assume the specified one instead. Experimental: may specify multiple overrides separated by comma.")
     args = parser.parse_args()
 
     for x in args.pdbcache or []:

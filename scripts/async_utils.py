@@ -5,5 +5,8 @@ class MockPool:
             self.x = x
         def get(self):
             return self.x
-    def apply_async(self, f, args):
-        return MockPool.ApplyResult(f(*args))
+    def apply_async(self, f, args, callback=None):
+        r = f(*args)
+        if callback is not None:
+            callback(r)
+        return MockPool.ApplyResult(r)
