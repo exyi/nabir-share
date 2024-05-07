@@ -101,15 +101,28 @@ def open_pdb_file(file: Optional[str], pdbid: Optional[str] = None) -> TextIO:
         raise Exception("No file specified")
     else:
         return file
+    
+def _gemmi_to_structure(cif):
+    import gemmi
+    if len(cif) != 1:
+        raise Exception(f"CIF file has {len(cif)} blocks: {cif}")
+    structure = gemmi.make_structure_from_block(cif[0])
+    return structure, cif[0]
 
-def load_pdb_gemmi(file: Optional[str | TextIO], pdbid: Optional[str] = None) -> 'Bio.PDB.Structure.Structure':
+def load_pdb_gemmi(file: Optional[str | TextIO], pdbid: Optional[str] = None):
     """Loads a PDBx CIF file using gemmi library. Either file or pdbid must be specified: load_pdb_gemmi(None, '1ehz') or load_pdb_gemmi('../data/1ehz.cif.gz')"""
     import gemmi
+    if isinstance(file, str):
+        if file.endswith(".cif") or file.endswith(".cif.gz"):
+            cif = gemmi.cif.read(file)
+            return _gemmi_to_structure(cif)
     if isinstance(file, str) or file is None:
         with open_pdb_file(file, pdbid) as f:
             return load_pdb_gemmi(f, pdbid)
     else:
-        raise NotImplementedError()
+        data = file.read()
+        cif = gemmi.cif.read_string(data)
+        return _gemmi_to_structure(cif)
         # parser = Bio.PDB.MMCIFParser(QUIET=True)
         # structure = parser.get_structure(pdb_id, file)
         # return structure
@@ -185,3 +198,29 @@ def load_sym_data(file: Optional[str | TextIO], pdb_id: Optional[str] = None) ->
             result.organism_id = int(obj.data[0][idx["pdbx_src_id"]]) if obj.data[0][idx["pdbx_src_id"]] else None
         return result
 
+def load_sym_data_gemmi():
+    import gemmi
+    def core(b: gemmi.cif.Block):
+        result = StructureData([])
+        
+        if obj := b.get_mmcif_category('_pdbx_struct_oper_list'):
+            result.assembly = [
+                SymmetryOperation(
+                    id=obj['id'][i],
+                    pdbname=obj['name'][i],
+                    triplet=obj['symmetry_operation'][i],
+                    rotation=np.array([
+                        [ obj[f'matrix[1][1]'][i], obj[f'matrix[1][2]'][i], obj[f'matrix[1][3]'][i] ],
+                        [ obj[f'matrix[2][1]'][i], obj[f'matrix[2][2]'][i], obj[f'matrix[2][3]'][i] ],
+                        [ obj[f'matrix[3][1]'][i], obj[f'matrix[3][2]'][i], obj[f'matrix[3][3]'][i] ],
+                    ]),
+                    translation=np.array([ obj[f'vector[1]'][i], obj[f'vector[2]'][i], obj[f'vector[3]'][i] ])
+                )
+                for i in range(len(obj['id']))
+            ]
+        if obj := b.get_mmcif_category('_pdbx_entity_src_syn'):
+            result.organism = obj['organism_scientific'][0]
+            result.organism_id = int(obj['pdbx_src_id'][0]) if obj['pdbx_src_id'][0] else None
+        return result
+
+    return core

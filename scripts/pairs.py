@@ -314,13 +314,14 @@ def get_residue_posinfo_C1_N(res: AltResidue) -> TranslationThenRotation:
 
     return TranslationThenRotation(translation, rotation)
 
-def fit_trans_rot_to_pairs(atom_pairs: Sequence[Tuple[Optional[Bio.PDB.Atom.Atom], Optional[Bio.PDB.Atom.Atom]]]) -> TranslationRotationTranslation:
+def fit_trans_rot_to_pairs(atom_pairs: Sequence[Tuple[Optional[Bio.PDB.Atom.Atom], Optional[Bio.PDB.Atom.Atom]]]) -> Optional[TranslationRotationTranslation]:
     """
     Find a translation plus rotation minimizing the RMSD beweteen the atom pairs.
     """
     atom_pairs = [ (a, b) for a, b in atom_pairs if a is not None and b is not None ]
     if len(atom_pairs) < 3:
-        raise ResideTransformError(f"Not enough pairs for fitting: {[ (a.id, b.id) for a, b in atom_pairs]}")
+        # raise ResideTransformError(f"Not enough pairs for fitting: {[ (a.id, b.id) for a, b in atom_pairs]}")
+        return None
     coord_pairs = [ (a.coord, b.coord) for a, b in atom_pairs ]
     m1, m2 = zip(*coord_pairs)
     trans1 = -np.mean(m1, axis=0)
@@ -695,6 +696,9 @@ class RMSDToIdealMetric(PairMetric):
             atom_pairs = self.atom_pairs(self.fit_on, pair, ideal)
             assert all(a.name == b.name for (a, b) in atom_pairs if a and b)
             fit = fit_trans_rot_to_pairs(atom_pairs)
+
+        if fit is None:
+            return [ None ]
         # elif self.fit_on == 'left':
         #     atom_pairs = [ (pair.res1.get_atom(a, None), ideal.res1.get_atom(a, None)) for a in get_base_atoms(pair.res1)[1] ]
         #     fit = fit_trans_rot_to_pairs(atom_pairs)
@@ -887,6 +891,11 @@ def get_stats_for_csv(df_: pl.DataFrame, structure: Bio.PDB.Structure.Structure,
             ins1 = (ins1 or '').strip()
             ins2 = (ins2 or '').strip()
 
+            pair_type = pair_defs.PairType.create(pair_family, resname1, resname2, name_map=resname_map)
+            hbonds = pair_hbonds_stats(pair_info)
+            if hbonds is None:
+                continue
+
             try:
                 r1 = get_residue(structure, strdata, model, chain1, resname1, nr1, ins1, alt1, symop1)
             except KeyError as keyerror:
@@ -897,9 +906,7 @@ def get_stats_for_csv(df_: pl.DataFrame, structure: Bio.PDB.Structure.Structure,
             except KeyError as keyerror:
                 print(f"Could not find residue2 {pdbid}.{model}.{chain2}.{str(nr2)+ins2} in {pdbid} ({keyerror=})")
                 continue
-            pair_type = pair_defs.PairType.create(pair_family, r1.resname, r2.resname, name_map=resname_map)
             pair_info = calc_pair_information(pair_type, r1, r2)
-            hbonds = pair_hbonds_stats(pair_info)
             metric_values: list[Optional[float]] = []
             for mix, m in enumerate(metrics):
                 v = m.get_values(pair_info)
@@ -1014,7 +1021,7 @@ def get_max_bond_count(df: pl.DataFrame):
     pair_types = list(set(pair_defs.PairType.create(type, res1, res2, name_map=resname_map) for type, res1, res2 in df[["family", "res1", "res2"]].unique().iter_rows()))
     bond_count = max(len(pair_defs.get_hbonds(p, throw=False)) for p in pair_types)
     # print("Analyzing pair types:", pair_types, "with bond count =", bond_count)
-    print(f"Analyzing {len(pair_types)} pair  typeswith bond count =", bond_count)
+    print(f"Analyzing {len(pair_types)} pairtypes with bond count =", bond_count)
     return max(3, bond_count)
 
 def make_backbone_columns(df: pl.DataFrame, structure: Optional[Bio.PDB.Structure.Structure]) -> list[pl.Series]:
@@ -1081,9 +1088,12 @@ def make_stats_columns(pdbid: str, df: pl.DataFrame, add_metadata_columns: bool,
         for name in m.get_columns()
     ]
 
+    structure_data = lazy(lambda: pdb_utils.load_sym_data(None, pdbid))
     structure = None
     try:
         structure = pdb_utils.load_pdb(None, pdbid)
+        # structure, cif_block = pdb_utils.load_pdb_gemmi(None, pdbid)
+        # structure_data = lazy(lambda: pdb_utils.load_sym_data_gemmi()(cif_block)
     except HTTPError as e:
         print(f"Could not load structure {pdbid} due to http error")
         print(e)
@@ -1092,8 +1102,6 @@ def make_stats_columns(pdbid: str, df: pl.DataFrame, add_metadata_columns: bool,
         print(f"Could not load structure {pdbid} due to unknown error")
         print(e)
         print(traceback.format_exc())
-
-    structure_data = lazy(lambda: pdb_utils.load_sym_data(None, pdbid))
 
     if structure is not None:
         for i, hbonds, metric_values in get_stats_for_csv(df, structure, structure_data, metrics):
