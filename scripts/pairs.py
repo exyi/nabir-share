@@ -1353,6 +1353,7 @@ def main(pool: Union[Pool, MockPool], args):
     if args.reference_basepairs:
         print("Loading metadata from ", args.reference_basepairs)
         ideal_basepairs = load_ideal_pairs(pool, args.reference_basepairs)
+        print(f"Loaded {len(ideal_basepairs)} ideal basepairs")
     else:
         ideal_basepairs = None
 

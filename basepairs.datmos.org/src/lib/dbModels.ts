@@ -1,7 +1,7 @@
 import type metadataModule from './metadata'
 import _ from 'lodash'
 import type { PairingInfo } from './pairing'
-import config from '$lib/config'
+import config from './config'
 
 
 export type NumRange = {

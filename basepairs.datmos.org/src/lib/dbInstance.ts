@@ -1,9 +1,9 @@
 
 import { AsyncDuckDB, AsyncDuckDBConnection, DuckDBDataProtocol } from '@duckdb/duckdb-wasm';
-import metadata from '$lib/metadata';
-import { initDB } from '$lib/duckdb'
-import { normalizePairFamily, compareFamilies } from '$lib/pairing'
-import config from '$lib/config';
+import metadata from './metadata';
+import { initDB } from './duckdb'
+import { normalizePairFamily, compareFamilies } from './pairing'
+import config from './config';
 // let db: any = null;
 let conn: AsyncDuckDBConnection | null = null
 let db: AsyncDuckDB | null = null

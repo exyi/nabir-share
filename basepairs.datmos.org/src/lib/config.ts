@@ -1,4 +1,4 @@
-import type { ComparisonMode, NucleotideFilterModel } from "$lib/dbModels";
+import type { ComparisonMode, NucleotideFilterModel } from "./dbModels";
 
 export default {
     defaultOrderBy: 'rmsdD',
