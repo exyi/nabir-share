@@ -207,7 +207,7 @@ def read_fr3d_basepairing(file: Union[str, TextIO], pdbid: Optional[str] = None,
             if left.chain not in filter_chains or right.chain not in filter_chains:
                 continue
 
-        pairs["pdbid"] = left.pdbid
+        pairs["pdbid"] = left.pdbid.lower()
         pairs["model"].append(left.model_i)
         pairs["res1"].append(left.residue_base)
         pairs["res2"].append(right.residue_base)

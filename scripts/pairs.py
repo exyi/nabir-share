@@ -360,24 +360,30 @@ def calc_pair_information(pair_type: pair_defs.PairType, res1: AltResidue, res2:
 
     return PairInformation(pair_type, res1, res2, p1, p2, rot_trans1, rot_trans2)
 
-def load_pair_information_by_idtuple(pair_type: Union[tuple[str, str], pair_defs.PairType], identifier: tuple[str, int, str, str, int, str, str, str, str, int, str, str]) -> PairInformation:
-    pdbid, model, chain1, resname1, nr1, ins1, alt1, chain2, resname2, nr2, ins2, alt2 = identifier
-    pair_type = pair_defs.PairType.from_tuple(pair_type)
-    print(f"Loading ideal basepair:", *identifier)
+def load_pair_information_by_idtuple(pdbid: str, data: list[tuple[Union[tuple[str, str], pair_defs.PairType], tuple[str, int, str, str, int, str, str, str, str, int, str, str]]]) -> list[PairInformation]:
     structure = pdb_utils.load_pdb(None, pdbid)
+    result = []
+    for pair_type, identifier in data:
+    
+        pdbid_loc, model, chain1, resname1, nr1, ins1, alt1, chain2, resname2, nr2, ins2, alt2 = identifier
+        assert pdbid_loc.lower() == pdbid.lower()
+        pair_type = pair_defs.PairType.from_tuple(pair_type)
+        print(f"Loading ideal basepair:", *identifier)
 
-    res1 = get_residue(structure, None, model, chain1, resname1, nr1, ins1, alt1, None)
-    res2 = get_residue(structure, None, model, chain2, resname2, nr2, ins2, alt2, None)
-    # detach parent to lower memory usage (all structures would get replicated to all workers)
-    res1 = res1.copy()
-    res2 = res2.copy()
-    assert res1.res.resname == resname1 and res2.res.resname == resname2, f"Residue names don't match: {res1.res.resname} {res2.res.resname} {resname1} {resname2} ({identifier})"
-    return calc_pair_information(pair_type, res1, res2)
+        res1 = get_residue(structure, None, model, chain1, resname1, nr1, ins1, alt1, None)
+        res2 = get_residue(structure, None, model, chain2, resname2, nr2, ins2, alt2, None)
+        # detach parent to lower memory usage (all structures would get replicated to all workers)
+        res1 = res1.copy()
+        res2 = res2.copy()
+        assert res1.res.resname == resname1 and res2.res.resname == resname2, f"Residue names don't match: {res1.res.resname} {res2.res.resname} {resname1} {resname2} ({identifier})"
+        result.append(calc_pair_information(pair_type, res1, res2))
+    return result
 
 def load_ideal_pairs(pool: Union[Pool, MockPool], metadata_file: str) -> dict[pair_defs.PairType, PairInformation]:
     with open(metadata_file) as f:
         metadata = json.load(f)
-    result = dict()
+
+    nicest_bp_groups: dict[str, list[tuple[pair_defs.PairType, tuple]]] = dict()
     
     for pair_meta in metadata:
         if not pair_meta.get("statistics", None):
@@ -386,11 +392,19 @@ def load_ideal_pairs(pool: Union[Pool, MockPool], metadata_file: str) -> dict[pa
         if pair_type.n:
             continue
         largest_stat = max(pair_meta["statistics"], key=lambda x: x["count"])
-        nicest_bp = largest_stat["nicest_bp"]
-        result[pair_type] = pool.apply_async(load_pair_information_by_idtuple, args=[pair_type, nicest_bp])
-
-    for k in result:
-        result[k] = result[k].get()
+        nicest_bp: tuple = largest_stat["nicest_bp"]
+        if nicest_bp[0] not in nicest_bp_groups:
+            nicest_bp_groups[nicest_bp[0]] = []
+        nicest_bp_groups[nicest_bp[0]].append((pair_type, nicest_bp))
+    procs = [
+        (group, pool.apply_async(load_pair_information_by_idtuple, args=[pdbid, group]))
+        for pdbid, group in nicest_bp_groups.items()
+    ]
+    result = dict()
+    for input, output in procs:
+        output = output.get()
+        for (pt, _), info in zip(input, output):
+            result[pt] = info
     return result
 
 class PairMetric: # "interface"
@@ -892,8 +906,8 @@ def get_stats_for_csv(df_: pl.DataFrame, structure: Bio.PDB.Structure.Structure,
             ins2 = (ins2 or '').strip()
 
             pair_type = pair_defs.PairType.create(pair_family, resname1, resname2, name_map=resname_map)
-            hbonds = pair_hbonds_stats(pair_info)
-            if hbonds is None:
+
+            if pair_defs.get_hbonds(pair_type) is None:
                 continue
 
             try:
@@ -907,6 +921,9 @@ def get_stats_for_csv(df_: pl.DataFrame, structure: Bio.PDB.Structure.Structure,
                 print(f"Could not find residue2 {pdbid}.{model}.{chain2}.{str(nr2)+ins2} in {pdbid} ({keyerror=})")
                 continue
             pair_info = calc_pair_information(pair_type, r1, r2)
+            hbonds = pair_hbonds_stats(pair_info)
+            if hbonds is None:
+                continue
             metric_values: list[Optional[float]] = []
             for mix, m in enumerate(metrics):
                 v = m.get_values(pair_info)
@@ -1160,6 +1177,7 @@ def load_inputs(pool: Union[Pool, MockPool], args, pdbid_prefix='') -> pl.DataFr
     if inputs[0].endswith(".parquet") or inputs[0].endswith('.csv'):
         print(f'Loading basepairing CSV files')
         df = scan_pair_csvs(args.inputs)
+        df = df.with_columns(pdbid = pl.col("pdbid").str.to_lowercase())
         df = df.filter(pdbid_filter)
         df = df.with_columns(
             alt1=pl.when((pl.col("alt1") == '\0') | (pl.col("alt1") == '?')).then(pl.lit('')).otherwise(pl.coalesce(pl.col("alt1"), pl.lit('')).str.strip_chars()),
