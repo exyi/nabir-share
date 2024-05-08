@@ -37,11 +37,14 @@ class AltResidue:
         """unwrap a disordered atom"""
         if a.is_disordered():
             if self.alt == '':
+                ids = a.disordered_get_id_list()
+                if len(ids) == 1:
+                    return a.disordered_get(ids[0])
                 # don't crash on uninteresting atoms
                 if a.id.startswith('H') or a.id in ['P', 'OP1', 'OP2', 'OP3', "O5'", "C5'", "C4'", "O4'", "C3'", "O3'", "O2'", "C2'", "C1'"]:
                     return a.disordered_get(a.disordered_get_id_list()[0])
-                elif np.allclose(a.disordered_get('A').coord, a.disordered_get('B').coord, atol=0.05):
-                    return a.disordered_get('A')
+                elif np.allclose(a.disordered_get(ids[0]).coord, a.disordered_get(ids[1]).coord, atol=0.05):
+                    return a.disordered_get(ids[0])
             if not a.disordered_has_id(self.alt):
                 raise KeyError(f"Atom {self.res.full_id}:{a.id} is disordered, but alt='{self.alt}' must be one of {a.disordered_get_id_list()}")
             return a.disordered_get(self.alt)
@@ -82,7 +85,7 @@ def try_get_base_atoms(res: AltResidue) -> Optional[Tuple[Bio.PDB.Atom.Atom, Lis
     c1 = res.get_atom("C1'", None)
     if c1 is not None:
         planar_base_atoms = [ a for a in res.get_atoms() if not a.name.endswith("'") and a.element not in [ "H", "D", "P" ] and a.name not in ["P", "OP1", "OP2", "OP3"] ]
-        assert len(planar_base_atoms) >= 6
+        assert len(planar_base_atoms) >= 6, f"Residue {res.res.full_id} has less than 6 planar atoms: {[a.name for a in planar_base_atoms]}"
         return c1, planar_base_atoms
     return None
 
@@ -723,7 +726,7 @@ class RMSDToIdealMetric(PairMetric):
         transformed2 = transform_residue(pair.res2, fit)
 
         calc_atom_pairs = self.atom_pairs(self.calculate, dataclasses.replace(pair, res1=transformed1, res2=transformed2), ideal)
-        assert all(a.name == b.name for (a, b) in calc_atom_pairs if a and b)
+        assert all(a.name == b.name for (a, b) in calc_atom_pairs if a and b), f"paired atom names don't match: {[(a.name, b.name) for a, b in calc_atom_pairs if a and b]}"
         rmsd = atom_pair_rmsd(calc_atom_pairs)
         return [ rmsd ]
 
@@ -935,8 +938,8 @@ def get_stats_for_csv(df_: pl.DataFrame, structure: Bio.PDB.Structure.Structure,
             if hbonds is not None:
                 yield i, hbonds, metric_values
         except AssertionError as e:
-            if f"{e}" == "":
-                raise
+            # if f"{e}" == "":
+            #     raise
             print(f"Assertion error {e} on row:\n{to_csv_row(df_, i, 18)}")
             continue
         except Exception as keyerror:
