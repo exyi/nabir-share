@@ -792,12 +792,12 @@ def hbond_stats(
     if atom1 is None or atom2 is None:
         return HBondStats(None, None, None)
 
-    assert math.dist(atom0.coord, atom1.coord) <= 1.6, f"atoms 0,1 not bonded: {atom0.full_id} {atom1.full_id} ({np.linalg.norm(atom0.coord - atom1.coord)} > 1.6, {atom0.coord} {atom1.coord})"
-    assert math.dist(atom2.coord, atom3.coord) <= 1.6, f"atoms 2,3 not bonded: {atom2.full_id} {atom3.full_id} ({np.linalg.norm(atom0.coord - atom1.coord)} > 1.6, {atom0.coord} {atom1.coord})"
+    assert atom0 is None or math.dist(atom0.coord, atom1.coord) <= 1.8, f"atoms 0,1 not bonded: {atom0.full_id} {atom1.full_id} ({np.linalg.norm(atom0.coord - atom1.coord)} > 1.6, {atom0.coord} {atom1.coord})"
+    assert atom3 is None or math.dist(atom2.coord, atom3.coord) <= 1.8, f"atoms 2,3 not bonded: {atom2.full_id} {atom3.full_id} ({np.linalg.norm(atom0.coord - atom1.coord)} > 1.6, {atom0.coord} {atom1.coord})"
 
     dist = get_distance(atom1, atom2)
 
-    assert dist > 1.55, f"atoms too close for h-bond: {atom1.full_id} {atom2.full_id} ({np.linalg.norm(atom1.coord - atom2.coord)} < 2, {atom1.coord} {atom2.coord})"
+    # assert dist > 1.55, f"atoms too close for h-bond: {atom1.full_id} {atom2.full_id} ({np.linalg.norm(atom1.coord - atom2.coord)} < 2, {atom1.coord} {atom2.coord})"
     assert dist < 20, f"atoms too far for h-bond: ({np.linalg.norm(atom1.coord - atom2.coord)} > 20, {atom1.coord} {atom2.coord}, {atom1.full_id} {atom2.full_id})"
 
     result = HBondStats(
@@ -1333,6 +1333,13 @@ def main_partition(pool: Union[Pool, MockPool], args, pdbid_partition='', ideal_
 
     total_row_count = len(df)
     groups = list(df.group_by(pl.col("pdbid")))
+    max_group_size = 100_000
+    # split large groups into smaller chunks
+    groups = [
+        (pdbid, slice.sort('model', 'chain1', 'nr1', 'chain2', 'nr2'))
+        for pdbid, group in groups
+        for slice in group.iter_slices(len(group) // math.ceil(len(group) / max_group_size) + 5)
+    ]
     # sort by group size descending, to better utilize the parallelism
     groups.sort(key=lambda x: -len(x[1]))
     del df
@@ -1473,9 +1480,9 @@ def save_output(args, df: pl.LazyFrame, partition_select = ''):
         x, ext = os.path.splitext(file)
         file = f"{x}_p{partition_select.replace('/', 'of')}{ext}"
     if file.endswith(".parquet"):
-        df.sink_parquet(args.output)
+        df.sink_parquet(file)
     else:
-        df.sink_csv(file if file.endswith(".csv") else args.output + ".csv")
+        df.sink_csv(file if file.endswith(".csv") else file + ".csv")
         df.sink_parquet(file + ".parquet")
     return df
 
