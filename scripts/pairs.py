@@ -1336,7 +1336,7 @@ def main_partition(pool: Union[Pool, MockPool], args, pdbid_partition='', ideal_
     # sort by group size descending, to better utilize the parallelism
     groups.sort(key=lambda x: -len(x[1]))
     del df
-    print(f"Will process {len(groups)} PDB structures")
+    print(f"Will process {len(groups)} PDB structures: {', '.join(f'{x[0]}: {len(x[1])}' for x in groups)}")
 
     processes = []
 
@@ -1364,7 +1364,7 @@ def main_partition(pool: Union[Pool, MockPool], args, pdbid_partition='', ideal_
     def report_progress(process_name, pdbid, group_size):
         def core(result):
             processed_row_count[process_name] = processed_row_count.get(process_name, 0) + group_size
-            print(f"Progress report: chunk {process_name}-{pdbid} is done ({processed_row_count[process_name] / total_row_count*100:.0f}% - {processed_row_count[process_name] - group_size} + {group_size})")
+            print(f"Progress report: chunk P{pdbid_partition}-{process_name}-{pdbid} is done ({processed_row_count[process_name] / total_row_count*100:.0f}% - {processed_row_count[process_name] - group_size} + {group_size})")
         return core
 
     processes.append([ # process per PDB structure
@@ -1439,7 +1439,7 @@ def main(pool: Union[Pool, MockPool], args):
         else:
             partitions = [ select ]
         for partition in partitions:
-            df = main_partition(pool, args, args.partition_input_select, ideal_basepairs)
+            df = main_partition(pool, args, partition, ideal_basepairs)
             save_output(args, df.lazy(), partition)
     else:
         pdbids = load_input_pdbids(args)
