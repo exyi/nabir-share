@@ -3,6 +3,7 @@
 import functools
 import itertools
 from multiprocessing.pool import Pool
+import re
 from typing import Any, Callable, Generator, Iterator, List, Literal, Optional, Sequence, Tuple, TypeVar, Union
 import Bio.PDB, Bio.PDB.Structure, Bio.PDB.Model, Bio.PDB.Residue, Bio.PDB.Atom, Bio.PDB.Chain, Bio.PDB.Entity
 import os, sys, io, gzip, math, json, numpy as np
@@ -1332,6 +1333,8 @@ def main_partition(pool: Union[Pool, MockPool], args, pdbid_partition='', ideal_
 
     total_row_count = len(df)
     groups = list(df.group_by(pl.col("pdbid")))
+    # sort by group size descending, to better utilize the parallelism
+    groups.sort(key=lambda x: -len(x[1]))
     del df
     print(f"Will process {len(groups)} PDB structures")
 
@@ -1424,8 +1427,20 @@ def main(pool: Union[Pool, MockPool], args):
         raise ValueError("Cannot specify both --partition-input and --partition-input-select")
     
     if args.partition_input == 0:
-        df = main_partition(pool, args, args.partition_input_select, ideal_basepairs)
-        save_output(args, df.lazy())
+        select = args.partition_input_select
+        if re.match(r'^\d+-\d+/\d+$', select):
+            start_end, total = select.split('/')
+            start, end = start_end.split('-')
+            start = int(start)
+            end = int(end)
+            total = int(total)
+            partitions = [ f"{i}/{total}" for i in range(start, end) ]
+            print("Will run for multiple partitions:", partitions)
+        else:
+            partitions = [ select ]
+        for partition in partitions:
+            df = main_partition(pool, args, args.partition_input_select, ideal_basepairs)
+            save_output(args, df.lazy(), partition)
     else:
         pdbids = load_input_pdbids(args)
         partitions = {}
@@ -1450,13 +1465,13 @@ def main(pool: Union[Pool, MockPool], args):
                 os.remove(p)
 
 
-def save_output(args, df: pl.LazyFrame):
+def save_output(args, df: pl.LazyFrame, partition_select = ''):
     file = args.output
     if file == "/dev/null":
         return
-    if args.partition_input_select:
+    if partition_select:
         x, ext = os.path.splitext(file)
-        file = f"{x}_p{args.partition_input_select.replace('/', 'of')}{ext}"
+        file = f"{x}_p{partition_select.replace('/', 'of')}{ext}"
     if file.endswith(".parquet"):
         df.sink_parquet(args.output)
     else:
