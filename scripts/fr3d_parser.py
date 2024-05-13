@@ -12,6 +12,10 @@ import numpy as np
 
 from async_utils import MockPool
 
+def pdb_funny_case(pdbid: str):
+    """Lowercase PDBID with uppercase L"""
+    return pdbid.lower().replace("l", "L")
+
 @dataclass(frozen=True)
 class UnitID:
     """

@@ -518,7 +518,7 @@ def get_C1_N_yaw_pitch_roll(rot1: np.ndarray, rot2: np.ndarray) -> Tuple[float, 
     # this function probably the intuitive representation, as it corresponds to:
     # In [57]: Rotation.from_matrix(Rz(0.33) @ Ry(0.44) @ Rx(0.55)).as_euler("ZYX")
     # Out[57]: array([0.33, 0.44, 0.55])
-    yaw, pitch, roll = np.degrees(Rotation.from_matrix(matrix).as_euler("ZYX"))
+    yaw, pitch, roll = Rotation.from_matrix(matrix).as_euler("ZYX", degrees=True)
 
     assert np.allclose(matrix, Rz(math.radians(yaw)) @ Ry(math.radians(pitch)) @ Rx(math.radians(roll)), atol=1e-5)
     return yaw, pitch, roll
@@ -528,7 +528,7 @@ def get_C1_N_euler_angles(rot1: np.ndarray, rot2: np.ndarray) -> Tuple[float, fl
     # eu1 = math.degrees(math.atan2(matrix[2, 0], matrix[2, 1]))
     # eu2 = math.degrees(math.acos(matrix[2, 2]))
     # eu3 = -math.degrees(math.atan2(matrix[0, 2], matrix[1, 2]))
-    eu1, eu2, eu3 = np.degrees(Rotation.from_matrix(matrix).as_euler("zxz"))
+    eu1, eu2, eu3 = Rotation.from_matrix(matrix).as_euler("zxz", degrees=True)
     return eu1, eu2, eu3
 
 T = TypeVar('T')
@@ -814,14 +814,7 @@ def hbond_stats(
 
     return result
 
-resname_map = {
-    'DT': 'U',
-    'DC': 'C',
-    'DA': 'A',
-    'DG': 'G',
-    'DU': 'U',
-    'T': 'U',
-}
+resname_map = pair_defs.resname_map
 def get_hb_atom(n, r1: AltResidue, r2: AltResidue):
     if n[0] == 'A':
         return r1.get_atom(n[1:], None)
@@ -1357,7 +1350,7 @@ def main_partition(pool: Union[Pool, MockPool], args, pdbid_partition='', ideal_
         StandardMetrics.Translation2,
     ]
     if ideal_basepairs:
-        print(f"Loaded {len(ideal_basepairs)} ideal basepairs")
+        print(f"Measuring RMSD against {len(ideal_basepairs)} ideal basepairs")
         pair_metrics.extend([
             RMSDToIdealMetric('C1N_frames1', ideal_basepairs, fit_on='left_C1N', calculate='right_C1N'),
             RMSDToIdealMetric('C1N_frames2', ideal_basepairs, fit_on='right_C1N', calculate='left_C1N'),

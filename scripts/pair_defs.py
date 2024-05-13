@@ -139,7 +139,7 @@ class PairType:
             t = self.type[0].lower() + self.type[1].upper() + self.type[2].upper()
             return PairType(t, self.bases, self.variant, self.n)
 
-_resname_map = {
+resname_map = {
     'DT': 'U',
     'DC': 'C',
     'DA': 'A',
@@ -148,7 +148,7 @@ _resname_map = {
     'T': 'U',
 }
 def map_resname(resname: str) -> str:
-    return _resname_map.get(resname.upper(), resname)
+    return resname_map.get(resname.upper(), resname)
 
 def read_pair_definitions(file = os.path.join(os.path.dirname(__file__), "H_bonding_Atoms_from_Isostericity_Table.csv")) -> dict[tuple[str, str], list[tuple[str, str, str, str]]]:
     """Load the hydrogen bond definitions from H_bonding_Atoms_from_Isostericity_Table.csv file into the `hbonding_atoms` dict."""
