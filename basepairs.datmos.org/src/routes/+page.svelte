@@ -155,6 +155,23 @@
     updateResults()
   }
 
+  $: {
+    statistics; statistics.enabled;
+    statisticsChanged()
+  }
+
+  function statisticsChanged() {
+    if (!statistics.enabled) return;
+    if (resultsTable == null || resultsTable.numRows < Math.min(resultsAgg.count ?? Infinity, totalRowLimit)) {
+      updateResults()
+      return
+    }
+    if (statistics.panels.flatMap(p => p.variables).map(v => v.column).some(c => resultsSchema.names.includes(c) && !resultsTable.schema.names.includes(c))) {
+      updateResults()
+      return
+    }
+  }
+
   const requiredColumns = [ "pdbid", "chain1", "nr1", "chain2", "nr2", ]
   const recommendedColumns = [ "model", "ins1", "alt1", "res1", "res2", "ins2", "alt2", "res2" ]
 
@@ -488,9 +505,9 @@
 
   <div style="position: absolute; width: 200px; text-align: center; margin-left: -100px; left:50%">
     {#if statistics.enabled}
-    <a style="text-align: center;" href="javascript:;" on:click={e => statistics.enabled = false }>▲ collapse plots ▲</a>
+    <a style="text-align: center;" href="javascript:;" on:click={e => { statistics.enabled = false; return false } }>▲ collapse plots ▲</a>
     {:else}
-    <a href="javascript:;" on:click={() => statistics.enabled = true}>▽ expand plots ▽</a>
+    <a href="javascript:;" on:click={() => { statistics.enabled = true; return false }}>▽ expand plots ▽</a>
     {/if}
   </div>
   <div>

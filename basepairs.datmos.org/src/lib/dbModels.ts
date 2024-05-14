@@ -857,7 +857,7 @@ export function fillStatLegends(p: StatPanelSettingsModel, metadata: UnwrapArray
     const hideParameterName = p.variables.length > 1 && p.variables.every(v => v.column.startsWith('hb_') && v.column.endsWith(p.variables[0].column.slice(5)))
     const variables: VariableModel[] = p.variables.map(v => {
         if (!v.label) {
-            const [label, tooltip] = getColumnLabel(v.column, metadata, { hideBondName, hideParameterName }) ?? [ v.label, v.tooltip ]
+            const [label, tooltip] = getColumnLabel(v.column, metadata, { hideBondName, hideParameterName }) ?? [ v.label || v.column, v.tooltip ]
             v = { ...v, label, tooltip }
         }
         return v
@@ -873,11 +873,11 @@ export function fillStatLegends(p: StatPanelSettingsModel, metadata: UnwrapArray
 export const statPresets: { [n: string]: StatPanelSettingsModel } = {
     "histL": { type: "histogram",
         title: "H-bond length (Å)",
-        variables: [ { column: "hb_0_length", label: "" }, { column: "hb_1_length", label: "" }, { column: "hb_2_length", label: "" }, {column: "hb_3_length", label:""} ] },
+        variables: [ { column: "hb_0_length", label: "" }, { column: "hb_1_length", label: "" }, { column: "hb_2_length", label: "" } ] },
     "histDA": { type: "histogram",
         title: "H-bond donor angle (°)",
-        variables: [ { column: "hb_0_donor_angle", label: "" }, { column: "hb_1_donor_angle", label: "" }, { column: "hb_2_donor_angle", label: "" }, {column: "hb_3_donor_angle", label:""} ] },
+        variables: [ { column: "hb_0_donor_angle", label: "" }, { column: "hb_1_donor_angle", label: "" }, { column: "hb_2_donor_angle", label: "" } ] },
     "histAA": { type: "histogram",
         title: "H-bond acceptor angle (°)",
-        variables: [ { column: "hb_0_acceptor_angle", label: "" }, { column: "hb_1_acceptor_angle", label: "" }, { column: "hb_2_acceptor_angle", label: "" }, {column: "hb_3_acceptor_angle", label:""} ] }
+        variables: [ { column: "hb_0_acceptor_angle", label: "" }, { column: "hb_1_acceptor_angle", label: "" }, { column: "hb_2_acceptor_angle", label: "" } ] }
 }

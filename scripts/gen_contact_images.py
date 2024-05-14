@@ -275,6 +275,13 @@ h_add
 label (%pair and (elem N or elem O)), name
 
 hide labels, measure*
+
+set label_color = black
+set label_bg_color = white
+set label_outline_color = white
+set label_size = 25
+set label_font_id = 7
+
 """
 
 @dataclass
