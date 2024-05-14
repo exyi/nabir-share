@@ -11,7 +11,7 @@ import dataclasses
 from pair_csv_parse import scan_pair_csvs
 import pair_defs as pair_defs
 from fr3d_parser import UnitID
-from pairclusters.async_utils import MockPool
+from async_utils import MockPool
 
 order_sensitive_pairs = [
     pt
@@ -19,7 +19,7 @@ order_sensitive_pairs = [
     if not pt.is_swappable() and not pair_defs.has_symmetrical_definition(pt)
 ]
 
-def write_file(out_dir: str, pdbid: str, df: pl.DataFrame, detailed: bool, only_once: bool):
+def write_file(out_dir: str, pdbid: str, df: pl.DataFrame, detailed: bool, only_once: bool, comparison_column: bool, additional_columns: list[str]):
     assert df["pdbid"].str.to_lowercase().eq(pdbid.lower()).all(), f"pdbid mismatch: {pdbid} != {df['pdbid'].str.to_lowercase().to_list()}"
 
     df = df.with_columns(
@@ -35,27 +35,41 @@ def write_file(out_dir: str, pdbid: str, df: pl.DataFrame, detailed: bool, only_
         # remove near, alternative and bifurcated pairs
         df = df.filter(~pl.col("family").str.starts_with("n")).filter(~pl.col("family").str.ends_with("a")).filter(~pl.col("family").str.ends_with("B"))
 
+    additional_columns_sym = [pl.col("pdbid")] # dummy first column to prevent polars from collapsing the dataframe to 0/1 rows
+    additional_columns_asym = [pl.col("pdbid")]
+    if comparison_column:
+        additional_columns_sym.append(
+            pl.when(pl.col("comparison_in_current").not_()).then(pl.lit("MISSING"))
+                .when(pl.col("comparison_in_baseline").not_()).then(pl.lit("ADDED"))
+                .otherwise(pl.lit("")).alias("comparison_label_column")
+        )
+    additional_columns_asym.extend(pl.col(col) for col in additional_columns)
+
     with open(os.path.join(out_dir, pdbid + ("_basepair_detailed.txt" if detailed else "_basepair.txt")), "w") as f:
-        for order_sensitive, family, model, chain1, res1, nr1, alt1, ins1, symop1, chain2, res2, nr2, alt2, ins2, symop2 in zip(df["_tmp_type_is_order_sensitive"], df["family"], df["model"], df["chain1"], df["res1"], df["nr1"], df["alt1"], df["ins1"], df["symmetry_operation1"], df["chain2"], df["res2"], df["nr2"], df["alt2"], df["ins2"], df["symmetry_operation2"]):
+        for order_sensitive, family, model, chain1, res1, nr1, alt1, ins1, symop1, chain2, res2, nr2, alt2, ins2, symop2, additional_row_sym, additional_row_asym in zip(df["_tmp_type_is_order_sensitive"], df["family"], df["model"], df["chain1"], df["res1"], df["nr1"], df["alt1"], df["ins1"], df["symmetry_operation1"], df["chain2"], df["res2"], df["nr2"], df["alt2"], df["ins2"], df["symmetry_operation2"], df.select(*additional_columns_sym).iter_rows(), df.select(*additional_columns_asym).iter_rows()):
+            additional_row_sym = [*additional_row_sym][1:]
+            additional_row_asym = [*additional_row_asym][1:]
             unit1 = UnitID(pdbid, model, chain1, res1, nr1, "", alt1, ins1, symop1)
             unit2 = UnitID(pdbid, model, chain2, res2, nr2, "", alt2, ins2, symop2)
 
-            m = re.match(r"(?P<n>n)?(?P<cistrans>[ct])(?P<family1>[WHSB])(?P<family2>[WHSB])(?P<alt>[abc1234567890])?", family)
+            m = re.match(r"(?P<n>n)?(?P<cistrans>[ct])(?P<family1>[WHSB])(?P<family2>[WHSB])(?P<alt>[abc1234567890])?", family, re.IGNORECASE)
             assert m is not None, f"Invalid family: {family}"
 
             if detailed and order_sensitive:
-                family = m.group("n") + m.group("cistrans") + m.group("family1").upper() + m.group("family2").lower() + m.group("alt")
-                family_rev = m.group("n") + m.group("cistrans") + m.group("family2").lower() + m.group("family1").upper() + m.group("alt")
+                family = (m.group("n") or '') + m.group("cistrans") + m.group("family1").upper() + m.group("family2").lower() + (m.group("alt") or '')
+                family_rev = (m.group("n") or '') + m.group("cistrans") + m.group("family2").lower() + m.group("family1").upper() + (m.group("alt") or '')
             else:
-                family = m.group("n") + m.group("cistrans") + m.group("family1").upper() + m.group("family2").upper() + m.group("alt")
-                family_rev = m.group("n") + m.group("cistrans") + m.group("family1").upper() + m.group("family2").upper() + m.group("alt")
+                family = (m.group("n") or '') + m.group("cistrans") + m.group("family1").upper() + m.group("family2").upper() + (m.group("alt") or '')
+                family_rev = (m.group("n") or '') + m.group("cistrans") + m.group("family1").upper() + m.group("family2").upper() + (m.group("alt") or '')
 
-            f.write(f"{unit1}\t{family}\t{unit2}\n")
+            f.write(f"{unit1}\t{family}\t{unit2}{''.join('\t' + str(c) for c in additional_row_sym)}{''.join('\t' + str(c) for c in additional_row_asym)}\n")
             if not only_once:
-                f.write(f"{unit2}\t{family_rev}\t{unit1}\n")
+                f.write(f"{unit2}\t{family_rev}\t{unit1}{''.join('\t' + str(c) for c in additional_row_sym)}{''.join('\t' for c in additional_row_asym)}\n")
 
 def main(pool: ty.Union[MockPool, Pool], args):
     df = scan_pair_csvs(args.inputs)
+
+    df = df.sort(pl.col("pdbid").str.to_lowercase(), "model", "chain1", "nr1", "alt1", "ins1", "chain2", "nr2", "alt2", "ins2", "symmetry_operation1", "symmetry_operation2", "family")
 
     if args.uppercase:
         df = df.with_columns(pdbid=pl.col("pdbid").str.to_lowercase())
@@ -67,8 +81,8 @@ def main(pool: ty.Union[MockPool, Pool], args):
     pdbid: str
     procs = []
     for ((pdbid,), group) in df.collect().group_by(["pdbid"]):#type: ignore
-        procs.append(pool.apply_async(write_file, args=[args.output, pdbid, group, args.detailed, args.only_once]))
-    
+        procs.append(pool.apply_async(write_file, args=[args.output, pdbid, group, args.detailed, args.only_once, args.comparison_column, []]))
+
     for p in procs:
         p.get()
 
@@ -83,6 +97,7 @@ if __name__ == "__main__":
     parser.add_argument("--detailed", default=False, action="store_true", help="Simulate detailed output with all columns (lowercase second letter, near pairs are not supported)")
     parser.add_argument("--only-once", default=False, action="store_true", help="Do not duplicate pairs")
     parser.add_argument("--uppercase", default=False, action="store_true", help="Uppercase PDB IDs")
+    parser.add_argument("--comparison-column", default=False, action="store_true", help="Add a column with information from comparison_in_current/comparision_in_baseline")
     parser.add_argument("--threads", default=None, type=int, help="Parallelism")
 
     args = parser.parse_args()
