@@ -1078,6 +1078,14 @@ def calculate_boundaries(df: pl.DataFrame, pair_type: PairType):
 
         # return pl.Series([], dtype=pl.Float32)
         return pl.Series([min, max], dtype=pl.Float32)
+    
+    # hb_dict = dict(enumerate(hbonds))
+
+    max_lengths = [
+        4.2 if pair_defs.is_ch_bond(pair_type, hb) else 4.0
+        for hb in hbonds
+    ]
+    max_lengths = dict(enumerate(max_lengths))
 
     boundaries = pl.DataFrame({
         "family_id": [ pt_family_dict.get(pair_type.type.lower(), 99) ] * 2,
@@ -1088,7 +1096,11 @@ def calculate_boundaries(df: pl.DataFrame, pair_type: PairType):
         **{
             key: calc_boundary(col)
             for key, col in boundary_columns.items()
-        }
+        },
+        "hb_0_length": [ None, max_lengths.get(0) ],
+        "hb_1_length": [ None, max_lengths.get(1) ],
+        "hb_2_length": [ None, max_lengths.get(2) ],
+        "min_bond_length": [ None, 3.8 ],
     })
     return boundaries
 

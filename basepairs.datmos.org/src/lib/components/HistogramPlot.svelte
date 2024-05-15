@@ -15,6 +15,7 @@
     const colors = ['#e41a1c','#377eb8','#4daf4a','#984ea3','#ff7f00','#ffff33','#a65628','#f781bf','#999999']
 
     let hiddenColumns: number[] = []
+    let emptyColumns: number[] = [] // automatically hidden in legend
 
     // function createRoundedAxis(min, max, buckets = 20) {
     //     const ticks = d3.scaleLinear().domain([min, max]).ticks(buckets)
@@ -50,6 +51,8 @@
             max = Math.max(3.5, max)
             defaultBinWidth = 0.05
         }
+
+        emptyColumns = columns.map((c, i) => c != null && c.data.length == 0 ? i : -1).filter(x => x >= -1)
 
         const xAxis = d3.scaleLinear().domain([min, max])
             .nice(settings.bins ?? defaultBins ?? 40)
@@ -99,7 +102,7 @@
         //     svg.append("text").attr("x", 320).attr("y", 30).text("variable A").style("font-size", "15px").attr("alignment-baseline","middle")
         //     svg.append("text").attr("x", 320).attr("y", 60).text("variable B").style("font-size", "15px").attr("alignment-baseline","middle")
         // }
-        console.log(`histogram rendered in ${performance.now() - startTime}ms`)
+        console.log(`histogram rendered in ${performance.now() - startTime}ms with ${columns.reduce((a, b) => a + (b?.data.length ?? 0), 0)} `)
     }
 
     onMount(() => {
@@ -129,7 +132,7 @@
         <g bind:this={svg}></g>
         <g>
         {#each settings?.variables ?? [] as v, i}
-        {#if v.label != null}
+        {#if v.label != null && !emptyColumns.includes(i)}
             {@const maxLblLength = Math.max(...(settings?.variables ?? []).map(v => v.label?.length ?? 0))}
 
             <g opacity={hiddenColumns.includes(i) ? 0.5 : 1} on:click={() => {
