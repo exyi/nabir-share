@@ -1082,7 +1082,7 @@ def calculate_boundaries(df: pl.DataFrame, pair_type: PairType):
     # hb_dict = dict(enumerate(hbonds))
 
     max_lengths = [
-        4.2 if pair_defs.is_ch_bond(pair_type, hb) else 4.0
+        4.2 if pair_defs.is_ch_bond(pair_type, hb) or pair_defs.is_bond_to_sugar(pair_type, hb) else 4.0
         for hb in hbonds
     ]
     max_lengths = dict(enumerate(max_lengths))
