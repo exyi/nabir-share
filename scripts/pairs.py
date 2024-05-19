@@ -1181,7 +1181,7 @@ def make_stats_columns(pdbid: str, df: pl.DataFrame, add_metadata_columns: bool,
 
     if structure is not None:
         for i, hbonds, metric_values in get_stats_for_csv(df, structure, structure_data, metrics, max_hb_length):
-            valid[i] = True
+            valid[i] = any(hb is not None and hb.length is not None and hb.length <= 4.5 for hb in hbonds)
             for j, s in enumerate(hbonds):
                 if s is None:
                     continue

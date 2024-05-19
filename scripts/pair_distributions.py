@@ -1097,9 +1097,9 @@ def calculate_boundaries(df: pl.DataFrame, pair_type: PairType):
             key: calc_boundary(col)
             for key, col in boundary_columns.items()
         },
-        "hb_0_length": [ None, max_lengths.get(0) ],
-        "hb_1_length": [ None, max_lengths.get(1) ],
-        "hb_2_length": [ None, max_lengths.get(2) ],
+        "hb_0_length": pl.Series([ None, max_lengths.get(0) ], dtype=pl.Float64),
+        "hb_1_length": pl.Series([ None, max_lengths.get(1) ], dtype=pl.Float64),
+        "hb_2_length": pl.Series([ None, max_lengths.get(2) ], dtype=pl.Float64),
         "min_bond_length": [ None, 3.8 ],
     })
     return boundaries
