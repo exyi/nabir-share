@@ -24,7 +24,7 @@ export async function ensureViews(conn: AsyncDuckDBConnection, abort: AbortSigna
     }
     console.log("missing tables:", [...tableSet])
     if (tableSet.has('selectedpair')) {
-      await addView(selectedNorm, 'selectedpair', `${selectedPairing}`)
+      await addView(selectedNorm, 'selectedpair', `${selectedNorm}`)
       tableSet.delete('selectedpair')
     }
     if (tableSet.has('selectedpair_f')) {
