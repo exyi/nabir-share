@@ -248,6 +248,8 @@ pair_families = [
     "cwb"
 ]
 
+pair_families_ids = { pt: ix + 1 for ix, pt in enumerate(pair_families) }
+
 sugar_atom_connectivity = [
     ("P", "OP2"), ("P", "OP1"), ("P", "O5'"),
     ("O5'", "C5'"), ("C5'", "C4'"),

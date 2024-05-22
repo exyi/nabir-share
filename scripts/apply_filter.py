@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 from multiprocessing.pool import Pool
+from types import NoneType
 import typing as ty
 import os, sys, io, re, gzip, math, json, functools, itertools, numpy as np
 import polars as pl
@@ -20,7 +21,7 @@ def save_output(args, df: pl.LazyFrame):
     return df
 
 def main(args):
-    boundaries = pl.read_csv(args.boundaries)
+    boundaries = pl.read_csv(args.boundaries, infer_schema_length=10000)
     df = scan_pair_csvs(args.inputs)
 
     df = df.with_columns(
@@ -55,6 +56,10 @@ def main(args):
         row_score = []
         for c in checked_columns:
             min, max = (b.get(c + "_min", None), b.get(c + "_max", None))
+            if not isinstance(min, (int, float, NoneType)):
+                raise ValueError(f"Invalid value for {c}_min ({repr(min)} of type {type(min)})")
+            if not isinstance(max, (int, float, NoneType)):
+                raise ValueError(f"Invalid value for {c}_max ({repr(max)} of type {type(max)})")
             if min is None and max is None:
                 continue
             if min is None:

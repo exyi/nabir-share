@@ -1058,7 +1058,6 @@ def calculate_boundaries(df: pl.DataFrame, pair_type: PairType):
         "hb_2_OOPA1": "hb_2_OOPA1",
         "hb_2_OOPA2": "hb_2_OOPA2",
     }
-    pt_family_dict = { pt: ix + 1 for ix, pt in enumerate(pair_defs.pair_families) }
     def calc_boundary(col, df: pl.DataFrame=df):
         # return df[col].min(), df[col].max()
         if col in blacklisted_columns:
@@ -1088,7 +1087,7 @@ def calculate_boundaries(df: pl.DataFrame, pair_type: PairType):
     max_lengths = dict(enumerate(max_lengths))
 
     boundaries = pl.DataFrame({
-        "family_id": [ pt_family_dict.get(pair_type.type.lower(), 99) ] * 2,
+        "family_id": [ pair_defs.pair_families_ids.get(pair_type.type.lower(), 99) ] * 2,
         "family": [ pair_type.full_family ] * 2,
         "bases": [ pair_type.bases_str ] * 2,
         "count": [ len(df) ] * 2,
