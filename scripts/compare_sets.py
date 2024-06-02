@@ -61,7 +61,8 @@ def main(args):
     comparison = comparison.with_columns(
         family_id=pl.col("family").replace(pair_defs.pair_families_ids, default=None, return_dtype=pl.Int32),
         diff = pl.format("-{} +{}", pl.col("count_dropped"), pl.col("count_added")),
-        diff_percent = pl.format("-{}% +{}%", (pl.col("count_dropped") / pl.col("count_baseline") * 100).round_sig_figs(2), (pl.col("count_added") / pl.col("count_target") * 100).round_sig_figs(2)),
+        diff_percent_p = pl.format("-{}%", (pl.col("count_dropped") / pl.col("count_baseline") * 100).round_sig_figs(2)),
+        diff_percent_n = pl.format("+{}%", (pl.col("count_added") / pl.col("count_target") * 100).round_sig_figs(2))
     )
 
     if boundaries is not None:

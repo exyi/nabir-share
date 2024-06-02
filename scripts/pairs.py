@@ -938,7 +938,7 @@ def get_stats_for_csv(df_: pl.DataFrame, structure: Bio.PDB.Structure.Structure,
         df.select(pl.col("model"), chain=pl.col("chain1"), res=pl.col("res1"), nr=pl.col("nr1"), ins=pl.col("ins1"), alt=pl.col("alt1"), symop=pl.col("symmetry_operation1")),
         df.select(pl.col("model"), chain=pl.col("chain2"), res=pl.col("res2"), nr=pl.col("nr2"), ins=pl.col("ins2"), alt=pl.col("alt2"), symop=pl.col("symmetry_operation2"))
     ]).unique()
-    def multiline_lambda(model, chain, res, nr, ins, alt, symop):
+    def residue_cache_create_entry(model, chain, res, nr, ins, alt, symop):
         try:
             r = get_residue(structure, strdata, model, chain, res, nr, ins, alt, symop)
             if r is None:
@@ -949,7 +949,7 @@ def get_stats_for_csv(df_: pl.DataFrame, structure: Bio.PDB.Structure.Structure,
             return None
 
     residue_cache = {
-        (model, chain, res, nr, ins, alt, symop): multiline_lambda(model, chain, res, nr, ins, alt, symop)
+        (model, chain, res, nr, ins, alt, symop): residue_cache_create_entry(model, chain, res, nr, ins, alt, symop)
         for model, chain, res, nr, ins, alt, symop in residues_df.iter_rows()
     }
 
@@ -962,7 +962,7 @@ def get_stats_for_csv(df_: pl.DataFrame, structure: Bio.PDB.Structure.Structure,
 
             if (hbond_defs := pair_defs.get_hbonds(pair_type, throw=False)) is None:
                 continue
-            
+
             r1 = residue_cache[(model, chain1, resname1, nr1, ins1, alt1, symop1)]
             r2 = residue_cache[(model, chain2, resname2, nr2, ins2, alt2, symop2)]
             if r1 is None or r2 is None:
@@ -1007,9 +1007,13 @@ def remove_duplicate_pairs_phase1(df: pl.DataFrame):
     If the basepair family has a lowercase letter, it will always be second (preserving the FR3D ordering).
     """
     # original = df
-    original_len = len(df)
-    df = df.with_row_index("_tmp_row_nr")
     family_col = pl.col("family" if "family" in df.columns else "type")
+    original_len = len(df)
+    df = df.unique(["family", "pdbid", "model", "chain1", "res1", "nr1", "ins1", "alt1", "chain2", "res2", "nr2", "ins2", "alt2", "symmetry_operation1", "symmetry_operation2"])
+    if len(df) < original_len:
+        print(f"Removed duplicates - unique {original_len} -> {len(df)}")
+        original_len = len(df)
+    df = df.with_row_index("_tmp_row_nr")
     df = df.with_columns(
         family_col.str.replace("^(n?[ct])([WHSBwhsb])([WHSBwhsb])([a-z]*)$", "$1$3$2$4").alias("_tmp_family_reversed")
     )
@@ -1279,20 +1283,23 @@ def load_inputs(pool: Union[Pool, MockPool], args, pdbid_partition_str='') -> pl
         raise ValueError("Unknown input file type")
     if "type" not in df.columns and "family" not in df.columns:
         if not args.override_pair_family:
-            raise ValueError("Input does not contain family column and --override-pair-type was not specified")
+            raise ValueError("Input does not contain family column and --override-pair-family was not specified")
     if args.override_pair_family:
         df = df.drop("type", "family")
         override: list[str] = args.override_pair_family.split(",")
+        print("override pair family: ", override)
         if len(override) == 1:
             df = df.select(
                 pl.lit(override[0]).alias("type"),
                 pl.lit(override[0]).alias("family"),
                 pl.col("*"))
         else:
+            x = len(df)
             df = df.join(
                 pl.DataFrame({"type": override, "family": override}),
                 how='cross'
             )
+            assert x * len(override) == len(df)
     return df
 
 def validate_missing_columns(chunks: list[pl.DataFrame]):

@@ -24,6 +24,9 @@ def main(args):
     boundaries = pl.read_csv(args.boundaries, infer_schema_length=10000)
     df = scan_pair_csvs(args.inputs)
 
+    if "hb_0_length" not in df.columns or "C1_C1_yaw1" not in df.columns:
+        raise ValueError("The input data is missing the necessary columns")
+
     df = df.with_columns(
         _tmp_bases=pl.col("res1").replace(pair_defs.resname_map).str.to_uppercase() + "-" + pl.col("res2").replace(pair_defs.resname_map).str.to_uppercase(),
         _tmp_min_bond_length = pl.min_horizontal(pl.col("^hb_\\d+_length$")),
@@ -106,15 +109,118 @@ def main(args):
 
     df = df.filter(monster_condition)
 
-    if args.best_fit_only:
-        score = pl.sum_horizontal(pl.col("^hb_\\d+_length$").fill_null(4))
-        df = df.sort(score)
-        gr = df.group_by(pl.col("pdbid").str.to_lowercase(), "model", "chain1", "nr1", "alt1", "ins1", "chain2", "nr2", "alt2", "ins2", "symmetry_operation1", "symmetry_operation2", maintain_order=True)
-        df = gr.first().collect().lazy()
+    if args.best_fit is not None and args.best_fit != "none":
+        df = best_fitting_nucleotides(df, args.best_fit)
     
     df = df.sort("pdbid", "model", "chain1", "nr1", "alt1", "ins1", "chain2", "nr2", "alt2", "ins2", "symmetry_operation1", "symmetry_operation2", "family")
 
     save_output(args, df)
+
+conflict_resolution_score = ((pl.sum_horizontal(pl.col("^hb_\\d+_length$") - 4).fill_null(0)) + pl.col("coplanarity_shift1") + pl.col("coplanarity_shift2")).alias("conflict_resolution_score")
+
+def edge_df(df: pl.DataFrame, i: ty.Literal[1, 2]) -> pl.DataFrame:
+    return df.select(
+        pl.col("family").str.slice(i, 1), # edge
+        pl.col("pdbid"),
+        pl.col(f"symmetry_operation{i}"),
+        pl.col("model"),
+        pl.col(f"chain{i}"),
+        pl.col(f"nr{i}"),
+        pl.col(f"ins{i}"),
+        pl.col(f"alt{i}"),
+    )
+
+
+def best_fitting_edges_optmatching(df: pl.DataFrame) -> pl.DataFrame:
+    try:
+        import networkx as nx
+        bitmap = np.zeros(len(df), dtype=bool)
+        scores = df.select(conflict_resolution_score)[:, 0]
+
+        graph = nx.Graph()
+        for e1, e2, score in zip(edge_df(df, 1).iter_rows(), edge_df(df, 2).iter_rows(), scores):
+            weight = 2 - score
+            weight = max(0.01, weight)
+            # print("Adding edge", e1, e2, weight)
+            graph.add_edge(e1, e2, weight=weight)
+
+        # find pairs connected to alternative residues and contract said alternatives into one
+        for res1 in list(graph.nodes):
+            neighbors = list(graph.neighbors(res1))
+            if len(neighbors) <= 1:
+                continue
+
+            no_alt_neighbors = set((edge, pdbid, symop, model, chain, nr, ins) for edge, pdbid, symop, model, chain, nr, ins, _alt in neighbors)
+            if len(neighbors) == len(no_alt_neighbors):
+                continue
+
+            groups = dict()
+            for edge, pdbid, symop, model, chain, nr, ins, alt in neighbors:
+                groups.setdefault((pdbid, symop, model, chain, nr, ins), []).append((edge, pdbid, symop, model, chain, nr, ins, alt))
+
+            for g in groups.values():
+                if len(g) > 1:
+                    print("Contracting", g)
+                    for i in range(len(g) - 1):
+                        nx.contracted_nodes(graph, g[i], g[i + 1], self_loops=False, copy=False)
+                    altcodes = "merged" + "".join(gi[-1] for gi in g)
+                    nx.relabel_nodes(graph, {g[-1]: (*g[-1][:-1], altcodes)}, copy=False)
+
+        opt_edges: set[tuple[tuple, tuple]] = nx.max_weight_matching(graph)
+        # print("Optimal edges:", opt_edges)
+        opt_edges.update(list((b, a) for a, b in opt_edges))
+
+        for i, (e1, e2) in enumerate(zip(edge_df(df, 1).iter_rows(), edge_df(df, 2).iter_rows())):
+            if (e1, e2) in opt_edges:
+                bitmap[i] = True
+
+        print(f"Selected {bitmap.sum()} out of {len(df)} basepairs")
+        return df.filter(pl.Series(bitmap, dtype=pl.Boolean))
+    except Exception as e:
+        print("Error in best_fitting_nucleotide_single_structure:", e)
+        import traceback
+        traceback.print_exc()
+        raise
+
+def best_fitting_edges_greedy(df: pl.DataFrame) -> pl.DataFrame:
+    try:
+        df = df.sort(conflict_resolution_score)
+        bitmap = np.zeros(len(df), dtype=bool)
+        dedup = set()
+
+        for i, (e1, e2) in enumerate(zip(edge_df(df, 1).iter_rows(), edge_df(df, 2).iter_rows())):
+            if e1 not in dedup and e2 not in dedup:
+                bitmap[i] = True
+                dedup.add(e1)
+                dedup.add(e2)
+
+        print(f"Selected {bitmap.sum()} out of {len(df)} basepairs")
+        return df.filter(pl.Series(bitmap, dtype=pl.Boolean))
+    except Exception as e:
+        print("Error in best_fitting_nucleotide_single_structure:", e)
+        import traceback
+        traceback.print_exc()
+        raise
+
+
+def best_fitting_nucleotides(df: pl.LazyFrame, method: str) -> pl.LazyFrame:
+    df = df.sort(conflict_resolution_score)
+
+    # first, select best matching assignment for each pair
+    gr = df.group_by(pl.col("pdbid").str.to_lowercase(), "model", "chain1", "nr1", "alt1", "ins1", "chain2", "nr2", "alt2", "ins2", "symmetry_operation1", "symmetry_operation2", maintain_order=True)
+    df = gr.first()
+
+    # second, select best matching partner for each nt/edge
+    if method == "single-pair":
+        pass
+    elif method == "greedy-edges":
+        df = df.group_by(["pdbid"]).map_groups(best_fitting_edges_optmatching, schema=None)
+    elif method == "graph-edges":
+        df = df.group_by(["pdbid"]).map_groups(best_fitting_edges_greedy, schema=None)
+
+    df = df.collect().lazy()
+
+    return df
 
 if __name__ == "__main__":
     import argparse
@@ -126,7 +232,7 @@ if __name__ == "__main__":
     parser.add_argument("--output", "-o", required=True, help="Output CSV/Parquet file name.")
     parser.add_argument("--boundaries", type=str, required=False, default="https://docs.google.com/spreadsheets/d/e/2PACX-1vTvEpcubhqyJoPTmL3wtq0677tdIRnkTghJcbPtflUdfvyzt4xovKJxBHvH2Y1VyaFSU5S2BZIimmSD/pub?gid=245758142&single=true&output=csv", help="Input file with boundaries. May be URL and the Google table is default.")
     parser.add_argument("--null-is-fine", default=False, action="store_true", help="Columns with NULL values are considered to be within boundaries. Rows with all NULL columns are still discarded")
-    parser.add_argument("--best-fit-only", default=False, action="store_true", help="Only the best fitting family for each basepair is kept")
+    parser.add_argument("--best-fit", default=None, type=str, help="Only the best fitting family for each basepair is kept", choices=["none", "single-pair", "greedy-edges", "graph-edges"])
 
     args = parser.parse_args()
     main(args)
