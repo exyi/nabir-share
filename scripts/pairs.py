@@ -668,10 +668,10 @@ class TranslationMetrics(PairMetric):
         self.reference = reference
         self.columns = np.char.add(["x", "y", "z"], str(reference))
     def get_values(self, pair: PairInformation) -> Sequence[float | None]:
-        ref, other = (pair.rot_trans1, pair.rot_trans2) if self.reference == 1 else (pair.rot_trans1, pair.rot_trans2)
+        ref, other = (pair.rot_trans1, pair.rot_trans2) if self.reference == 1 else (pair.rot_trans2, pair.rot_trans1)
         if ref is None or other is None:
             return [ None ] * 3
-        return list(ref.rotation @ (other.translation - ref.translation))
+        return list(ref.rotation.T @ (other.translation - ref.translation))
 
 class StandardMetrics:
     Coplanarity = CoplanarityEdgeMetrics()
