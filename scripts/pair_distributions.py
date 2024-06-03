@@ -703,7 +703,7 @@ def save(fig: Figure, title, outdir):
         raise e
 
 def load_pair_table(file: str):
-    df = pl.read_parquet(file) if file.endswith(".parquet") else pl.read_csv(file)
+    df = pl.read_parquet(file, hive_partitioning=False, low_memory=True) if file.endswith(".parquet") else pl.read_csv(file)
     df = pair_csv_parse.normalize_columns(df)
 
     if "coplanarity_angle" not in df.columns:

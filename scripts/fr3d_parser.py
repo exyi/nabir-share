@@ -141,6 +141,10 @@ class UnitID:
         while len(components) > 5 and not components[-1]:
             components.pop()
 
+        for i in range(len(components)):
+            if components[i] is None:
+                components[i] = ""
+
         return "|".join(components)
     
     def __repr__(self) -> str:
