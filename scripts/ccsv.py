@@ -60,7 +60,7 @@ def main(args):
         for key, g in df.collect().group_by(args.partition.split(",")):
             out_p = os.path.join(out, "-".join(key))
             os.makedirs(out_p, exist_ok=True)
-            write_directory(g.lazy(), out, not args.quiet)
+            write_directory(g.lazy(), out_p, not args.quiet)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
