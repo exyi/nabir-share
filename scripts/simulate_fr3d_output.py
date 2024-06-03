@@ -19,8 +19,9 @@ order_sensitive_pairs = [
     if not pt.is_swappable() and not pair_defs.has_symmetrical_definition(pt)
 ]
 
-def write_file(out_dir: str, pdbid: str, df: pl.DataFrame, detailed: bool, only_once: bool, comparison_column: bool, additional_columns: list[str]):
-    assert df["pdbid"].str.to_lowercase().eq(pdbid.lower()).all(), f"pdbid mismatch: {pdbid} != {df['pdbid'].str.to_lowercase().to_list()}"
+def write_file(out_file: str, pdbid_global: ty.Optional[str], df: pl.DataFrame, detailed: bool, only_once: bool, comparison_column: bool, additional_columns: list[str]):
+    if pdbid_global is not None:
+        assert df["pdbid"].str.to_lowercase().eq(pdbid_global.lower()).all(), f"pdbid mismatch: {pdbid_global} != {df['pdbid'].str.to_lowercase().to_list()}"
 
     df = df.with_columns(
         _tmp_bases=pl.col("res1").replace(pair_defs.resname_map).str.to_uppercase().str.to_uppercase() + "-" + pl.col("res2").str.to_uppercase().replace(pair_defs.resname_map),
@@ -45,8 +46,8 @@ def write_file(out_dir: str, pdbid: str, df: pl.DataFrame, detailed: bool, only_
         )
     additional_columns_asym.extend(pl.col(col) for col in additional_columns)
 
-    with open(os.path.join(out_dir, pdbid + ("_basepair_detailed.txt" if detailed else "_basepair.txt")), "w") as f:
-        for order_sensitive, family, model, chain1, res1, nr1, alt1, ins1, symop1, chain2, res2, nr2, alt2, ins2, symop2, additional_row_sym, additional_row_asym in zip(df["_tmp_type_is_order_sensitive"], df["family"], df["model"], df["chain1"], df["res1"], df["nr1"], df["alt1"], df["ins1"], df["symmetry_operation1"], df["chain2"], df["res2"], df["nr2"], df["alt2"], df["ins2"], df["symmetry_operation2"], df.select(*additional_columns_sym).iter_rows(), df.select(*additional_columns_asym).iter_rows()):
+    with open(out_file, "w") as f:
+        for order_sensitive, pdbid, family, model, chain1, res1, nr1, alt1, ins1, symop1, chain2, res2, nr2, alt2, ins2, symop2, additional_row_sym, additional_row_asym in zip(df["_tmp_type_is_order_sensitive"], df['pdbid'], df["family"], df["model"], df["chain1"], df["res1"], df["nr1"], df["alt1"], df["ins1"], df["symmetry_operation1"], df["chain2"], df["res2"], df["nr2"], df["alt2"], df["ins2"], df["symmetry_operation2"], df.select(*additional_columns_sym).iter_rows(), df.select(*additional_columns_asym).iter_rows()):
             additional_row_sym = [*additional_row_sym][1:]
             additional_row_asym = [*additional_row_asym][1:]
             unit1 = UnitID(pdbid, model, chain1, res1, nr1, "", alt1, ins1, symop1)
@@ -62,9 +63,10 @@ def write_file(out_dir: str, pdbid: str, df: pl.DataFrame, detailed: bool, only_
                 family = (m.group("n") or '') + m.group("cistrans") + m.group("family1").upper() + m.group("family2").upper() + (m.group("alt") or '')
                 family_rev = (m.group("n") or '') + m.group("cistrans") + m.group("family1").upper() + m.group("family2").upper() + (m.group("alt") or '')
 
-            f.write(f"{unit1}\t{family}\t{unit2}{''.join('\t' + str(c) for c in additional_row_sym)}{''.join('\t' + str(c) for c in additional_row_asym)}\n")
+            tab = "\t" # fuckin fstrings
+            f.write(f"{unit1}\t{family}\t{unit2}{''.join(tab + str(c) for c in additional_row_sym)}{''.join(tab + str(c) for c in additional_row_asym)}\n")
             if not only_once:
-                f.write(f"{unit2}\t{family_rev}\t{unit1}{''.join('\t' + str(c) for c in additional_row_sym)}{''.join('\t' for c in additional_row_asym)}\n")
+                f.write(f"{unit2}\t{family_rev}\t{unit1}{''.join(tab + str(c) for c in additional_row_sym)}{''.join(tab for c in additional_row_asym)}\n")
 
 def main(pool: ty.Union[MockPool, Pool], args):
     df = scan_pair_csvs(args.inputs)
@@ -81,7 +83,8 @@ def main(pool: ty.Union[MockPool, Pool], args):
     pdbid: str
     procs = []
     for ((pdbid,), group) in df.collect().group_by(["pdbid"]):#type: ignore
-        procs.append(pool.apply_async(write_file, args=[args.output, pdbid, group, args.detailed, args.only_once, args.comparison_column, []]))
+        out_file = os.path.join(args.output, pdbid + ("_basepair_detailed.txt" if args.detailed else "_basepair.txt"))
+        procs.append(pool.apply_async(write_file, args=[out_file, pdbid, group, args.detailed, args.only_once, args.comparison_column, []]))
 
     for p in procs:
         p.get()
